@@ -1,0 +1,17 @@
+{
+  "name": "academy-v78",
+  "version": "7.8.0",
+  "description": "Academy — gerador de trabalhos académicos com IA",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev":   "node server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv":  "^16.4.5",
+    "express": "^4.19.2"
+  }
+}

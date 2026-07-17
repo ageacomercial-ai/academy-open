@@ -1,0 +1,20 @@
+{
+  "name": "ACADEMY — Plataforma Académica",
+  "short_name": "ACADEMY",
+  "description": "A tua plataforma de desempenho académico em Angola",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#0C0E14",
+  "background_color": "#000000",
+  "lang": "pt",
+  "icons": [
+    { "src": "icons/icon-maskable-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "icons/icon-maskable-512.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Criar Trabalho", "url": "./?acao=criar", "description": "Começar novo trabalho académico" }
+  ],
+  "categories": ["education", "productivity"]
+}

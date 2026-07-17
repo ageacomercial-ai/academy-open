@@ -1,0 +1,265 @@
+/* ═══════════════════════════════════════════════════════════
+   ACADEMY — COMPONENTS.CSS
+   Todos os componentes UI: alertas, zona upload, planos,
+   exemplares, geração, chat, PWA banners.
+   Depende de: base.css, layout.css
+═══════════════════════════════════════════════════════════ */
+
+/* ════════════════════════════════════════════════════════════
+   ALERTAS
+════════════════════════════════════════════════════════════ */
+.al { border-radius: var(--r2); padding: 11px 13px; display: flex; gap: 10px; font-size: 13px; line-height: 1.6; margin-bottom: 11px; }
+.al-b { background: rgba(67,232,167,.04); border: 1px solid var(--eb); color: var(--bx); }
+.al-o { background: rgba(56,189,248,.04); border: 1px solid var(--eo); color: var(--ox); }
+.al-v { background: rgba(67,232,167,.04); border: 1px solid var(--eb); color: var(--bx); }
+
+/* ════════════════════════════════════════════════════════════
+   ZONA DE UPLOAD
+════════════════════════════════════════════════════════════ */
+.zone-upload {
+  border: 2px dashed var(--e1); border-radius: var(--r);
+  padding: 24px 16px; text-align: center; cursor: pointer;
+  transition: all .2s; margin-bottom: 8px;
+}
+.zone-upload:hover { border-color: var(--eb); background: rgba(67,232,167,.04); }
+
+/* ════════════════════════════════════════════════════════════
+   PLANOS
+════════════════════════════════════════════════════════════ */
+.pi { background: var(--z2); border: 1px solid var(--e0); border-radius: var(--r2); padding: 11px 13px; margin-bottom: 7px; }
+.pi-l { font-family: var(--fu); font-size: 10px; font-weight: 500; color: var(--b); margin-bottom: 5px; letter-spacing: .02em; }
+.pi-v { font-size: 13.5px; color: var(--t1); line-height: 1.75; }
+
+/* ════════════════════════════════════════════════════════════
+   SELECÇÃO DE TIPOS (wt items)
+════════════════════════════════════════════════════════════ */
+.wt { display: flex; align-items: center; gap: 12px; padding: 13px 14px; margin-bottom: 7px; background: var(--z2); border: 1px solid var(--e0); border-radius: var(--r); cursor: pointer; transition: all .14s var(--ease); touch-action: manipulation; }
+.wt:hover { border-color: var(--e1); background: var(--z3); }
+.wt:active { transform: scale(.985); }
+.wt.sel-b { border-color: var(--eb); background: rgba(67,232,167,.04); }
+.wt.sel-o { border-color: var(--eo); background: rgba(56,189,248,.04); }
+.wt-ic { font-size: 20px; width: 24px; text-align: center; flex-shrink: 0; color: var(--t3); transition: all .14s; }
+.wt.sel-b .wt-ic { color: var(--b); }
+.wt.sel-o .wt-ic { color: var(--o); }
+.wt-nome { font-size: 16px; font-weight: 500; color: var(--t1); margin-bottom: 2px; line-height: 1.2; }
+.wt-tag { font-family: var(--fm); font-size: 8px; color: var(--t3); letter-spacing: .06em; }
+.wt-ck { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--e1); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; transition: all .14s; }
+.wt.sel-b .wt-ck { background: var(--b); border-color: var(--b); color: #0A0F1A; }
+.wt.sel-o .wt-ck { background: var(--o); border-color: var(--o); color: #0A0F1A; }
+
+/* ════════════════════════════════════════════════════════════
+   CHAT IA
+════════════════════════════════════════════════════════════ */
+#chatModal {
+  position: fixed; inset: 0; z-index: 400;
+  background: rgba(0,0,0,.7); backdrop-filter: blur(20px);
+  display: flex; align-items: flex-end; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity .3s var(--expo);
+}
+#chatModal.aberto { opacity: 1; pointer-events: auto; }
+#chatBox {
+  width: 100%; max-width: 430px;
+  background: var(--z1); border: 1px solid var(--e1);
+  border-radius: 20px 20px 0 0;
+  display: flex; flex-direction: column;
+  max-height: 85vh; overflow: hidden;
+  transform: translateY(100%);
+  transition: transform .35s var(--expo);
+}
+#chatModal.aberto #chatBox { transform: translateY(0); }
+#chatHeader {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px 10px; border-bottom: 1px solid var(--e0); flex-shrink: 0;
+}
+#chatMsgs { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+#chatMsgs::-webkit-scrollbar { width: 2px; }
+#chatMsgs::-webkit-scrollbar-thumb { background: rgba(67,232,167,.18); border-radius: 2px; }
+.cm { max-width: 85%; padding: 9px 12px; border-radius: 12px; font-size: 13.5px; line-height: 1.6; }
+.cm.u { align-self: flex-end; background: var(--b); color: #0A0F1A; border-radius: 12px 12px 2px 12px; }
+.cm.a { align-self: flex-start; background: var(--z3); color: var(--t1); border-radius: 12px 12px 12px 2px; border: 1px solid var(--e0); }
+.cm.load { display: flex; gap: 6px; padding: 12px 16px; }
+#chatInput {
+  display: flex; gap: 8px; padding: 10px 14px 16px;
+  border-top: 1px solid var(--e0); flex-shrink: 0;
+}
+#chatInp {
+  flex: 1; background: var(--z3); border: 1px solid var(--e1);
+  border-radius: 20px; padding: 9px 14px;
+  font-family: var(--fu); font-size: 14px; color: var(--t1);
+  outline: none; resize: none; max-height: 100px; overflow-y: auto;
+}
+#chatInp:focus { border-color: var(--b); }
+#chatSend {
+  width: 38px; height: 38px; border-radius: 50%;
+  background: var(--b); border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; flex-shrink: 0; transition: all .14s;
+  color: #0A0F1A;
+}
+#chatSend:hover { background: var(--bl); transform: scale(1.06); }
+
+/* Atalhos do chat */
+.chat-shortcuts { display: flex; gap: 7px; padding: 8px 14px 6px; flex-wrap: wrap; border-bottom: 1px solid var(--e0); }
+.chat-sh { font-family: var(--fm); font-size: 9px; padding: 5px 10px; border-radius: 20px; background: var(--z3); border: 1px solid var(--e0); color: var(--t2); cursor: pointer; white-space: nowrap; transition: all .14s; }
+.chat-sh:hover { color: var(--b); border-color: var(--eb); }
+
+/* ════════════════════════════════════════════════════════════
+   SIDEBAR DESKTOP (tablet/desktop ≥ 768px)
+════════════════════════════════════════════════════════════ */
+@media (min-width: 768px) {
+  .shell { flex-direction: row; max-width: 100%; height: 100vh; height: 100dvh; }
+  .navbaixo, #navbaixo { display: none !important; }
+
+  #sidebar {
+    width: 220px; flex-shrink: 0;
+    background: rgba(0,0,0,.72);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border-right: 1px solid var(--e0);
+    display: flex; flex-direction: column; padding: 20px 0;
+    position: relative; z-index: 20;
+  }
+
+  .ns-logo { padding: 0 18px 20px; border-bottom: 1px solid var(--e0); margin-bottom: 12px; cursor: pointer; }
+  .ns-item {
+    display: flex; align-items: center; gap: 11px;
+    padding: 11px 18px; margin: 2px 10px;
+    border-radius: var(--r2); cursor: pointer;
+    transition: all .16s; color: var(--t3); font-size: 13px;
+  }
+  .ns-item:hover { background: var(--z3); color: var(--t1); }
+  .ns-item.ab { background: rgba(67,232,167,.08); color: var(--b); border: 1px solid var(--eb); }
+  .ns-item.ao { background: rgba(56,189,248,.08); color: var(--o); border: 1px solid var(--eo); }
+  .ns-ic { font-size: 15px; width: 20px; text-align: center; }
+  .ns-lb { font-family: var(--fu); font-size: 12.5px; font-weight: 500; }
+  .ns-user {
+    margin-top: auto; padding: 16px 18px 8px;
+    border-top: 1px solid var(--e0); display: flex; align-items: center; gap: 10px;
+  }
+  #nsUser {
+    width: 32px; height: 32px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--bd), var(--b));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: #0A0F1A; flex-shrink: 0;
+  }
+  .ns-tema {
+    width: 28px; height: 28px; border-radius: var(--r3);
+    border: 1px solid var(--e1); background: var(--z3);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 13px; margin-left: auto;
+    transition: all .14s;
+  }
+
+  .main-col { border-left: none; max-width: none; flex: 1; }
+
+  /* Conteúdo interior centrado no espaço disponível */
+  .ecra { max-width: 800px; margin-left: auto; margin-right: auto; width: 100%; box-sizing: border-box; padding-left: 32px; padding-right: 32px; }
+
+  /* Cards do início em 2 colunas no desktop */
+  .inicio-cards-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+}
+
+/* Ecrã grande >= 1100px */
+@media (min-width: 1100px) {
+  #sidebar { width: 260px; }
+  .ecra { max-width: 960px; padding-left: 48px; padding-right: 48px; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   PWA — BANNERS
+════════════════════════════════════════════════════════════ */
+#pwa-install-banner {
+  position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(120px);
+  z-index: 200; width: calc(100% - 24px); max-width: 410px;
+  background: linear-gradient(135deg, #161D2E 0%, #0F1420 100%);
+  border: 1px solid rgba(67,232,167,.28); border-radius: 18px;
+  padding: 0; overflow: hidden;
+  box-shadow: 0 16px 48px rgba(0,0,0,.65);
+  transition: transform .45s cubic-bezier(.16,1,.3,1), opacity .45s ease;
+  opacity: 0; pointer-events: none;
+}
+#pwa-install-banner::before { content: ''; display: block; height: 2px; background: linear-gradient(90deg, transparent, #43E8A7 30%, #2BB57E 70%, transparent); }
+#pwa-install-banner.visivel { transform: translateX(-50%) translateY(0); opacity: 1; pointer-events: auto; }
+#pwa-install-inner { display: flex; align-items: center; gap: 13px; padding: 16px 18px 18px; }
+#pwa-install-icon { width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0; background: linear-gradient(135deg, #111520, #1A1D2E); border: 1px solid rgba(67,232,167,.2); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+#pwa-install-texto { flex: 1; min-width: 0; }
+#pwa-install-texto strong { display: block; font-size: 13.5px; font-weight: 700; color: #F8FAFC; letter-spacing: -.01em; margin-bottom: 3px; }
+#pwa-install-texto span { font-size: 11.5px; color: #64748B; line-height: 1.4; }
+#pwa-install-actions { display: flex; flex-direction: column; gap: 8px; align-items: stretch; padding: 0 18px 16px; }
+#pwa-install-btn { display: flex; align-items: center; justify-content: center; gap: 6px; background: linear-gradient(135deg, #43E8A7, #2BB57E); color: #0A0F1A; border: none; border-radius: 10px; padding: 11px 0; font-size: 13px; font-weight: 800; cursor: pointer; font-family: var(--fu); letter-spacing: .01em; box-shadow: 0 4px 16px rgba(67,232,167,.35); transition: all .16s; }
+#pwa-install-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(67,232,167,.45); }
+#pwa-install-fechar { position: absolute; top: 14px; right: 14px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #334155; font-size: 14px; border-radius: 6px; transition: color .14s, background .14s; background: transparent; }
+#pwa-install-fechar:hover { color: #94A3B8; background: rgba(255,255,255,.06); }
+
+#pwa-offline {
+  position: fixed; top: 0; left: 50%; transform: translateX(-50%);
+  z-index: 500; width: calc(100% - 32px); max-width: 398px;
+  background: rgba(248,113,113,.12); border: 1px solid rgba(248,113,113,.3);
+  border-radius: 0 0 8px 8px; padding: 7px 14px;
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--fm); font-size: 9px; letter-spacing: .06em; color: #FCA5A5;
+  transition: transform .3s ease, opacity .3s ease;
+  transform: translateY(-100%); opacity: 0;
+}
+#pwa-offline.visivel { transform: translateY(0); opacity: 1; }
+
+#pwa-update-banner {
+  position: fixed; top: 12px; left: 50%; transform: translateX(-50%) translateY(-80px);
+  z-index: 300; width: calc(100% - 32px); max-width: 398px;
+  background: #161922; border: 1px solid rgba(56,189,248,.25);
+  border-radius: 10px; padding: 12px 16px;
+  display: flex; align-items: center; gap: 10px;
+  transition: transform .4s cubic-bezier(.16,1,.3,1);
+}
+#pwa-update-banner.visivel { transform: translateX(-50%) translateY(0); }
+
+/* ════════════════════════════════════════════════════════════
+   EDITOR CONVERSACIONAL (painel flutuante)
+════════════════════════════════════════════════════════════ */
+#ecModal {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(0,0,0,.8); backdrop-filter: blur(24px);
+  display: flex; align-items: flex-end; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity .3s var(--expo);
+}
+#ecModal.aberto { opacity: 1; pointer-events: auto; }
+#ecBox {
+  width: 100%; max-width: 430px;
+  background: var(--z1); border: 1.5px solid var(--eb);
+  border-radius: 20px 20px 0 0;
+  max-height: 92vh; overflow: hidden;
+  display: flex; flex-direction: column;
+  transform: translateY(100%); transition: transform .35s var(--expo);
+}
+#ecModal.aberto #ecBox { transform: translateY(0); }
+#ecHeader { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 10px; border-bottom: 1px solid var(--e0); flex-shrink: 0; }
+#ecBody { flex: 1; overflow-y: auto; padding: 14px 16px; }
+#ecBody::-webkit-scrollbar { width: 2px; }
+#ecBody::-webkit-scrollbar-thumb { background: rgba(67,232,167,.18); border-radius: 2px; }
+
+/* ════════════════════════════════════════════════════════════
+   ADMIN — PAINEL
+════════════════════════════════════════════════════════════ */
+.adm-card { background: var(--z2); border: 1px solid var(--e0); border-radius: var(--r); padding: 14px 16px; margin-bottom: 10px; }
+.adm-ref { font-family: var(--fm); font-size: 9px; color: var(--b); letter-spacing: .08em; margin-bottom: 4px; }
+.adm-nome { font-size: 14px; font-weight: 600; color: var(--t1); margin-bottom: 3px; }
+.adm-info { font-size: 12px; color: var(--t3); margin-bottom: 10px; line-height: 1.6; }
+.adm-bns { display: flex; gap: 7px; flex-wrap: wrap; }
+
+/* ════════════════════════════════════════════════════════════
+   ZONA DE CAPA — UPLOAD DE LOGO
+════════════════════════════════════════════════════════════ */
+.capa-logo-zone {
+  border: 1.5px dashed var(--eb); border-radius: var(--r2);
+  padding: 18px; text-align: center; cursor: pointer; transition: all .2s;
+  background: rgba(67,232,167,.03);
+}
+.capa-logo-zone:hover { background: rgba(67,232,167,.06); border-color: var(--b); }
+
+/* ════════════════════════════════════════════════════════════
+   BARRA DE GERAÇÃO
+════════════════════════════════════════════════════════════ */
+.gen-fase { display: flex; align-items: center; gap: 8px; padding: 8px 0; font-family: var(--fm); font-size: 9px; color: var(--t3); letter-spacing: .1em; }

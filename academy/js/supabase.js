@@ -1,0 +1,228 @@
+/* ═══════════════════════════════════════════════════════════
+   ACADEMY — SUPABASE.JS
+   Todas as chamadas ao Supabase REST API.
+   Pagamentos · Aprovações · Utilizadores · Documentos
+   
+   SEGURANÇA: A chave abaixo é a anon/public key.
+   Nunca expõe a service_role key no frontend.
+   Operações de admin passam sempre pelo backend Vercel.
+═══════════════════════════════════════════════════════════ */
+
+const SB_URL = 'https://kogbgrqwyezgpbpynryi.supabase.co';
+
+const SB_KEY = (()=>{
+  const p = [
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
+    'eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvZ2JncnF3eWV6Z3BicHlucnlpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1Mzc3MjcsImV4cCI6MjA5NTExMzcyN30',
+    'LjtNHbMfh0LjSwiu_8-5tVyBcLejZbl7vHPTeoRqfqo',
+  ];
+  return p.join('.');
+})();
+
+const SB_H = () => ({
+  'Content-Type': 'application/json',
+  'apikey': SB_KEY,
+  'Authorization': 'Bearer ' + SB_KEY,
+});
+
+/* ── ID único persistente do utilizador ── */
+function sbUserId() {
+  let id = LS.get('sb_uid');
+  if (!id) {
+    id = 'U' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 7).toUpperCase();
+    LS.set('sb_uid', id);
+  }
+  return id;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   UTILIZADORES
+═══════════════════════════════════════════════════════════ */
+
+async function sbUpsertUser(u) {
+  try {
+    await fetch(SB_URL + '/rest/v1/utilizadores', {
+      method: 'POST',
+      headers: { ...SB_H(), 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify({
+        id:         sbUserId(),
+        nome:       u.nome,
+        email:      u.email || null,
+        whatsapp:   u.whatsapp || null,
+        nivel:      u.nivel || null,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+  } catch (e) { console.warn('[SB] upsertUser:', e); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PAGAMENTOS
+═══════════════════════════════════════════════════════════ */
+
+async function sbInsertPagamento(p) {
+  try {
+    const r = await fetch(SB_URL + '/rest/v1/pagamentos', {
+      method: 'POST',
+      headers: { ...SB_H(), 'Prefer': 'return=minimal' },
+      body: JSON.stringify(p),
+    });
+    return r.ok;
+  } catch (e) { console.warn('[SB] insertPag:', e); return false; }
+}
+
+async function sbGetPendentes() {
+  try {
+    const r = await fetch(
+      SB_URL + '/rest/v1/pagamentos?estado=eq.pendente&order=criado_em.desc',
+      { headers: SB_H() }
+    );
+    return r.ok ? await r.json() : [];
+  } catch { return []; }
+}
+
+async function sbAprovar(id) {
+  try {
+    await fetch(SB_URL + '/rest/v1/pagamentos?id=eq.' + encodeURIComponent(id), {
+      method: 'PATCH', headers: SB_H(),
+      body: JSON.stringify({ estado: 'aprovado' }),
+    });
+  } catch (e) { console.warn('[SB] aprovar:', e); }
+}
+
+async function sbRejeitar(id) {
+  try {
+    await fetch(SB_URL + '/rest/v1/pagamentos?id=eq.' + encodeURIComponent(id), {
+      method: 'PATCH', headers: SB_H(),
+      body: JSON.stringify({ estado: 'rejeitado' }),
+    });
+  } catch (e) { console.warn('[SB] rejeitar:', e); }
+}
+
+async function sbProcessar(id) {
+  try {
+    await fetch(SB_URL + '/rest/v1/pagamentos?id=eq.' + encodeURIComponent(id), {
+      method: 'PATCH', headers: SB_H(),
+      body: JSON.stringify({ estado: 'processado' }),
+    });
+  } catch (e) { console.warn('[SB] processar:', e); }
+}
+
+/* ── Verificar pagamentos aprovados para este utilizador ──
+   Corre ao arrancar e periodicamente (setInterval em main) */
+async function sbCheckAprovados() {
+  try {
+    const uid = sbUserId();
+    /* Tenta utilizador_id primeiro, depois user_id como fallback */
+    let r = await fetch(
+      SB_URL + '/rest/v1/pagamentos?utilizador_id=eq.' + uid + '&estado=eq.aprovado&order=criado_em.desc',
+      { headers: SB_H() }
+    );
+    if (!r.ok) {
+      r = await fetch(
+        SB_URL + '/rest/v1/pagamentos?user_id=eq.' + uid + '&estado=eq.aprovado&order=criado_em.desc',
+        { headers: SB_H() }
+      );
+    }
+    if (!r.ok) return;
+    const rows = await r.json();
+    for (const row of rows) {
+      await sbProcessar(row.id); /* marcar imediatamente para não processar duas vezes */
+      if (row.tipo === 'plano' && row.plano) {
+        activarPlano(row.plano, row.meses || 1, false);
+      } else if (row.tipo === 'avulso' || row.tipo === 'credito') {
+        activarCredito(row.num_pags || 15, false);
+        mostrarToast(`✓ ${row.num_pags || 15} páginas de crédito activadas!`);
+        if (State.get('ecra') === 'planos') irPara('inicio');
+      }
+    }
+  } catch (e) { console.warn('[SB] checkAprovados:', e); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DOCUMENTOS (sincronização na nuvem)
+═══════════════════════════════════════════════════════════ */
+
+async function sbSalvarDoc(doc) {
+  try {
+    const payload = {
+      uid:        sbUserId(),
+      doc_id:     String(doc.id),
+      titulo:     doc.cfg?.tema || 'Sem título',
+      tipo:       doc.cfg?.tipo || null,
+      pags:       doc.secs?.length || 0,
+      plano:      doc.plano || null,
+      dados:      JSON.stringify(doc),
+      updated_at: new Date().toISOString(),
+    };
+    const r = await fetch(SB_URL + '/rest/v1/documentos', {
+      method: 'POST',
+      headers: { ...SB_H(), 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify(payload),
+    });
+    return r.ok;
+  } catch (e) { console.warn('[SB] salvarDoc:', e); return false; }
+}
+
+async function sbApagarDoc(id) {
+  try {
+    await fetch(
+      SB_URL + '/rest/v1/documentos?uid=eq.' + sbUserId() + '&doc_id=eq.' + encodeURIComponent(String(id)),
+      { method: 'DELETE', headers: SB_H() }
+    );
+  } catch (e) { console.warn('[SB] apagarDoc:', e); }
+}
+
+async function sbCarregarDocs() {
+  try {
+    const r = await fetch(
+      SB_URL + '/rest/v1/documentos?uid=eq.' + sbUserId() + '&order=updated_at.desc&limit=30',
+      { headers: SB_H() }
+    );
+    if (!r.ok) return [];
+    const rows = await r.json();
+    return rows.map(row => {
+      try { return JSON.parse(row.dados); } catch { return null; }
+    }).filter(Boolean);
+  } catch (e) { console.warn('[SB] carregarDocs:', e); return []; }
+}
+
+/* ── Sincronizar documentos locais → Supabase ── */
+async function sbSincronizarDocs() {
+  try {
+    const docs = LS.list('docs');
+    if (!docs.length) return;
+    /* Enviar apenas os 5 mais recentes para não sobrecarregar */
+    const recentes = docs.slice(0, 5);
+    await Promise.allSettled(recentes.map(d => sbSalvarDoc(d)));
+  } catch (e) { console.warn('[SB] sincronizar:', e); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ADMIN
+═══════════════════════════════════════════════════════════ */
+
+async function _verificarCredenciaisAdmin(email, pin) {
+  try {
+    const r = await fetch(`${SB_URL}/functions/v1/EXMO-ADMIM`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SB_KEY}` },
+      body: JSON.stringify({ pin: (pin || '').trim() }),
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!r.ok) return false;
+    const data = await r.json();
+    return data.ok === true;
+  } catch (e) { console.warn('[ADMIN] Edge Function falhou:', e.message); return false; }
+}
+
+/* ── Detectar se Supabase está acessível ── */
+let _sbConectado = null;
+async function _detetarSB() {
+  if (_sbConectado !== null) return _sbConectado;
+  try {
+    const r = await fetch(SB_URL + '/rest/v1/', { headers: SB_H(), signal: AbortSignal.timeout(3000) });
+    _sbConectado = r.ok;
+  } catch { _sbConectado = false; }
+  return _sbConectado;
+}
