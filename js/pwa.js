@@ -164,7 +164,7 @@ function pwaNotificarConclusaoCapitulo(numCaps) {
 function pwaOcultarSplash() {
   const splash = document.getElementById('pwa-splash');
   if (!splash) return;
-  /* Mínimo 2.8s → identidade visual assenta na memória */
+  /* Splash cinematográfico ~3.2s total */
   setTimeout(() => {
     splash.classList.add('oculto');
     prontoParaConexao = true;

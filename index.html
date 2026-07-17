@@ -39,24 +39,49 @@
 
 <body>
 
-<!-- SPLASH -->
+<!-- SPLASH SCREEN CINEMATOGRÁFICA -->
 <div id="pwa-splash">
   <div id="splash-bg"></div>
-  <div id="splash-particles">
-    <div class="sp" style="--x:15%;--y:20%;--s:.4;--d:0s"></div>
-    <div class="sp" style="--x:80%;--y:15%;--s:.6;--d:.3s"></div>
-    <div class="sp" style="--x:90%;--y:60%;--s:.35;--d:.7s"></div>
-    <div class="sp" style="--x:10%;--y:75%;--s:.5;--d:.5s"></div>
-    <div class="sp" style="--x:50%;--y:88%;--s:.3;--d:1.1s"></div>
-    <div class="sp" style="--x:70%;--y:82%;--s:.45;--d:.2s"></div>
-  </div>
+  <div id="splash-grid"></div>
   <div id="splash-scan"></div>
+
+  <div class="splash-corner tl"></div>
+  <div class="splash-corner tr"></div>
+  <div class="splash-corner br"></div>
+  <div class="splash-corner bl"></div>
+
   <div id="splash-logo-wrap">
-    <div id="splash-logo-glow"></div>
-    <div id="splashLogoHolder"><svg viewBox="0 0 200 200" width="160" height="160" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="slL" x1="100" y1="40" x2="32" y2="168"><stop offset="0" stop-color="var(--bd)"/><stop offset="1" stop-color="var(--bd)"/></linearGradient><linearGradient id="slR" x1="100" y1="40" x2="168" y2="168"><stop offset="0" stop-color="var(--bd)"/><stop offset="0.40" stop-color="var(--bl)"/><stop offset="1" stop-color="var(--bd)"/></linearGradient><linearGradient id="sRb" x1="30" y1="140" x2="160" y2="120"><stop offset="0" stop-color="var(--bd)"/><stop offset="0.42" stop-color="var(--b)"/><stop offset="1" stop-color="var(--bd)"/></linearGradient></defs><circle cx="100" cy="100" r="96" fill="none" stroke="var(--eb)" stroke-width="2"/><g transform="translate(100,92) scale(0.245) translate(-392,-584)"><path d="M 349,330 L 391.5,330 L 392,448 L 219.5,838 L 122,838 Z" fill="url(#slL)"/><path d="M 434,330 L 391.5,330 L 392,448 L 564.5,838 L 662,838 Z" fill="url(#slR)"/><path d="M 134,795 C 168,752 220,718 258,694 C 296,670 336,652 392,648 C 448,644 498,660 566,706 C 528,704 486,696 448,698 C 396,701 330,722 270,742 C 226,756 180,764 158,776 C 148,782 140,788 134,795 Z" fill="url(#sRb)"/><path d="M 148,784 C 195,738 255,700 300,678 C 344,656 372,650 396,649" fill="none" stroke="var(--bl)" stroke-width="2.5" stroke-linecap="round" opacity="0.4"/><line x1="216" y1="497" x2="276" y2="522" stroke="var(--bd)" stroke-width="7" stroke-linecap="round"/><circle cx="195" cy="487" r="27" fill="var(--z2)" stroke="var(--bd)" stroke-width="11"/><circle cx="294" cy="528" r="21" fill="var(--b)"/></g></svg></div>
+    <div id="splash-logo-ring"></div>
+    <svg width="92" height="92" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <linearGradient id="sg1" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#43E8A7"/>
+          <stop offset="100%" stop-color="#38BDF8"/>
+        </linearGradient>
+        <filter id="sglow">
+          <feGaussianBlur stdDeviation="3" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <path d="M54 148 L96 44 L138 148" stroke="url(#sg1)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" filter="url(#sglow)"/>
+      <line x1="70" y1="110" x2="122" y2="110" stroke="url(#sg1)" stroke-width="11" stroke-linecap="round" filter="url(#sglow)"/>
+      <circle cx="152" cy="50" r="8" fill="#43E8A7" opacity=".9" filter="url(#sglow)"/>
+    </svg>
   </div>
-  <div id="splash-tagline">INTELIGÊNCIA PARA EDUCAR</div>
-  <div id="splash-dots"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div></div>
+
+  <div id="splash-word">
+    <span class="sl" style="--i:0">A</span><span class="sl" style="--i:1">C</span><span class="sl" style="--i:2">A</span><span class="sl" style="--i:3">D</span><span class="sl" style="--i:4">E</span><span class="sl" style="--i:5">M</span><span class="sl" style="--i:6">Y</span>
+  </div>
+
+  <div id="splash-tag">Desempenho Académico</div>
+  <div id="splash-div"></div>
+
+  <div id="splash-dots">
+    <div class="sdot"></div>
+    <div class="sdot"></div>
+    <div class="sdot"></div>
+  </div>
+
   <div id="splash-linha"></div>
 </div>
 
