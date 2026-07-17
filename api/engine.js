@@ -6,7 +6,7 @@
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_SITE = 'https://academy-open.vercel.app';
-const GROQ_MODEL = 'llama3-70b-8192';
+const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
 /* ---------------- RATE LIMIT ---------------- */
 const RATE = new Map();
