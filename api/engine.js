@@ -17,9 +17,9 @@ const OR_TITLE = 'ACADEMY';
 
 /* Modelos gratuitos OpenRouter — basta criar conta em openrouter.ai e gerar API key (sem cartão de crédito) */
 const MODELS = [
-  'google/gemma-4-31b-it:free',
   'meta-llama/llama-3.3-70b-instruct:free',
-  'openai/gpt-oss-20b:free',
+  'google/gemma-4-31b-it:free',
+  'nvidia/nemotron-3-nano-30b-a3b:free',
 ];
 
 /* ---------------- RATE LIMIT ---------------- */
@@ -686,7 +686,7 @@ async function callAI(messages, opts={}) {
   for (const model of MODELS) {
     try {
       const ctrl = new AbortController();
-      const t = setTimeout(()=>ctrl.abort(), 85000);
+      const t = setTimeout(()=>ctrl.abort(), 50000);
       let resp;
       try {
         resp = await fetch(OR_URL, {
