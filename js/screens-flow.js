@@ -567,11 +567,12 @@ function sGeracao() {
 
     <!-- A4 Page Preview (live durante geração) -->
     <div id="a4-preview" style="display:none">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-family:var(--fm);font-size:8px;color:var(--t3);letter-spacing:.1em">
-        <span>📄 PRÉ-VISUALIZAÇÃO AO VIVO</span>
-        <span style="flex:1;height:1px;background:var(--e0)"></span>
-        <span id="a4-wordcount" style="font-size:7px;color:var(--t4)">0 palavras</span>
+      <div id="a4-preview-header">
+        <span>◉ AO VIVO</span>
+        <span class="line"></span>
+        <span id="a4-wordcount">0 palavras</span>
       </div>
+      <div id="a4-chapter-title"></div>
       <div id="a4-page" class="a4-page">
         <div id="a4-content" class="a4-content">
           <span class="cursor-piscando">|</span>
