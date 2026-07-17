@@ -494,55 +494,27 @@ async function iniciarGer(retomar) {
         textoFinal = typeof raw === 'string' ? raw : JSON.stringify(raw);
         streamOk = true;
       } else {
-        /* Streaming SSE — A4 live preview elegante */
+        /* Streaming SSE — A4 live preview */
         const a4Div = document.getElementById('a4-preview');
         const a4Page = document.getElementById('a4-content');
         const a4Wc = document.getElementById('a4-wordcount');
-        const a4ChTit = document.getElementById('a4-chapter-title');
         if (a4Div) a4Div.style.display = 'block';
-        if (a4ChTit) a4ChTit.textContent = `${cap.num}. ${cap.titulo}`;
         if (a4Page) a4Page.innerHTML = '<span class="cursor-piscando">|</span>';
 
         let textoAcum = '';
         let _ultimoRender = '';
-        let _primeiroParagrafo = true;
 
         function renderA4(texto) {
           if (!a4Page) return;
-          const paragrafos = texto
+          const html = texto
             .split(/\n\n+/)
             .map(p => p.trim())
-            .filter(Boolean);
-
-          const html = paragrafos.map((p, idx) => {
-            const cls = idx === 0 && _primeiroParagrafo ? '' : '';
-            const conteudo = p.replace(/\n/g, '<br>');
-            /* Primeira palavra de cada parágrafo com fade subtil */
-            const primeiroEspaco = conteudo.indexOf(' ');
-            const primeiraPalavra = primeiroEspaco > 0 ? conteudo.substring(0, primeiroEspaco) : '';
-            const resto = primeiroEspaco > 0 ? conteudo.substring(primeiroEspaco) : conteudo;
-            const inner = primeiraPalavra
-              ? `<span class="palavra-nova">${primeiraPalavra}</span>${resto}`
-              : conteudo;
-            return `<p${cls ? ' class="' + cls + '"' : ''}>${inner}</p>`;
-          }).join('');
-          _primeiroParagrafo = false;
-
+            .filter(Boolean)
+            .map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+            .join('');
           a4Page.innerHTML = html + '<span class="cursor-piscando">|</span>';
-
-          /* Scroll suave para a zona da página */
-          const a4El = document.getElementById('a4-page');
-          if (a4El) {
-            const rect = a4El.getBoundingClientRect();
-            if (rect.bottom > window.innerHeight) {
-              a4El.scrollIntoView({ behavior:'smooth', block:'nearest' });
-            }
-          }
-
-          if (a4Wc) {
-            const wc = texto.split(/\s+/).filter(Boolean).length;
-            a4Wc.textContent = wc.toLocaleString('pt-PT') + ' palavras';
-          }
+          a4Page.scrollIntoView({ behavior:'smooth', block:'nearest' });
+          if (a4Wc) a4Wc.textContent = texto.split(/\s+/).filter(Boolean).length + ' palavras';
         }
 
         await new Promise((resolve, reject) => {
