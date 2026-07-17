@@ -1,26 +1,11 @@
 /* =======================================================================
    ACADEMY ENGINE - SAAS BLINDADO (PRODUÇÃO)
-   v66: DOCUMENT AST — backend gera JSON estruturado
+   v67: GOOGLE GEMINI API — backend usa Gemini 2.0 Flash grátis
    O frontend deixa de inferir estrutura de texto
-   - Perfis por nível: Ensino Médio / Licenciatura / Mestrado / Doutoramento
-   - Perfis por área: Ciências / Humanidades / Gestão / Direito / Saúde / Engenharia
-   - Citações autor-ano obrigatórias no corpo do texto
-   - Dados verificáveis com fontes e anos
-   - Variação estrutural entre subtópicos (5 abordagens rotativas)
-   - Bugs corrigidos: ping, verificar_coerencia, gerar_mea
-   Adaptado para modelos gratuitos OpenRouter (:free)
 ======================================================================= */
 
-const OR_URL   = 'https://openrouter.ai/api/v1/chat/completions';
-const OR_SITE  = 'https://academy-open.vercel.app';
-const OR_TITLE = 'ACADEMY';
-
-/* Modelos gratuitos OpenRouter — basta criar conta em openrouter.ai e gerar API key (sem cartão de crédito) */
-const MODELS = [
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'google/gemma-4-31b-it:free',
-  'nvidia/nemotron-3-nano-30b-a3b:free',
-];
+const GEMINI_MODEL = 'gemini-2.0-flash';
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/'+GEMINI_MODEL+':generateContent';
 
 /* ---------------- RATE LIMIT ---------------- */
 const RATE = new Map();
@@ -455,26 +440,26 @@ export default async function handler(req, res) {
         return res.json({ ok:true, action:'ping', data:{ resposta:'pong', pong:true, ts:Date.now() } });
       case '__diagnose':
         return res.json({ ok:true, action:'__diagnose', data:{
-          hasKey:!!process.env.OPENROUTER_API_KEY,
-          keyLen: (process.env.OPENROUTER_API_KEY||'').length,
-          keyPrefix: (process.env.OPENROUTER_API_KEY||'').substring(0,7),
+          hasGeminiKey:!!process.env.GEMINI_API_KEY,
+          keyLen: (process.env.GEMINI_API_KEY||'').length,
+          keyPrefix: (process.env.GEMINI_API_KEY||'').substring(0,7),
           node: process.version,
           platform: process.platform,
           memory: process.memoryUsage(),
         }});
       case '__test_ai': {
-        const key = process.env.OPENROUTER_API_KEY;
-        if (!key) return res.json({ ok:false, data:{ error:'no key', keyPrefix:'' } });
+        const key = process.env.GEMINI_API_KEY;
+        if (!key) return res.json({ ok:false, data:{ error:'no gemini key' } });
         const ctrl = new AbortController();
         const t = setTimeout(()=>ctrl.abort(), 12000);
         try {
-          const resp = await fetch(OR_URL, {
+          const resp = await fetch(GEMINI_URL+'?key='+key, {
             method:'POST', signal:ctrl.signal,
-            headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+key, 'HTTP-Referer':OR_SITE, 'X-Title':OR_TITLE },
-            body:JSON.stringify({ model:MODELS[0], messages:[{ role:'user', content:'Say hello in 3 words' }], max_tokens:10 }),
+            headers:{ 'Content-Type':'application/json' },
+            body:JSON.stringify({ contents:[{ role:'user', parts:[{ text:'Say hello in 3 words' }] }], generationConfig:{ maxOutputTokens:10 } }),
           });
           const txt = await resp.text();
-          return res.json({ ok:true, data:{ status:resp.status, bodyPreview:txt.substring(0,200) } });
+          return res.json({ ok:true, data:{ status:resp.status, bodyPreview:txt.substring(0,300) } });
         } catch(e) { return res.json({ ok:false, data:{ error:e.message, name:e.name } });
         } finally { clearTimeout(t); }
       }
@@ -703,32 +688,34 @@ async function doCoerencia(p) {
   return { ok:true, action:'verificar_coerencia', data:{ resposta: extrairJSON(r) } };
 }
 
-/* ---------------- OPENROUTER COM FALLBACK ---------------- */
+/* ---------------- GEMINI API ---------------- */
 async function callAI(messages, opts={}) {
-  const key = process.env.OPENROUTER_API_KEY;
-  if (!key) throw new Error('OPENROUTER_API_KEY não configurada');
-  let lastErr = '';
-  for (const model of MODELS) {
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(()=>ctrl.abort(), 30000);
-      let resp;
-      try {
-        resp = await fetch(OR_URL, {
-          method:'POST', signal:ctrl.signal,
-          headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + key, 'HTTP-Referer':OR_SITE, 'X-Title':OR_TITLE },
-          body:JSON.stringify({ model, messages, temperature:opts.temperature??0.7, max_tokens:opts.max_tokens??800, stream:false }),
-        });
-      } finally { clearTimeout(t); }
-      if (resp.status===429||resp.status===503) { lastErr=String(resp.status); continue; }
-      if (!resp.ok) { lastErr=await resp.text().catch(()=>String(resp.status)); continue; }
-      const data = await resp.json();
-      const text = data?.choices?.[0]?.message?.content?.trim();
-      if (text && text.length>10) return text;
-      lastErr='empty response';
-    } catch(e) { lastErr=e.message; }
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error('GEMINI_API_KEY não configurada');
+  const contents = []; let sys = null;
+  for (const m of messages) {
+    if (m.role==='system') { sys = m.content; continue; }
+    contents.push({ role:m.role==='assistant'?'model':'user', parts:[{ text:m.content }] });
   }
-  throw new Error('Todos os modelos falharam: ' + lastErr);
+  const ctrl = new AbortController();
+  const t = setTimeout(()=>ctrl.abort(), 25000);
+  let resp;
+  try {
+    resp = await fetch(GEMINI_URL+'?key='+key, {
+      method:'POST', signal:ctrl.signal,
+      headers:{ 'Content-Type':'application/json' },
+      body:JSON.stringify({
+        contents,
+        systemInstruction: sys ? { parts:[{ text:sys }] } : undefined,
+        generationConfig: { temperature:opts.temperature??0.7, maxOutputTokens:opts.max_tokens??800 },
+      }),
+    });
+  } finally { clearTimeout(t); }
+  if (!resp.ok) { const e = await resp.text().catch(()=>''); throw new Error('Gemini '+resp.status+': '+e.substring(0,100)); }
+  const data = await resp.json();
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+  if (!text || text.length<10) throw new Error('Gemini resposta vazia');
+  return text;
 }
 
 /* ---------------- JSON EXTRACTOR ---------------- */
