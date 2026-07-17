@@ -288,7 +288,7 @@ function sSobre() {
     <div class="sobre-hero">
       <div class="sobre-stars"></div>
       <div onclick="adminTap()" style="cursor:default;margin:0 auto 20px;display:flex;justify-content:center;animation:float 3.5s ease-in-out infinite">
-        ${LOGO_SVG_RAW.replace(/(<svg[^>]*)/, '$1 style="width:200px;height:auto;display:block;filter:drop-shadow(0 0 32px rgba(63,255,160,0.22))"')}
+        ${LOGO_SVG_RAW.replace(/(<svg[^>]*)/, '$1 style="width:200px;height:auto;display:block;filter:drop-shadow(0 0 32px rgba(0,184,207,0.22))"')}
       </div>
       <div style="font-family:var(--fm);font-size:8px;letter-spacing:.22em;color:var(--t3);text-transform:uppercase;margin-bottom:8px">ACADEMY · v78</div>
       <div style="font-size:26px;font-weight:800;letter-spacing:-.03em;color:var(--t1);line-height:1.1;margin-bottom:6px">
