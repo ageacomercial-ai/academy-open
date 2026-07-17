@@ -26,45 +26,43 @@ async function callAcademyAPI(rawPayload) {
   const { acao: _a, tipo: _t, ...payload } = rawPayload;
 
   const ctrl = new AbortController();
-  const tid  = setTimeout(() => ctrl.abort(), 90000);
-  let resp;
+  const tid  = setTimeout(() => ctrl.abort(), 60000);
   try {
-    resp = await fetch(ACADEMY_ENGINE_URL, {
+    const resp = await fetch(ACADEMY_ENGINE_URL, {
       method:  'POST',
       mode:    'cors',
       signal:  ctrl.signal,
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ action, payload }),
     });
+
+    if (!resp.ok) {
+      const ed = await resp.json().catch(() => ({}));
+      throw new Error(ed?.error || 'Engine HTTP ' + resp.status);
+    }
+
+    const envelope = await resp.json();
+    if (!envelope?.ok) throw new Error(envelope?.error || 'Engine: resposta inválida');
+
+    const resposta = envelope?.data?.resposta;
+    if (resposta === undefined || resposta === null || resposta === '') {
+      throw new Error('Engine: resposta vazia');
+    }
+
+    if (action === 'gerar_capitulo' || action === 'gerar_capitulo_referencias' || action === 'regenerar_capitulo') {
+      return {
+        resposta,
+        health:       envelope.data.health       || null,
+        readiness:    envelope.data.readiness    || null,
+        confidence:   envelope.data.confidence   || null,
+        completeness: envelope.data.completeness || null,
+        _guaranteed:  envelope.data._guaranteed  || false,
+      };
+    }
+    return resposta;
   } finally {
     clearTimeout(tid);
   }
-
-  if (!resp.ok) {
-    const ed = await resp.json().catch(() => ({}));
-    throw new Error(ed?.error || 'Engine HTTP ' + resp.status);
-  }
-
-  const envelope = await resp.json();
-  if (!envelope?.ok) throw new Error(envelope?.error || 'Engine: resposta inválida');
-
-  const resposta = envelope?.data?.resposta;
-  if (resposta === undefined || resposta === null || resposta === '') {
-    throw new Error('Engine: resposta vazia');
-  }
-
-  /* Para gerar_capitulo, retornar dados completos (health, readiness, etc.) */
-  if (action === 'gerar_capitulo' || action === 'gerar_capitulo_referencias' || action === 'regenerar_capitulo') {
-    return {
-      resposta,
-      health:       envelope.data.health       || null,
-      readiness:    envelope.data.readiness    || null,
-      confidence:   envelope.data.confidence   || null,
-      completeness: envelope.data.completeness || null,
-      _guaranteed:  envelope.data._guaranteed  || false,
-    };
-  }
-  return resposta;
 }
 
 /* ── Converter AST de capítulo em texto plano ── */
@@ -321,6 +319,9 @@ function genLimparProgresso() {
 ═══════════════════════════════════════════════════════════ */
 
 async function iniciarGer(retomar) {
+  if (_btnGerarBloqueado) { mostrarToast('⏳ Geração já em curso — aguarda.'); return; }
+  _btnGerarBloqueado = true;
+  try {
   const est = State.get('est');
   if (!est) return;
 
@@ -428,13 +429,10 @@ async function iniciarGer(retomar) {
           }
         } catch (er) {
           tentativas++;
-          const isQ = er.message && (er.message.includes('429') || er.message.includes('quota') || er.message.includes('rate') || er.message.includes('RESOURCE_EXHAUSTED'));
-          if (isQ && tentativas < 4) {
-            const espera = tentativas * _RETRY_QUOTA;
-            aSecDOM(i, 'g', `Aguarda ${Math.round(espera / 1000)}s…`);
-            if (restEl) restEl.textContent = 'Limite da API — a aguardar…';
-            await new Promise(r => setTimeout(r, espera));
-          }
+          const espera = Math.min(tentativas * 8000, 45000);
+          aSecDOM(i, 'g', `Tentativa ${tentativas}/4 — aguarda ${Math.round(espera / 1000)}s…`);
+          if (restEl) restEl.textContent = 'Erro API — a re‐tentar…';
+          await new Promise(r => setTimeout(r, espera));
         }
       }
     } finally {
@@ -512,12 +510,14 @@ async function iniciarGer(retomar) {
   });
 
   State.set('genFim', true);
+  _desbloquearBtnGerar();
   addDoc({ tipo: tp.s || tp.n, tema: State.getCfg('tema'), pags: nPags(), qual: State.get('qual')?.total });
   autoGuardar();
 
   /* Notificação PWA */
   pwaNotificarConclusaoCapitulo(secs.length);
   renderizar(); /* actualizar ecrã de geração para mostrar "Pronto" */
+} finally { _desbloquearBtnGerar(); }
 }
 
 /* ── Concluir: ir para o editor ── */
@@ -562,11 +562,15 @@ function btnGerarFinalClick() {
   if (_btnGerarBloqueado) { mostrarToast('⏳ Geração já em curso — aguarda.'); return; }
   const erros = _validarFormularioCompleto();
   if (erros.length) { _mostrarErroValidacao(erros[0]); return; }
-  _btnGerarBloqueado = true;
   const btn = document.getElementById('btnGerarFinal');
   if (btn) { btn.textContent = '⏳ A iniciar geração…'; btn.disabled = true; btn.style.opacity = '.7'; btn.style.cursor = 'not-allowed'; }
-  setTimeout(() => { _btnGerarBloqueado = false; }, 30000);
   verificarAntesDeGerar(true);
+}
+
+function _desbloquearBtnGerar() {
+  _btnGerarBloqueado = false;
+  const btn = document.getElementById('btnGerarFinal');
+  if (btn) { btn.textContent = '⚡ Gerar Trabalho'; btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = ''; }
 }
 
 function _validarFormularioCompleto() {
