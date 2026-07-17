@@ -204,16 +204,9 @@ async function sbSincronizarDocs() {
 
 async function _verificarCredenciaisAdmin(email, pin) {
   try {
-    const r = await fetch(`${SB_URL}/functions/v1/EXMO-ADMIM`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SB_KEY}` },
-      body: JSON.stringify({ pin: (pin || '').trim() }),
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!r.ok) return false;
-    const data = await r.json();
-    return data.ok === true;
-  } catch (e) { console.warn('[ADMIN] Edge Function falhou:', e.message); return false; }
+    const r = await callAcademyAPI({ acao: 'verificar_admin', pin: (pin || '').trim() });
+    return r?.ok === true;
+  } catch (e) { console.warn('[ADMIN] Verificação falhou:', e.message); return false; }
 }
 
 /* ── Detectar se Supabase está acessível ── */
