@@ -226,8 +226,8 @@ window.addEventListener('load', function() {
   State.set('tema', temaGuardado);
   document.documentElement.setAttribute('data-tema', temaGuardado);
 
-  /* 2. Sidebar desktop */
-  if (window.innerWidth >= 768) {
+  /* 2. Sidebar desktop — só visível para utilizadores logados */
+  if (window.innerWidth >= 768 && LS.get('u')) {
     var sb = document.getElementById('sidebar');
     if (sb) sb.style.display = 'flex';
     var nsLogo = document.getElementById('nsLogoHolder');

@@ -142,6 +142,9 @@ function togTema() {
 /* ── Renderizar ecrã activo ── */
 function renderizar() {
   const ecra = State.get('ecra');
+  const u = State.get('u');
+  if (!u && ecra !== 'entrada') { irPara('entrada'); return; }
+
   const nb = document.getElementById('nb') || document.getElementById('navbaixo');
   const semNav = ['entrada', 'geracao'].includes(ecra);
 
@@ -149,10 +152,14 @@ function renderizar() {
   if (!semNav) actualizarNav();
   aTopbar();
 
+  /* Sidebar só visível para logados */
+  const sb = document.getElementById('sidebar');
+  if (sb) sb.style.display = (u && window.innerWidth >= 768) ? 'flex' : 'none';
+
   /* Pill do chat */
   const pill = document.getElementById('chatPill');
   if (pill) {
-    pill.style.display = 'flex';
+    pill.style.display = semNav ? 'none' : 'flex';
     pill.style.opacity = '1';
     pill.style.visibility = 'visible';
     pill.className = 'chat-pill' + (chatAberto ? ' oculta' : '');
