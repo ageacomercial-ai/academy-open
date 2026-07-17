@@ -42,11 +42,11 @@
   --z4: #2E3344;
   --z5: #3E445B;
 
-  /* ▸ Marca — Ciano (derivado do logótipo) */
-  --b:  #00c2d8;
-  --bl: #33d4e6;
-  --bd: #008aa0;
-  --bx: #E0F7FA;
+  /* ▸ Marca — Verde-menta (identidade original) */
+  --b:  #43E8A7;
+  --bl: #66F3BD;
+  --bd: #2BB57E;
+  --bx: #E6FFF5;
 
   /* ▸ Marca — Azul secundário */
   --o:  #38BDF8;
@@ -54,18 +54,18 @@
   --od: #0284C7;
   --ox: #E0F2FE;
 
-  /* ▸ Texto */
-  --t1: #F8FAFC;
-  --t2: #94A3B8;
-  --t3: #64748B;
-  --t4: #334155;
+  /* ▸ Texto — mais claro para melhor legibilidade */
+  --t1: #FFFFFF;
+  --t2: #C8D0DC;
+  --t3: #8892A8;
+  --t4: #55607A;
   --t-inv: #0A0F1A;
 
   /* ▸ Bordas */
   --e0: rgba(255,255,255,.06);
   --e1: rgba(255,255,255,.09);
   --e2: rgba(255,255,255,.15);
-  --eb: rgba(0,194,216,.25);
+  --eb: rgba(67,232,167,.2);
   --eo: rgba(56,189,248,.18);
 
   /* ▸ Superfícies translúcidas */
@@ -77,7 +77,7 @@
   --shadow-sm: 0 2px 8px rgba(0,0,0,.45);
   --shadow-md: 0 8px 32px rgba(0,0,0,.5);
   --shadow-lg: 0 16px 48px rgba(0,0,0,.65);
-  --shadow-glow-b: 0 0 18px rgba(0,194,216,.5);
+  --shadow-glow-b: 0 0 18px rgba(67,232,167,.5);
   --shadow-glow-o: 0 0 18px rgba(56,189,248,.4);
 
   /* ▸ Blur */
@@ -86,9 +86,9 @@
   --blur-heavy: blur(24px);
 
   /* ▸ Nebulosa de fundo — tom sobre tom com a marca */
-  --nebula-b: rgba(0,194,216,.055);
+  --nebula-b: rgba(67,232,167,.055);
   --nebula-o: rgba(56,189,248,.035);
-  --grid-dot: rgba(0,194,216,.10);
+  --grid-dot: rgba(67,232,167,.10);
 }
 
 /* ════════════════════════════════════════════════════════════
