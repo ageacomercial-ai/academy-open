@@ -1,7 +1,8 @@
-const CACHE = 'academy-v78';
+const CACHE = 'academy-v79';
 const ASSETS = [
   './',
   './index.html',
+  './manifest.json',
   './css/base.css',
   './css/layout.css',
   './css/components.css',
@@ -17,7 +18,9 @@ const ASSETS = [
   './js/screens-secondary.js',
   './js/pwa.js',
   './js/chat.js',
-  './js/admin.js'
+  './js/admin.js',
+  './icons/icon-maskable-192.svg',
+  './icons/icon-maskable-512.svg'
 ];
 
 self.addEventListener('install', e => {
