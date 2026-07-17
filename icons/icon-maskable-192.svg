@@ -4,25 +4,28 @@
       <stop offset="0%" stop-color="#0C0E14"/>
       <stop offset="100%" stop-color="#151829"/>
     </linearGradient>
-    <linearGradient id="glow" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#43E8A7"/>
       <stop offset="100%" stop-color="#2BC48D"/>
     </linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3DDC9F"/>
+      <stop offset="100%" stop-color="#1F9E6E"/>
+    </linearGradient>
   </defs>
-  <rect width="192" height="192" rx="40" fill="url(#bg)"/>
-  <rect x="16" y="16" width="160" height="160" rx="32" fill="none" stroke="rgba(67,232,167,.08)" stroke-width="1"/>
-  <g transform="translate(96,88)">
-    <path d="M-52,-4 L0,-28 L52,-4 L52,8 L0,32 L-52,8 Z" fill="none" stroke="url(#glow)" stroke-width="3" stroke-linejoin="round"/>
-    <path d="M-52,-4 L0,-28 L52,-4" fill="none" stroke="#43E8A7" stroke-width="2" stroke-linejoin="round" opacity=".4"/>
-    <path d="M-44,2 L-44,14 L0,32 L44,14 L44,2" fill="none" stroke="url(#glow)" stroke-width="2.5" stroke-linejoin="round"/>
-    <rect x="-32" y="6" width="64" height="28" rx="4" fill="none" stroke="url(#glow)" stroke-width="2"/>
-    <line x1="0" y1="6" x2="0" y2="34" stroke="url(#glow)" stroke-width="2" opacity=".6"/>
-    <circle cx="0" cy="-42" r="6" fill="#43E8A7">
-      <animate attributeName="opacity" values="1;.3;1" dur="2s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="-18" cy="-36" r="3" fill="#43E8A7" opacity=".5"/>
-    <circle cx="18" cy="-38" r="2.5" fill="#43E8A7" opacity=".4"/>
-    <circle cx="-10" cy="-48" r="2" fill="#43E8A7" opacity=".3"/>
-    <circle cx="12" cy="-50" r="1.8" fill="#43E8A7" opacity=".25"/>
+  <rect width="192" height="192" rx="42" fill="url(#bg)"/>
+  <rect x="12" y="12" width="168" height="168" rx="34" fill="none" stroke="rgba(67,232,167,.06)" stroke-width="1"/>
+  <g transform="translate(96,100)">
+    <path d="M-30,6 L-30,18 L0,33 L30,18 L30,6" fill="none" stroke="url(#g1)" stroke-width="2.5" stroke-linejoin="round"/>
+    <rect x="-30" y="4" width="60" height="18" rx="3" fill="none" stroke="url(#g1)" stroke-width="2.5"/>
+    <path d="M0,-22 L-25,-4 L0,13" fill="none" stroke="url(#g1)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M0,-22 L25,-4 L0,13" fill="none" stroke="url(#g1)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M0,-22 L0,13" stroke="url(#g2)" stroke-width="1.5" opacity=".5"/>
+    <path d="M-60,-3 L0,-27 L60,-3" fill="none" stroke="url(#g1)" stroke-width="3" stroke-linejoin="round"/>
+  </g>
+  <g transform="translate(96,18)">
+    <path d="M0,0 L-20,-5 L-20,5 L0,9 Z" fill="url(#g1)" opacity=".9"/>
+    <path d="M0,0 L20,-5 L20,5 L0,9 Z" fill="url(#g1)" opacity=".6"/>
+    <circle cx="0" cy="-5" r="4" fill="url(#g1)"/>
   </g>
 </svg>
