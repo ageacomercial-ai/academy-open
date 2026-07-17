@@ -581,28 +581,6 @@ export default async function handler(req, res) {
   const action  = body?.action || '';
   const payload = body?.payload || {};
 
-  /* ── SSE streaming — antes do setCORS porque precisa headers próprios ── */
-  if (action === 'gerar_capitulo_stream') {
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'X-Accel-Buffering': 'no',
-    });
-    res.flushHeaders();
-    try {
-      await doCapituloStream(payload, res, req);
-    } catch (err) {
-      try {
-        res.write(`data: ${JSON.stringify({ type:'error', message: err.message.substring(0,200) })}\n\n`);
-        res.end();
-      } catch (_) {}
-    }
-    return;
-  }
-
   try {
     switch (action) {
       case 'ping':
@@ -882,165 +860,6 @@ Português formal. Mínimo 3 parágrafos/secção.`;
   };
 }
 
-/* ---------------- MONTAR PROMPT DE CAPÍTULO (base) ---------------- */
-function montarPromptCapituloBase(p) {
-  const tema      = (p.tema||'').substring(0,300);
-  const tipo      = (p.tipoTrabalho||'Trabalho Académico').substring(0,100);
-  const nivel     = (p.nivel||'').substring(0,80);
-  const capNum    = parseInt(p.capNum)||1;
-  const capTit    = (p.capTitulo||'').substring(0,200);
-  const totalCaps = parseInt(p.totalCaps)||parseInt(p.totalPags)||4;
-  const totalPags = parseInt(p.totalPags)||15;
-  const capSubs   = (Array.isArray(p.capSubs)?p.capSubs:[]).slice(0,8).map(s=>String(s).substring(0,150));
-
-  const nivelKey  = detectarNivel(nivel);
-  const areaKey   = detectarArea(tema, p.area);
-  const pNivel    = PERFIL_NIVEL[nivelKey];
-  const pArea     = PERFIL_AREA[areaKey];
-  const geoCtx    = detectarContextoGeo(tema, p.pais);
-  const isAngola  = geoCtx === 'angola';
-
-  const PAGINAS_FIXAS = 3;
-  const PALAVRAS_POR_PAGINA = 370;
-  const paginasConteudo = Math.max(totalPags - PAGINAS_FIXAS, 1);
-  const palavrasCalc = Math.round((paginasConteudo * PALAVRAS_POR_PAGINA) / totalCaps);
-  const palavras = Math.min(Math.max(parseInt(p.palavrasPorCap)||palavrasCalc, 200), 4000);
-
-  const subs = capSubs.map((s,i) => `${capNum}.${i+1} ${s}`).join('\n') ||
-    `${capNum}.1 Contextualização\n${capNum}.2 Desenvolvimento\n${capNum}.3 Análise crítica`;
-
-  let geoInstrucao;
-  if (isAngola) {
-    geoInstrucao = 'O tema refere-se especificamente a Angola. Quando relevante, usa dados angolanos com fonte e ano.';
-  } else if (geoCtx === 'cabo_verde') {
-    geoInstrucao = 'O tema refere-se a Cabo Verde. Usa referências cabo-verdianas quando relevante.';
-  } else {
-    geoInstrucao = 'Trata o tema de forma universal e académica. NÃO faças referência a Angola, Brasil, Portugal ou qualquer país específico a não ser que o tema o exija explicitamente. Usa fontes académicas internacionais.';
-  }
-
-  const abordagemAnalitica = [
-    'Abordagem histórico-crítica: traça a evolução do conceito com datas concretas, questiona a narrativa dominante, propõe leitura alternativa fundamentada.',
-    'Abordagem teórico-comparativa: confronta pelo menos 2 perspectivas teóricas divergentes, posiciona o argumento, aplica ao contexto do tema com dados específicos.',
-    'Abordagem empírico-analítica: parte de dados quantitativos verificáveis, analisa causas e efeitos, não se limita a descrever — interpreta e questiona.',
-    'Abordagem crítico-reflexiva: identifica contradições ou tensões no tema, examina limitações das abordagens existentes, propõe síntese fundamentada.',
-    'Abordagem prospectiva-propositiva: analisa o estado actual com rigor, identifica lacunas e desafios estruturais, formula recomendações concretas.',
-  ][(capNum-1) % 5];
-
-  const prompt = `És um professor universitário especialista em ${pArea.label} a escrever o Capítulo ${capNum} de um ${tipo} de nível ${nivel} sobre "${tema}".
-
-CAPÍTULO: ${capNum}. ${capTit}
-
-SUBTÓPICOS OBRIGATÓRIOS (usa esta numeração exacta, cada um em linha própria):
-${subs}
-
-ABORDAGEM ANALÍTICA OBRIGATÓRIA:
-${abordagemAnalitica}
-
-ESTRUTURA DE CADA SUBTÓPICO (nesta ordem exacta):
-1. Contextualização teórica com pelo menos 1 citação (Autor, Ano)
-2. Desenvolvimento analítico — confrontar perspectivas, não apenas descrever
-3. Dado quantitativo verificável com fonte e ano
-4. Análise crítica do dado — o que significa para o tema?
-5. Síntese argumentativa — qual é a posição do autor?
-
-NÍVEL ACADÉMICO — ${nivelKey.toUpperCase()}:
-${pNivel.profundidade}
-
-CITAÇÕES OBRIGATÓRIAS:
-${pNivel.citacoes}
-
-${pArea.instrucoes}
-
-FORMATAÇÃO OBRIGATÓRIA:
-- Título do capítulo: "${capNum}. ${capTit}" — NÃO escrevas "Capítulo ${capNum} —"
-- Cada subtítulo (${capNum}.1, ${capNum}.2, etc.) em LINHA PRÓPRIA com linha em branco ANTES e DEPOIS
-- NUNCA coloques o subtítulo e o texto na mesma linha
-- Parágrafos separados por linha em branco
-- Sem bullets, sem markdown
-- Português formal académico
-- ⚠ LIMITE: ${palavras} PALAVRAS — PÁRA ao atingir este limite
-${p.instrucaoSubtitulos ? '\n' + p.instrucaoSubtitulos : ''}
-${antiIA(capNum, totalCaps, geoInstrucao)}`;
-
-  const maxTok = Math.min(Math.max(Math.round(palavras*1.8), 600), 12000);
-  return { prompt, maxTok, nivelKey, areaKey };
-}
-
-/* ---------------- CAPÍTULO STREAMING (SSE) ---------------- */
-async function doCapituloStream(payload, res, req) {
-  const { prompt, maxTok, nivelKey } = montarPromptCapituloBase(payload);
-  const promptTexto = prompt + `\n\nEscreve o capítulo completo em texto plano, sem JSON. Apenas o texto académico formatado conforme as regras acima.`;
-
-  /* AbortController ligado ao fecho da conexão do cliente */
-  const ac = new AbortController();
-  req.on('close', () => { ac.abort(); });
-
-  let fullText = '';
-  let chunkCount = 0;
-  const _startTime = Date.now();
-
-  try {
-    for await (const chunk of callAIStream([{ role:'user', content:promptTexto }], { max_tokens:maxTok })) {
-      if (ac.signal.aborted) break;
-      fullText += chunk;
-      chunkCount++;
-      res.write(`data: ${JSON.stringify({ type:'chunk', text: chunk })}\n\n`);
-    }
-
-    if (ac.signal.aborted) {
-      res.write(`data: ${JSON.stringify({ type:'cancelled' })}\n\n`);
-      res.end();
-      return;
-    }
-
-    const wordCount = fullText.split(/\s+/).filter(Boolean).length;
-
-    /* Construir AST simples a partir do texto */
-    const ast = {
-      chapter_id: String(payload.capNum || 1),
-      title: payload.capTitulo || '',
-      status: 'generated',
-      generated_at: new Date().toISOString(),
-      generated_by: 'academy-engine-stream-v1',
-      version: 1,
-      sections: [{
-        section_id: '1.0',
-        title: 'Conteúdo',
-        paragraphs: fullText.split('\n\n').filter(p => p.trim().length > 20),
-      }],
-    };
-    const health = calcularDocumentHealth(ast, nivelKey);
-    const readiness = calcularReadiness(ast, nivelKey, detectarContextoGeo(payload.tema, payload.pais));
-
-    res.write(`data: ${JSON.stringify({
-      type: 'done',
-      text: fullText,
-      ast,
-      health,
-      readiness,
-      word_count: wordCount,
-      generation_time_ms: Date.now() - _startTime,
-    })}\n\n`);
-    res.end();
-
-    /* Telemetria fire-and-forget */
-    registarTelemetria({
-      tema: payload.tema, nivel: payload.nivel, area: nivelKey,
-      tipo: payload.tipoTrabalho, cap_num: payload.capNum,
-      ast_generated: true, word_count: wordCount,
-      generation_time_ms: Date.now() - _startTime,
-      model_used: 'groq/stream',
-    });
-  } catch (err) {
-    if (!ac.signal.aborted) {
-      try {
-        res.write(`data: ${JSON.stringify({ type:'error', message: err.message.substring(0,200) })}\n\n`);
-        res.end();
-      } catch (_) {}
-    }
-  }
-}
-
 /* ---------------- REFERÊNCIAS ---------------- */
 async function doReferencias(p) {
   const tema  = (p.tema||'').substring(0,300);
@@ -1173,20 +992,10 @@ async function doGetHistory(p) {
   return { rows: Array.isArray(rows)?rows:[] };
 }
 
-/* ── callAIProvider isolado (fácil trocar provider) ── */
-async function callAIProvider(endpoint, body) {
+/* ---------------- GROQ API COM FALLBACK ---------------- */
+async function callAI(messages, opts={}) {
   const key = process.env.GROQ_API_KEY;
   if (!key) throw new Error('GROQ_API_KEY não configurada');
-  const resp = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
-    body: JSON.stringify(body),
-  });
-  return resp;
-}
-
-/* ---------------- GROQ API (non-streaming, com fallback) ---------------- */
-async function callAI(messages, opts={}) {
   let lastErr = '';
   for (const model of MODELS) {
     try {
@@ -1194,9 +1003,10 @@ async function callAI(messages, opts={}) {
       const t = setTimeout(()=>ctrl.abort(), 25000);
       let resp;
       try {
-        resp = await callAIProvider(OR_URL, {
-          model, messages, temperature:opts.temperature??0.7,
-          max_tokens:opts.max_tokens??800, stream:false,
+        resp = await fetch(OR_URL, {
+          method:'POST', signal:ctrl.signal,
+          headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+key },
+          body:JSON.stringify({ model, messages, temperature:opts.temperature??0.7, max_tokens:opts.max_tokens??800, stream:false }),
         });
       } finally { clearTimeout(t); }
       if (resp.status===429||resp.status===503) { lastErr=String(resp.status); continue; }
@@ -1208,44 +1018,6 @@ async function callAI(messages, opts={}) {
     } catch(e) { lastErr=e.message; }
   }
   throw new Error('Todos os modelos falharam: '+lastErr);
-}
-
-/* ---------------- GROQ API STREAMING (com fallback) ---------------- */
-async function* callAIStream(messages, opts={}) {
-  let lastErr = '';
-  for (const model of MODELS) {
-    try {
-      const resp = await callAIProvider(OR_URL, {
-        model, messages, temperature:opts.temperature??0.65,
-        max_tokens:opts.max_tokens??8000, stream:true,
-      });
-      if (resp.status===429||resp.status===503) { lastErr=String(resp.status); continue; }
-      if (!resp.ok) { lastErr=await resp.text().catch(()=>String(resp.status)); continue; }
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim();
-            if (data === '[DONE]') continue;
-            try {
-              const parsed = JSON.parse(data);
-              const content = parsed?.choices?.[0]?.delta?.content || '';
-              if (content) yield content;
-            } catch (_) {}
-          }
-        }
-      }
-      return; /* sucesso — sai do gerador */
-    } catch(e) { lastErr = e.message; }
-  }
-  throw new Error('Stream: todos os modelos falharam: '+lastErr);
 }
 
 /* ---------------- JSON EXTRACTOR ---------------- */

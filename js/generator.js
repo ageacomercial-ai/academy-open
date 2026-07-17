@@ -14,87 +14,6 @@ const _GEN_SAVE_KEY = 'acy_gen_prog';
 
 let _genCancelado = false;
 let _treRetroRefCount = 0;
-let _streamAbortController = null;
-
-/* ── Consumir stream SSE do /api/engine ── */
-async function consumirStreamDocumento(payload, callbacks) {
-  const { onChunk, onDone, onError } = callbacks;
-  _streamAbortController = new AbortController();
-
-  let textoAcumulado = '';
-  let ultimaAtualizacao = 0;
-  let agendado = false;
-
-  function agendarAtualizacao() {
-    if (agendado) return;
-    agendado = true;
-    requestAnimationFrame(() => {
-      agendado = false;
-      if (onChunk && textoAcumulado) onChunk(textoAcumulado);
-    });
-  }
-
-  try {
-    const resp = await fetch('/api/engine', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'gerar_capitulo_stream', payload }),
-      signal: _streamAbortController.signal,
-    });
-
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    if (!resp.body) throw new Error('Stream não suportado');
-
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6).trim();
-          if (data === '[DONE]') continue;
-          try {
-            const parsed = JSON.parse(data);
-
-            if (parsed.type === 'chunk') {
-              textoAcumulado += parsed.text || '';
-              agendarAtualizacao();
-            } else if (parsed.type === 'done') {
-              if (onDone) onDone(parsed);
-              return;
-            } else if (parsed.type === 'error') {
-              if (onError) onError(new Error(parsed.message || 'Erro no stream'));
-              return;
-            } else if (parsed.type === 'cancelled') {
-              return;
-            }
-          } catch (_) {}
-        }
-      }
-    }
-
-    /* Fim natural do stream sem evento done — usar texto acumulado */
-    if (onDone) onDone({ text: textoAcumulado, word_count: textoAcumulado.split(/\s+/).filter(Boolean).length });
-  } catch (e) {
-    if (e.name === 'AbortError') return;
-    if (onError) onError(e);
-  }
-}
-
-function cancelarStream() {
-  if (_streamAbortController) {
-    _streamAbortController.abort();
-    _streamAbortController = null;
-  }
-}
 
 /* ═══════════════════════════════════════════════════════════
    CHAMADA CENTRAL AO /api/engine
@@ -459,104 +378,91 @@ async function iniciarGer(retomar) {
     if (i > iniciarEm) await new Promise(r => setTimeout(r, _DELAY(i)));
     if (_genCancelado) break;
 
-    /* ── GERAÇÃO DO CAPÍTULO (STREAMING) ──────────────────────────
-       Usa SSE para texto a aparecer progressivamente.
-       Referências continuam em modo não-streaming.
+    /* ── GERAÇÃO DO CAPÍTULO ────────────────────────────────────────
+       Tenta até 4 vezes. Para quando tiver resultado válido.
     ─────────────────────────────────────────────────────────────── */
-    const isRef = cap.titulo && (cap.titulo.toLowerCase().includes('refer') || cap.titulo.toLowerCase().includes('bibliog'));
-    const payload = {
-      tema:                State.getCfg('tema'),
-      tipoTrabalho:        tp.n,
-      nivel:               State.getCfg('nivel'),
-      totalPags,
-      capNum:              cap.num,
-      capTitulo:           cap.titulo,
-      capSubs:             cap.subs || [],
-      totalCaps:           est.length,
-      palavrasPorCap:      Math.max(200, pagsRef * 220),
-      objetivo:            (plano.objetivo || '').substring(0, 120),
-      hipotese:            (plano.hipotese || '').substring(0, 100),
-      metodologia:         (plano.metodologia || '').substring(0, 100),
-      instrucaoSubtitulos: `Cada subtópico em capSubs DEVE aparecer como subtítulo numerado em linha própria.`,
-      instrucaoVariacao:   _INSTRUCAO_ANTI_IA(cap.num, cap.subs?.length || 0),
-      memoriaDocumento:    DOC_MEMORY.gerarInstrucao(),
-    };
+    const isRef    = cap.titulo && (cap.titulo.toLowerCase().includes('refer') || cap.titulo.toLowerCase().includes('bibliog'));
+    const acaoGer  = isRef ? 'gerar_capitulo_referencias' : 'gerar_capitulo';
 
-    let textoFinal = '';
-    let astFinal   = null;
-    let erroStream = null;
-    let streamOk   = false;
+    let resultado   = null;
+    let tentativas  = 0;
+    let _capTimedOut = false;
+    const _capTimeout = setTimeout(() => { _capTimedOut = true; }, 120000);
 
     try {
-      if (isRef) {
-        /* Referências: modo clássico (não-streaming) */
-        const raw = await callAcademyAPI({ acao: 'gerar_capitulo_referencias', ...payload });
-        textoFinal = typeof raw === 'string' ? raw : JSON.stringify(raw);
-        streamOk = true;
-      } else {
-        /* Streaming SSE */
-        const previewEl = document.getElementById(`sprev-${i}`);
-        let textoAcum = '';
-
-        await new Promise((resolve, reject) => {
-          consumirStreamDocumento(payload, {
-            onChunk(textoCompleto) {
-              textoAcum = textoCompleto;
-              if (previewEl) {
-                previewEl.innerHTML = textoCompleto
-                  .split('\n').filter(Boolean).join('<br>')
-                  + '<span class="cursor-piscando">|</span>';
-                previewEl.scrollTop = previewEl.scrollHeight;
-              }
-            },
-            onDone(result) {
-              textoFinal = result.text || textoAcum;
-              if (result.ast) astFinal = result.ast;
-              const s = State.get('secs');
-              if (result.health)  { s[i].health       = result.health; }
-              if (result.readiness){ s[i].readiness    = result.readiness; }
-              State.set('secs', s);
-              streamOk = true;
-              resolve();
-            },
-            onError(err) {
-              erroStream = err;
-              reject(err);
-            },
-          });
-        });
-      }
-    } catch (er) {
-      erroStream = er;
-      /* Fallback para não-streaming se streaming falhar */
-      if (!isRef && !streamOk) {
+      while (!resultado && tentativas < 4 && !_genCancelado && !_capTimedOut) {
         try {
-          const raw = await callAcademyAPI({ acao: 'gerar_capitulo', ...payload });
-          let _rv = raw && typeof raw === 'object' && 'resposta' in raw ? raw.resposta : raw;
-          if (_rv && typeof _rv === 'object' && _rv.sections) {
-            astFinal = _rv; textoFinal = astParaTexto(_rv);
-          } else if (typeof _rv === 'string') {
-            textoFinal = _rv;
-          }
-          if (raw && typeof raw === 'object' && 'health' in raw) {
-            const s = State.get('secs');
-            s[i].health = raw.health; s[i].readiness = raw.readiness;
-            s[i].confidence = raw.confidence; s[i].completeness = raw.completeness;
-            State.set('secs', s);
-          }
-          streamOk = true;
-          erroStream = null;
-        } catch (_) {}
-      }
-    }
+          const raw = await callAcademyAPI({
+            acao:                acaoGer,
+            tema:                State.getCfg('tema'),
+            tipoTrabalho:        tp.n,
+            nivel:               State.getCfg('nivel'),
+            totalPags,
+            capNum:              cap.num,
+            capTitulo:           cap.titulo,
+            capSubs:             cap.subs || [],
+            totalCaps:           est.length,
+            palavrasPorCap:      Math.max(200, pagsRef * 220),
+            objetivo:            (plano.objetivo || '').substring(0, 120),
+            hipotese:            (plano.hipotese || '').substring(0, 100),
+            metodologia:         (plano.metodologia || '').substring(0, 100),
+            instrucaoSubtitulos: `Cada subtópico em capSubs DEVE aparecer como subtítulo numerado em linha própria.`,
+            instrucaoVariacao:   _INSTRUCAO_ANTI_IA(cap.num, cap.subs?.length || 0),
+            memoriaDocumento:    DOC_MEMORY.gerarInstrucao(),
+          });
 
-    if (!streamOk && !textoFinal) {
-      textoFinal = erroStream
-        ? `[Erro: ${erroStream.message?.substring(0,100) || 'geração falhou'}]`
-        : `[Cap. ${cap.num} não concluído.]`;
+          /* raw pode ser { resposta, health, readiness } ou valor directo */
+          let _rawVal = raw;
+          if (raw && typeof raw === 'object' && 'resposta' in raw) {
+            _rawVal = raw.resposta;
+            const secsArr = State.get('secs');
+            secsArr[i].health       = raw.health       || null;
+            secsArr[i].readiness    = raw.readiness    || null;
+            secsArr[i].confidence   = raw.confidence   || null;
+            secsArr[i].completeness = raw.completeness || null;
+            State.set('secs', secsArr);
+          }
+
+          if (_rawVal && (typeof _rawVal === 'object' || (typeof _rawVal === 'string' && _rawVal.length > 30))) {
+            resultado = _rawVal;
+          } else {
+            tentativas++;
+          }
+        } catch (er) {
+          tentativas++;
+          const espera = Math.min(tentativas * 8000, 45000);
+          aSecDOM(i, 'g', `Tentativa ${tentativas}/4 — aguarda ${Math.round(espera / 1000)}s…`);
+          if (restEl) restEl.textContent = 'Erro API — a re‐tentar…';
+          await new Promise(r => setTimeout(r, espera));
+        }
+      }
+    } finally {
+      clearTimeout(_capTimeout);
+      if (!resultado) resultado = `[Cap. ${cap.num} não concluído. Toca em ↺.]`;
     }
 
     if (_genCancelado) { genGuardarProgresso(); break; }
+
+    /* ── PROCESSAR RESULTADO ──────────────────────────────────────
+       Normalizar para texto + AST independentemente do formato
+    ─────────────────────────────────────────────────────────────── */
+    let textoFinal = '[Secção não gerada. Toca em ↺ para regenerar.]';
+    let astFinal   = null;
+
+    if (resultado) {
+      if (typeof resultado === 'object' && resultado.sections) {
+        astFinal   = resultado;
+        textoFinal = astParaTexto(resultado);
+      } else if (typeof resultado === 'string' && resultado.trim().startsWith('{')) {
+        try {
+          const parsed = JSON.parse(resultado);
+          if (parsed?.sections) { astFinal = parsed; textoFinal = astParaTexto(parsed); }
+          else textoFinal = resultado;
+        } catch { textoFinal = resultado; }
+      } else if (typeof resultado === 'string') {
+        textoFinal = resultado;
+      }
+    }
 
     /* ── GUARDAR NA SECÇÃO ── */
     const secsArr   = State.get('secs');

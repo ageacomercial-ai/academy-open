@@ -264,22 +264,3 @@
    BARRA DE GERAÇÃO
 ════════════════════════════════════════════════════════════ */
 .gen-fase { display: flex; align-items: center; gap: 8px; padding: 8px 0; font-family: var(--fm); font-size: 9px; color: var(--t3); letter-spacing: .1em; }
-
-/* ── Cursor piscante (streaming) ── */
-.cursor-piscando {
-  animation: cursor-blink 1s step-end infinite;
-  color: var(--b);
-  font-weight: 700;
-}
-@keyframes cursor-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-.sec-preview {
-  font-family: var(--fm);
-  background: var(--z2);
-  border-bottom-left-radius: var(--r2);
-  border-bottom-right-radius: var(--r2);
-  white-space: pre-wrap;
-  word-break: break-word;
-}

@@ -514,7 +514,6 @@ function sGeracao() {
         <span>~${stats.tempoLeit} min leitura</span>
       </div>
       <button class="btn O w" onclick="docConcluido()" style="max-width:300px;font-size:15px;padding:16px">🎓 Ver o meu Trabalho →</button>
-      <button class="btn G" onclick="iniciarGer()" style="font-size:12px;padding:10px 20px">↺ Regenerar tudo</button>
       <div onclick="togChat()" style="cursor:pointer;padding:10px 18px;border:1px solid var(--eo);border-radius:var(--r);background:rgba(56,189,248,.05);color:var(--o);font-family:var(--fm);font-size:9px;letter-spacing:.08em">⚡ Treinar a defesa com o ACADEMY →</div>
     </div>`;
   }
@@ -523,10 +522,7 @@ function sGeracao() {
   const temProg = genTemProgresso();
   return `
   <div style="display:flex;flex-direction:column;padding:28px 18px 48px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-      <div class="fase" style="margin-bottom:0"><div class="fase-p b"></div>ACADEMY · A ESCREVER</div>
-      <button class="btn G s" onclick="cancelarStream();_genCancelado=true;mostrarToast('⏹ Geração cancelada')" style="font-size:10px;padding:6px 12px">✕ Cancelar</button>
-    </div>
+    <div class="fase" style="margin-bottom:14px"><div class="fase-p b"></div>ACADEMY · A ESCREVER</div>
     <div style="font-size:17px;font-weight:700;color:var(--t1);margin-bottom:4px;letter-spacing:-.015em">${cfg.tema?.substring(0, 60) || 'O teu trabalho'}</div>
     <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-bottom:18px" id="estimG">${estimativa}</div>
 
@@ -565,7 +561,7 @@ function sGeracao() {
             <div class="etq ${e === 'p' ? 'etq-v' : e === 'g' ? 'etq-o' : 'etq-b'}" id="setq-${i}" style="font-size:8px">${e === 'p' ? '✓ PRONTO' : e === 'g' ? 'EM CURSO' : '—'}</div>
           </div>
           ${e === 'p' ? prev : ''}
-          ${e === 'g' ? `<div class="sec-preview" id="sprev-${i}" style="font-size:11px;color:var(--t3);padding:8px 12px;line-height:1.6;border-top:1px solid var(--e0);max-height:120px;overflow-y:auto;font-style:italic">A IA está a escrever…<span class="cursor-piscando">|</span></div>` : ''}
+          ${e === 'g' ? `<div style="padding:8px 12px;display:flex;align-items:center;gap:8px;font-family:var(--fm);font-size:10px;color:var(--t3)"><div class="pts"><span></span><span></span><span></span></div>Academy está a construir…</div>` : ''}
         </div>`;
       }).join('')}
     </div>
