@@ -70,8 +70,9 @@ function astParaTexto(ast) {
   if (!ast || !ast.sections) return '';
   return ast.sections.map(sec => {
     let txt = '';
-    if (sec.titulo) txt += sec.titulo + '\n\n';
-    if (sec.paragrafos) txt += sec.paragrafos.join('\n\n');
+    if (sec.titulo || sec.title) txt += (sec.titulo || sec.title) + '\n\n';
+    const paras = sec.paragrafos || sec.paragraphs || [];
+    if (paras.length) txt += paras.join('\n\n');
     return txt;
   }).join('\n\n');
 }
