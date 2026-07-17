@@ -607,13 +607,6 @@ function _mostrarErroValidacao(msg) {
 
 /* ── Gate de geração (verifica plano antes de avançar) ── */
 function verificarAntesDeGerar(gerarDirecto) {
-  const plano = planoActivo();
-  if (plano !== 'gratuito' || temCreditoActivo()) {
-    if (gerarDirecto) iniciarGer();
-    else irPara('preview_gen');
-    return;
-  }
-  /* Utilizador gratuito: guardar rascunho e mostrar paywall */
-  guardarRascunhoPendente();
-  mostrarToast('🔒 Funcionalidade premium — faz upgrade para gerar trabalhos.');
+  if (gerarDirecto) iniciarGer();
+  else irPara('preview_gen');
 }
