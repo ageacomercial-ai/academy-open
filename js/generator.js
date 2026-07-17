@@ -494,37 +494,19 @@ async function iniciarGer(retomar) {
         textoFinal = typeof raw === 'string' ? raw : JSON.stringify(raw);
         streamOk = true;
       } else {
-        /* Streaming SSE — A4 live preview */
-        const a4Div = document.getElementById('a4-preview');
-        const a4Page = document.getElementById('a4-content');
-        const a4Wc = document.getElementById('a4-wordcount');
-        if (a4Div) a4Div.style.display = 'block';
-        if (a4Page) a4Page.innerHTML = '<span class="cursor-piscando">|</span>';
-
+        /* Streaming SSE */
+        const previewEl = document.getElementById(`sprev-${i}`);
         let textoAcum = '';
-        let _ultimoRender = '';
-
-        function renderA4(texto) {
-          if (!a4Page) return;
-          const html = texto
-            .split(/\n\n+/)
-            .map(p => p.trim())
-            .filter(Boolean)
-            .map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`)
-            .join('');
-          a4Page.innerHTML = html + '<span class="cursor-piscando">|</span>';
-          a4Page.scrollIntoView({ behavior:'smooth', block:'nearest' });
-          if (a4Wc) a4Wc.textContent = texto.split(/\s+/).filter(Boolean).length + ' palavras';
-        }
 
         await new Promise((resolve, reject) => {
           consumirStreamDocumento(payload, {
             onChunk(textoCompleto) {
               textoAcum = textoCompleto;
-              /* Throttle implícito via requestAnimationFrame dentro do consumer */
-              if (textoAcum !== _ultimoRender) {
-                _ultimoRender = textoAcum;
-                renderA4(textoAcum);
+              if (previewEl) {
+                previewEl.innerHTML = textoCompleto
+                  .split('\n').filter(Boolean).join('<br>')
+                  + '<span class="cursor-piscando">|</span>';
+                previewEl.scrollTop = previewEl.scrollHeight;
               }
             },
             onDone(result) {
