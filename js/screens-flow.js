@@ -551,44 +551,32 @@ function sGeracao() {
     </div>
 
     <!-- Lista de capítulos -->
-    <div id="ls" style="display:flex;flex-direction:column;gap:6px;margin-bottom:18px">
+    <div id="ls" style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px">
       ${(secs.length ? secs : est).map((s, i) => {
         const e    = secs[i]?.e || 'a';
-        const prev = secs[i]?.c
-          ? `<div style="font-size:11px;color:var(--t3);padding:8px 0 4px;border-top:1px solid var(--e0);line-height:1.6;font-style:italic">${(secs[i].c || '').substring(0, 100)}…</div>`
-          : '';
         return `
-        <div class="sec${e === 'p' ? ' pronto' : e === 'g' ? ' ativo' : ''}" id="sg-${i}">
-          <div class="sec-cab" id="sgp-${i}">
-            <div class="sec-num" style="font-family:var(--fm);font-size:9px">${s.num || i + 1}</div>
-            <div style="flex:1;font-size:13px;color:var(--t2)">${s.titulo}</div>
-            <div class="etq ${e === 'p' ? 'etq-v' : e === 'g' ? 'etq-o' : 'etq-b'}" id="setq-${i}" style="font-size:8px">${e === 'p' ? '✓ PRONTO' : e === 'g' ? 'EM CURSO' : '—'}</div>
+        <div class="sec${e === 'p' ? ' pronto' : e === 'g' ? ' ativo' : ''}" id="sg-${i}" style="padding:10px 12px">
+          <div class="sec-cab" id="sgp-${i}" style="gap:8px">
+            <div class="sec-num" style="font-family:var(--fm);font-size:8px;width:20px;text-align:center">${s.num || i + 1}</div>
+            <div style="flex:1;font-size:12px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.titulo}</div>
+            <div class="etq ${e === 'p' ? 'etq-v' : e === 'g' ? 'etq-o' : 'etq-b'}" id="setq-${i}" style="font-size:7px;padding:2px 8px">${e === 'p' ? '✓' : e === 'g' ? '◉' : '—'}</div>
           </div>
-          ${e === 'p' ? prev : ''}
-          ${e === 'g' ? `<div class="sec-preview" id="sprev-${i}" style="font-size:11px;color:var(--t3);padding:8px 12px;line-height:1.6;border-top:1px solid var(--e0);max-height:120px;overflow-y:auto;font-style:italic">A IA está a escrever…<span class="cursor-piscando">|</span></div>` : ''}
         </div>`;
       }).join('')}
     </div>
 
-    <!-- Facto académico -->
-    <div style="padding:14px;background:var(--z3);border:1px solid var(--e0);border-radius:var(--r);margin-bottom:16px">
-      <div style="font-family:var(--fm);font-size:8px;color:var(--t3);letter-spacing:.1em;margin-bottom:6px">💡 SABIA QUE…</div>
-      <div style="font-size:12px;color:var(--t2);line-height:1.65">${factos[factoIdx]}</div>
-    </div>
-
-    <!-- Detalhes finais (enquanto aguarda) -->
-    <div style="padding:14px;background:var(--z2);border:1px solid var(--e0);border-radius:var(--r)">
-      <div style="font-family:var(--fm);font-size:8px;color:var(--t3);letter-spacing:.1em;margin-bottom:10px">ENQUANTO AGUARDAS — DETALHES FINAIS</div>
-
-      <label class="lbl" style="margin-bottom:4px">Dedicatória <span style="color:var(--t4)">(opcional)</span></label>
-      <textarea class="inp" placeholder="Ex: Dedico este trabalho à minha família…" style="margin-bottom:8px;font-size:12px;min-height:48px;resize:vertical" oninput="State.setCfg('dedicatoria',this.value)">${cfg.dedicatoria || ''}</textarea>
-
-      <label class="lbl" style="margin-bottom:4px">Agradecimentos <span style="color:var(--t4)">(opcional)</span></label>
-      <textarea class="inp" placeholder="Ex: Agradeço ao meu orientador, aos colegas e à minha família…" style="margin-bottom:8px;font-size:12px;min-height:60px;resize:vertical" oninput="State.setCfg('agradecimentos',this.value)">${cfg.agradecimentos || ''}</textarea>
-
-      <label class="lbl" style="margin-bottom:4px">Epígrafe <span style="color:var(--t4)">(opcional)</span></label>
-      <input class="inp" placeholder="Frase ou citação inspiradora…" value="${cfg.epigrafe || ''}" style="margin-bottom:2px;font-size:12px" oninput="State.setCfg('epigrafe',this.value)"/>
-      <input class="inp" placeholder="Autor da epígrafe" value="${cfg.epigrafAutor || ''}" style="margin-bottom:8px;font-size:11px;color:var(--t3)" oninput="State.setCfg('epigrafAutor',this.value)"/>
+    <!-- A4 Page Preview (live durante geração) -->
+    <div id="a4-preview" style="display:none">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-family:var(--fm);font-size:8px;color:var(--t3);letter-spacing:.1em">
+        <span>📄 PRÉ-VISUALIZAÇÃO AO VIVO</span>
+        <span style="flex:1;height:1px;background:var(--e0)"></span>
+        <span id="a4-wordcount" style="font-size:7px;color:var(--t4)">0 palavras</span>
+      </div>
+      <div id="a4-page" class="a4-page">
+        <div id="a4-content" class="a4-content">
+          <span class="cursor-piscando">|</span>
+        </div>
+      </div>
     </div>
   </div>`;
 }
