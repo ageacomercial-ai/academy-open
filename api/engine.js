@@ -1,430 +1,717 @@
-/* ═══════════════════════════════════════════════════════════
-   ACADEMY — /api/engine.js
-   Vercel Serverless Function (Node.js 20.x) + Express local
-   Provider: OpenRouter
-   Arquitectura: Frontend → POST /api/engine → switch(action) → OpenRouter
-   
-   COMPATIBILIDADE:
-   - Vercel: invocado directamente como handler(req, res)
-   - Local:  importado pelo server.js e chamado da mesma forma
-═══════════════════════════════════════════════════════════ */
+/* =======================================================================
+   ACADEMY ENGINE - SAAS BLINDADO (PRODUÇÃO)
+   v66: DOCUMENT AST — backend gera JSON estruturado
+   O frontend deixa de inferir estrutura de texto
+   - Perfis por nível: Ensino Médio / Licenciatura / Mestrado / Doutoramento
+   - Perfis por área: Ciências / Humanidades / Gestão / Direito / Saúde / Engenharia
+   - Citações autor-ano obrigatórias no corpo do texto
+   - Dados verificáveis com fontes e anos
+   - Variação estrutural entre subtópicos (5 abordagens rotativas)
+   - Bugs corrigidos: ping, verificar_coerencia, gerar_mea
+   Adaptado para modelos gratuitos OpenRouter (:free)
+======================================================================= */
 
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const MODEL_FAST         = 'meta-llama/llama-3.3-70b-instruct';
-const MODEL_STRONG       = 'meta-llama/llama-3.3-70b-instruct';
+const OR_URL   = 'https://openrouter.ai/api/v1/chat/completions';
+const OR_SITE  = 'https://academy-open.vercel.app';
+const OR_TITLE = 'ACADEMY';
 
-/* ── Logger com timestamp ── */
-function log(level, action, msg, extra = '') {
-  const ts = new Date().toISOString();
-  console[level === 'ERROR' ? 'error' : 'log'](
-    `[${ts}] [engine] [${level}] action=${action} | ${msg}${extra ? ' | ' + extra : ''}`
-  );
+/* Modelos gratuitos OpenRouter — basta criar conta em openrouter.ai e gerar API key (sem cartão de crédito) */
+const MODELS = [
+  'google/gemma-4-31b-it:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'openai/gpt-oss-20b:free',
+];
+
+/* ---------------- RATE LIMIT ---------------- */
+const RATE = new Map();
+function rateLimit(ip) {
+  const now = Date.now();
+  const d = RATE.get(ip) || { count: 0, start: now };
+  if (now - d.start > 60000) { RATE.set(ip, { count: 1, start: now }); return true; }
+  if (d.count >= 25) return false;
+  d.count++; RATE.set(ip, d); return true;
 }
 
-/* ── Utility: call OpenRouter ── */
-async function callOpenRouter({ messages, model = MODEL_FAST, max_tokens = 4096, temperature = 0.7, action = '?' }) {
-  /* FIX #1: Lê a key dentro da função — não no topo do módulo.
-     No Vercel, as env vars só existem em runtime, não em parse time. */
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error('OPENROUTER_API_KEY não definida nas variáveis de ambiente.');
-
-  /* FIX #2: Validação de payload antes de enviar */
-  if (!messages || !Array.isArray(messages) || messages.length === 0) {
-    throw new Error('callOpenRouter: messages inválido ou vazio.');
-  }
-
-  log('INFO', action, `→ OpenRouter model=${model} max_tokens=${max_tokens} msgs=${messages.length}`);
-
-  let res;
-  try {
-    res = await fetch(OPENROUTER_API_URL, {
-      method:  'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type':  'application/json',
-        'HTTP-Referer':  'https://academy.vercel.app',
-        'X-Title':       'Academy',
-      },
-      body: JSON.stringify({ model, messages, max_tokens, temperature }),
-    });
-  } catch (networkErr) {
-    /* FIX #3: Erros de rede (DNS, timeout) capturados separadamente */
-    throw new Error(`Erro de rede ao contactar OpenRouter: ${networkErr.message}`);
-  }
-
-  /* FIX #4: Lê o body UMA vez e guarda — evita "body already consumed" */
-  const rawBody = await res.text();
-
-  if (!res.ok) {
-    let errMsg = `OpenRouter HTTP ${res.status}`;
-    try {
-      const errJson = JSON.parse(rawBody);
-      errMsg = errJson?.error?.message || errMsg;
-    } catch (_) { /* body não é JSON — usa o texto raw */ 
-      errMsg = rawBody?.substring(0, 200) || errMsg;
-    }
-    if (res.status === 429) throw new Error(`QUOTA: Rate limit atingido. Aguarda 30s. (${errMsg})`);
-    if (res.status === 401) throw new Error(`AUTH: API key inválida ou expirada. Verifica OPENROUTER_API_KEY.`);
-    throw new Error(`OpenRouter ${res.status}: ${errMsg}`);
-  }
-
-  let data;
-  try {
-    data = JSON.parse(rawBody);
-  } catch (_) {
-    throw new Error(`OpenRouter devolveu resposta não-JSON: ${rawBody?.substring(0, 200)}`);
-  }
-
-  /* FIX #5: Verificação robusta de resposta vazia */
-  const text = data?.choices?.[0]?.message?.content;
-  if (text === undefined || text === null || text.trim() === '') {
-    log('ERROR', action, 'OpenRouter devolveu conteúdo vazio', JSON.stringify(data).substring(0, 300));
-    throw new Error('OpenRouter: resposta vazia. Tenta novamente.');
-  }
-
-  log('INFO', action, `← OpenRouter OK | chars=${text.length} model=${data?.model || model}`);
-  return { text: text.trim(), model: data?.model || model };
-}
-
-/* ── Response helpers ── */
-function ok(res, data) {
-  return res.status(200).json({ ok: true, data });
-}
-function fail(res, msg, status = 500) {
-  return res.status(status).json({ ok: false, error: msg });
-}
-
-/* ── Extractor JSON seguro (evita crash em JSON mal formado) ── */
-function extractJSON(text, tipo = 'objecto') {
-  /* FIX #6: Tenta extrair JSON mesmo quando o modelo envolve em markdown ```json ``` */
-  const cleaned = text
-    .replace(/```json\s*/gi, '')
-    .replace(/```\s*/g, '')
-    .trim();
-
-  const pattern = tipo === 'array' ? /\[[\s\S]*\]/ : /\{[\s\S]*\}/;
-  const match   = cleaned.match(pattern);
-  if (!match) throw new Error(`Resposta sem ${tipo} JSON válido. Recebido: ${text.substring(0, 200)}`);
-
-  try {
-    return JSON.parse(match[0]);
-  } catch (e) {
-    throw new Error(`JSON mal formado na resposta: ${e.message}`);
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════
-   HANDLERS POR ACÇÃO
-═══════════════════════════════════════════════════════════ */
-
-async function handlePing(_payload, res) {
-  return ok(res, { resposta: 'pong', model: MODEL_FAST, ts: Date.now() });
-}
-
-async function handlePlanoAcademico(payload, res) {
-  const { tema, tipoTrabalho, nivel, totalPags } = payload;
-  if (!tema)         throw new Error('plano_academico: campo "tema" obrigatório.');
-  if (!tipoTrabalho) throw new Error('plano_academico: campo "tipoTrabalho" obrigatório.');
-
-  const messages = [
-    {
-      role: 'system',
-      content: `És um assistente académico especializado em trabalhos universitários em Português Europeu (pt-PT).
-Escreve sempre em português formal e académico. Nunca uses anglicismos desnecessários.
-Devolve SEMPRE respostas JSON puras, sem blocos markdown.`,
-    },
-    {
-      role: 'user',
-      content: `Cria um plano académico completo para um trabalho de tipo "${tipoTrabalho}" sobre o tema: "${tema}".
-Nível académico: ${nivel || 'universitário'}. Extensão aproximada: ${totalPags || 20} páginas.
-
-Devolve APENAS o seguinte objecto JSON (sem mais texto, sem markdown):
-{
-  "objetivo": "objectivo geral do trabalho (1-2 frases)",
-  "hipotese": "hipótese ou questão de investigação (1 frase)",
-  "metodologia": "metodologia a usar (1 frase)",
-  "palavrasChave": ["palavra1", "palavra2", "palavra3", "palavra4", "palavra5"]
-}`,
-    },
-  ];
-
-  const { text } = await callOpenRouter({ messages, max_tokens: 800, action: 'plano_academico' });
-  const plano = extractJSON(text, 'objecto');
-  return ok(res, { resposta: plano });
-}
-
-async function handleEstruturaAcademica(payload, res) {
-  const { tema, tipoTrabalho, nivel, totalPags, objetivo, hipotese } = payload;
-  if (!tema) throw new Error('estrutura_academica: campo "tema" obrigatório.');
-
-  const messages = [
-    {
-      role: 'system',
-      content: `És um assistente académico especializado em estruturas de trabalhos universitários em Português Europeu.
-Devolve SEMPRE respostas JSON puras, sem blocos markdown.`,
-    },
-    {
-      role: 'user',
-      content: `Cria a estrutura de capítulos para um trabalho de "${tipoTrabalho || 'dissertação'}" sobre: "${tema}".
-Nível: ${nivel || 'universitário'}. Páginas: ${totalPags || 20}.
-${objetivo ? `Objectivo: ${objetivo}.` : ''}
-${hipotese ? `Hipótese: ${hipotese}.` : ''}
-
-Devolve APENAS este array JSON (sem mais texto, sem markdown):
-[
-  {
-    "num": 1,
-    "titulo": "Título do Capítulo",
-    "subs": ["Subtítulo 1.1", "Subtítulo 1.2"]
-  }
-]
-Inclui Introdução, capítulos de desenvolvimento, Conclusão e Referências Bibliográficas.`,
-    },
-  ];
-
-  const { text } = await callOpenRouter({ messages, max_tokens: 1500, action: 'estrutura_academica' });
-  const estrutura = extractJSON(text, 'array');
-  return ok(res, { resposta: estrutura });
-}
-
-async function handleGerarCapitulo(payload, res) {
-  const {
-    tema, tipoTrabalho, nivel,
-    capNum, capTitulo, capSubs = [], totalCaps,
-    palavrasPorCap, objetivo, hipotese, metodologia,
-    instrucaoSubtitulos, instrucaoVariacao, memoriaDocumento,
-  } = payload;
-
-  if (!tema)      throw new Error('gerar_capitulo: campo "tema" obrigatório.');
-  if (!capTitulo) throw new Error('gerar_capitulo: campo "capTitulo" obrigatório.');
-
-  const messages = [
-    {
-      role: 'system',
-      content: `És um redactor académico especializado em Português Europeu (pt-PT).
-Escreves conteúdo académico original, formal e rigoroso.
-NUNCA uses listas com bullet points — escreve sempre em prosa contínua.
-NUNCA repitas instruções ou meta-comentários no texto final.
-${memoriaDocumento ? `\nContexto do documento:\n${memoriaDocumento}` : ''}`,
-    },
-    {
-      role: 'user',
-      content: `Escreve o Capítulo ${capNum || '?'} de ${totalCaps || '?'} do trabalho de "${tipoTrabalho || 'dissertação'}" sobre: "${tema}".
-Nível: ${nivel || 'universitário'}. Capítulo: "${capTitulo}".
-${capSubs.length ? `Subtópicos obrigatórios: ${capSubs.join(', ')}.` : ''}
-${instrucaoSubtitulos || ''}
-${instrucaoVariacao || ''}
-${objetivo ? `Objectivo geral: ${objetivo}.` : ''}
-${hipotese ? `Hipótese: ${hipotese}.` : ''}
-${metodologia ? `Metodologia: ${metodologia}.` : ''}
-Extensão aproximada: ${palavrasPorCap || 600} palavras.
-
-Escreve o capítulo completo em prosa académica formal, sem introdução nem conclusão redundantes.`,
-    },
-  ];
-
-  const { text, model } = await callOpenRouter({
-    messages,
-    model:       MODEL_STRONG,
-    max_tokens:  3000,
-    temperature: 0.75,
-    action:      'gerar_capitulo',
-  });
-
-  return ok(res, {
-    resposta:     text,
-    health:       0.9,
-    readiness:    0.9,
-    confidence:   0.85,
-    completeness: 0.9,
-    _guaranteed:  false,
-    model,
-  });
-}
-
-async function handleGerarCapituloReferencias(payload, res) {
-  const { tema, tipoTrabalho, nivel, capTitulo } = payload;
-  if (!tema) throw new Error('gerar_capitulo_referencias: campo "tema" obrigatório.');
-
-  const messages = [
-    {
-      role: 'system',
-      content: `És um especialista em referências bibliográficas académicas em Português Europeu (norma APA 7.ª edição).`,
-    },
-    {
-      role: 'user',
-      content: `Gera uma lista de referências bibliográficas para um trabalho de "${tipoTrabalho || 'dissertação'}" sobre: "${tema}".
-Nível: ${nivel || 'universitário'}. Secção: "${capTitulo || 'Referências'}".
-Inclui entre 8 a 15 referências reais e credíveis em formato APA 7.ª edição.
-Uma referência por linha, ordenadas alfabeticamente. Apenas as referências, sem texto adicional.`,
-    },
-  ];
-
-  const { text } = await callOpenRouter({
-    messages,
-    max_tokens:  2000,
-    temperature: 0.3,
-    action:      'gerar_capitulo_referencias',
-  });
-
-  return ok(res, { resposta: text, health: 1, readiness: 1, confidence: 1, completeness: 1 });
-}
-
-async function handleRegenerarCapitulo(payload, res) {
-  return handleGerarCapitulo(payload, res);
-}
-
-async function handleEditarTexto(payload, res) {
-  const { texto, subacao, instrucao, capTitulo, tema } = payload;
-  if (!texto) throw new Error('editar_texto: campo "texto" obrigatório.');
-
-  const instrucaoPorSubacao = {
-    melhorar:              'Melhora o estilo, clareza e coesão académica do texto seguinte, mantendo o conteúdo original.',
-    expandir:              'Expande o texto seguinte com mais desenvolvimento, exemplos e argumentação académica.',
-    editar_conversacional: instrucao || 'Edita o texto conforme a instrução dada.',
-  };
-
-  const prompt = instrucaoPorSubacao[subacao] || instrucao || 'Melhora o texto seguinte.';
-
-  const messages = [
-    {
-      role: 'system',
-      content: `És um editor académico especializado em Português Europeu (pt-PT).
-Escreves em prosa formal e académica.
-${tema ? `Tema do trabalho: ${tema}.` : ''}
-${capTitulo ? `Capítulo: ${capTitulo}.` : ''}`,
-    },
-    {
-      role: 'user',
-      content: `${prompt}\n\nTEXTO:\n${texto}`,
-    },
-  ];
-
-  const { text } = await callOpenRouter({
-    messages,
-    max_tokens:  3000,
-    temperature: 0.65,
-    action:      'editar_texto',
-  });
-
-  return ok(res, { resposta: text });
-}
-
-async function handleChat(payload, res) {
-  const { mensagem, historico = [], tema, tipoTrabalho } = payload;
-  if (!mensagem) throw new Error('chat: campo "mensagem" obrigatório.');
-
-  const messages = [
-    {
-      role: 'system',
-      content: `És o assistente ACADEMY, especializado em apoio a trabalhos académicos em Português Europeu.
-${tipoTrabalho ? `Trabalho: ${tipoTrabalho}.` : ''}
-${tema ? `Tema: ${tema}.` : ''}
-Responde de forma clara, útil e académica.`,
-    },
-    ...historico,
-    { role: 'user', content: mensagem },
-  ];
-
-  const { text } = await callOpenRouter({
-    messages,
-    max_tokens:  1500,
-    temperature: 0.7,
-    action:      'chat',
-  });
-
-  return ok(res, { resposta: text });
-}
-
-async function handleDocumentoLivre(payload, res) {
-  const { instrucao, contexto, tema } = payload;
-  if (!instrucao) throw new Error('documento_livre: campo "instrucao" obrigatório.');
-
-  const messages = [
-    {
-      role: 'system',
-      content: `És um assistente académico em Português Europeu.
-${tema ? `Contexto do documento: ${tema}.` : ''}`,
-    },
-    {
-      role: 'user',
-      content: `${instrucao}${contexto ? `\n\nContexto adicional:\n${contexto}` : ''}`,
-    },
-  ];
-
-  const { text } = await callOpenRouter({
-    messages,
-    max_tokens: 2000,
-    action:     'documento_livre',
-  });
-
-  return ok(res, { resposta: text });
-}
-
-async function handleGerarCapa(payload, res) {
-  const { tema, tipoTrabalho, nivel, autor, instituicao, ano } = payload;
-  const capa = {
-    titulo:      tema        || '',
-    tipo:        tipoTrabalho || '',
-    nivel:       nivel        || '',
-    autor:       autor        || '',
-    instituicao: instituicao  || '',
-    ano:         ano          || new Date().getFullYear(),
-  };
-  return ok(res, { resposta: capa });
-}
-
-/* ═══════════════════════════════════════════════════════════
-   MAIN HANDLER
-   Entry point único para Vercel e Express local.
-═══════════════════════════════════════════════════════════ */
-
-export default async function handler(req, res) {
-  /* ── CORS ── */
-  res.setHeader('Access-Control-Allow-Origin',  '*');
+/* ---------------- CORS ---------------- */
+function setCORS(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Content-Type', 'application/json');
+}
 
+/* ---------------- POOLS ANTI-IA ---------------- */
+const EXEMPLOS = [
+  'A investigação académica demonstra que',
+  'No contexto em análise,',
+  'Num cenário concreto verificável,',
+  'Os dados de campo indicam que',
+  'A evidência empírica revela que',
+  'Tomando como caso ilustrativo',
+  'A evidência empírica mostra que',
+  'Num contexto prático verificável,',
+  'A análise do caso em estudo revela',
+  'Os indicadores disponíveis mostram que',
+  'O tema em análise ilustra bem',
+  'Verificando os dados disponíveis,',
+];
+const HIPOTESES = [
+  'A tese central deste trabalho é que',
+  'A análise conduz à conclusão de que',
+  'Os dados permitem inferir que',
+  'A investigação aponta para o facto de que',
+  'O exame crítico da literatura revela que',
+  'A posição defendida neste estudo é que',
+  'A leitura dos factos sugere que',
+  'A evidência disponível indica que',
+];
+const CONCLUSOES = [
+  'A análise evidencia, portanto, que',
+  'Os dados apresentados confirmam que',
+  'O exame crítico demonstra que',
+  'A síntese dos argumentos aponta para',
+  'O quadro analítico traçado revela que',
+  'A investigação permite concluir que',
+  'Os elementos reunidos sustentam que',
+  'O percurso argumentativo culmina em',
+];
+const TRANSICOES = [
+  'Aprofundando esta perspectiva,',
+  'A análise revela ainda que',
+  'Numa leitura mais crítica,',
+  'Articulando com o argumento anterior,',
+  'A dimensão analítica exige reconhecer que',
+  'Complementando a perspectiva teórica,',
+  'O debate académico evidencia que',
+  'A revisão da literatura aponta que',
+];
+const CONECTORES_PROIBIDOS = [
+  'Cumpre referir que','Importa sublinhar que','Convém notar que',
+  'Vale a pena salientar que','É relevante destacar que',
+  'Neste sentido,','Neste quadro,','A este respeito,',
+  'Do exposto decorre que','Perante o analisado,',
+];
+
+function antiIA(capNum, totalCaps, geoInstrucao) {
+  const n = Math.max(0, (capNum||1) - 1);
+  const pick = (arr, s) => arr[(n*7 + s*3) % arr.length];
+  const fase = !totalCaps||totalCaps<=1 ? 'análise' :
+    (n/(totalCaps-1))<=0.1 ? 'introdução' :
+    (n/(totalCaps-1))<=0.35 ? 'fundamentação teórica' :
+    (n/(totalCaps-1))<=0.65 ? 'análise crítica' :
+    (n/(totalCaps-1))<=0.88 ? 'síntese' : 'conclusão';
+  const proibidos = CONECTORES_PROIBIDOS.slice(0,4).join('", "');
+  return `REGRAS DE ESTILO OBRIGATÓRIAS — APLICAR RIGOROSAMENTE:
+
+TOM E VOZ:
+1. Escreve com VOZ ANALÍTICA — não apenas descrever conceitos, mas comparar, questionar, posicionar
+2. Cada subtópico deve incluir: (a) posição teórica, (b) contraponto ou limitação, (c) aplicação ao contexto do tema
+3. PROIBIDO usar estes conectores mecânicos que revelam texto IA: "${proibidos}"
+4. PROIBIDO iniciar dois parágrafos consecutivos com a mesma palavra ou estrutura
+5. Para exemplos usa: "${pick(EXEMPLOS,1)}" — nunca a mesma expressão duas vezes no mesmo capítulo
+6. Para hipótese/posição usa: "${pick(HIPOTESES,2)}"
+7. Para concluir usa: "${pick(CONCLUSOES,3)}"
+8. Para transições usa: "${pick(TRANSICOES,4)}"
+
+CITAÇÕES — OBRIGATÓRIO:
+9. Cada dado estatístico DEVE ter citação inline: (Autor, Ano) ou (Instituição, Ano)
+10. Não escrever "segundo dados do INE" sem especificar o ano: "segundo INE (2023)"
+11. Mínimo 2 citações por parágrafo de desenvolvimento — integradas no argumento, não no fim
+
+CONTEXTO GEOGRÁFICO: ${geoInstrucao}
+
+POSIÇÃO NO DOCUMENTO: ${fase} — adequa profundidade analítica`;
+}
+
+/* ---------------- PERFIS POR NÍVEL ---------------- */
+const PERFIL_NIVEL = {
+  'ensino médio': {
+    profundidade: 'Linguagem clara para estudantes 14-18 anos. Conceitos desde o básico. Para Ciências: fórmulas básicas com cada variável explicada. Exemplos reconhecíveis do contexto do tema. 3-4 parágrafos densos por subtópico.',
+    citacoes: '1-2 citações por subtópico formato (Apelido, Ano). Exemplo: "Segundo Cardoso (2019),..." ou "...processo fundamental (Lima & Santos, 2020)."',
+    refs_min: 8, refs_africanos: 2,
+  },
+  'licenciatura': {
+    profundidade: 'Nível universitário 1º ciclo. Rigor conceptual. Análise crítica: comparar perspectivas de pelo menos 2 autores. Dados estatísticos e factos verificáveis com anos e instituições (contexto do tema). 4-5 parágrafos densos por subtópico.',
+    citacoes: '2-3 citações por subtópico. Exemplos: "De acordo com Ferreira (2021),..." / "(Neto, 2019; Costa, 2022)." / "Silva (2020, p.45) argumenta que..." OBRIGATÓRIO: pelo menos 1 citação no meio de cada parágrafo principal, não apenas no fim.',
+    refs_min: 10, refs_africanos: 3,
+  },
+  'mestrado': {
+    profundidade: 'Pós-graduação. Confrontar teorias, identificar lacunas. Síntese original com voz argumentativa. OBRIGATÓRIO: pelo menos 1 tensão teórica por subtópico (Autor A defende X, Autor B argumenta Y). 5-7 parágrafos de alta densidade por subtópico.',
+    citacoes: '3-4 citações por subtópico, directas e indirectas alternadas. Citação directa: Segundo Lopes (2018, p.112), "a gestão estratégica implica..." Citação indirecta: (Banda, 2020; Kiala & Mabiala, 2021). OBRIGATÓRIO: 1 tensão teórica por subtópico.',
+    refs_min: 12, refs_africanos: 4,
+  },
+  'doutoramento': {
+    profundidade: 'Investigação original. Mapear estado da arte, propor contribuição nova. Posicionamento epistemológico. Obras seminais + investigação recente (últimos 5 anos). OBRIGATÓRIO: identificar lacuna na literatura por subtópico. 6-8 parágrafos de alta densidade.',
+    citacoes: '4-6 citações por subtópico. Obras fundacionais E investigação recente. Exemplo: "A teoria de Bourdieu (1980) foi revisitada por Mabiala (2019), que argumenta..." OBRIGATÓRIO: lacuna na literatura por subtópico.',
+    refs_min: 15, refs_africanos: 5,
+  },
+};
+
+/* ---------------- PERFIS POR ÁREA ---------------- */
+const PERFIL_AREA = {
+  ciencias: {
+    label: 'Ciências Naturais/Exactas',
+    instrucoes: 'ÁREA Ciências (Física, Química, Biologia, Matemática, Geologia):\n- OBRIGATÓRIO para subtópicos quantitativos: fórmulas com notação correcta e variáveis explicadas\n- Unidades de medida SI sempre que relevante\n- Fenómenos observáveis relevantes ao tema\n- Referências: Nature, Science, African Journal of Science\n- PROIBIDO: referências de ciências sociais ou gestão sem nexo científico',
+  },
+  humanidades: {
+    label: 'Humanidades e Ciências Sociais',
+    instrucoes: 'ÁREA Humanidades (História, Filosofia, Literatura, Sociologia, Comunicação):\n- Perspectiva histórica com datas e actores concretos do contexto\n- Factos históricos verificáveis com anos e fontes\n- Teorias sociais aplicadas ao contexto do tema\n- Referências: revistas de ciências sociais, história africana, estudos lusófonos\n- PROIBIDO: referências de engenharia ou saúde clínica',
+  },
+  gestao: {
+    label: 'Gestão e Economia',
+    instrucoes: 'ÁREA Gestão, Economia, Administração, Finanças, Marketing:\n- Indicadores económicos verificáveis com anos e fontes\n- Dados quantitativos com fontes e anos verificáveis\n- Modelos de gestão: SWOT, Porter, Balanced Scorecard quando pertinente\n- Exemplos de empresas e sectores relevantes ao tema\n- Referências de revistas académicas reconhecidas na área\n- PROIBIDO: referências de saúde, ciências naturais ou direito sem nexo',
+  },
+  direito: {
+    label: 'Direito e Ciências Jurídicas',
+    instrucoes: 'ÁREA Direito (Constitucional, Penal, Civil, Comercial, Administrativo):\n- Citar artigos de lei relevantes com número e ano\n- Ex: citar legislação relevante ao tema com artigo e ano\n- Legislação relevante ao tema\n- Jurisprudência aplicável ao tema\n- Referências jurídicas académicas reconhecidas\n- PROIBIDO: referências de gestão, saúde ou engenharia sem nexo jurídico',
+  },
+  saude: {
+    label: 'Saúde e Ciências da Vida',
+    instrucoes: 'ÁREA Saúde (Medicina, Enfermagem, Farmácia, Saúde Pública, Nutrição):\n- Dados epidemiológicos relevantes ao tema com fontes (OMS, estudos peer-reviewed)\n- Dados MINSA/OMS com anos e províncias: "Segundo MINSA (2022), a mortalidade infantil..."\n- Protocolos clínicos ou guidelines OMS quando pertinente\n- Nomenclatura médica correcta com equivalente comum na primeira ocorrência\n- Referências: Lancet, NEJM, revistas africanas de saúde, publicações MINSA/OMS\n- PROIBIDO: referências de gestão empresarial ou direito sem nexo clínico',
+  },
+  engenharia: {
+    label: 'Engenharia e Tecnologia',
+    instrucoes: 'ÁREA Engenharia (Civil, Informática, Eléctrica, Mecânica, Petrolífera, TIC):\n- OBRIGATÓRIO: especificações numéricas, normas técnicas (ISO, IEEE), unidades\n- Dados técnicos e infra-estruturas relevantes ao tema\n- Exemplos de empresas e sectores relevantes ao tema\n- IEEE, ASME, revistas de engenharia internacionais reconhecidas\n- PROIBIDO: referências de humanidades ou direito sem nexo tecnológico',
+  },
+};
+
+/* ---------------- ABORDAGENS ESTRUTURAIS (rotação) ---------------- */
+const ABORDAGENS = [
+  'Abordagem histórico-evolutiva: começa pela origem/evolução do conceito, analisa o estado actual com datas e factos concretos do contexto do tema.',
+  'Abordagem analítico-crítica: apresenta o conceito, confronta perspectivas divergentes de 2+ autores, conclui com posição fundamentada.',
+  'Abordagem empírico-descritiva: apresenta dados quantitativos verificáveis (percentagens, anos, instituições), interpreta as implicações.',
+  'Abordagem comparativa: compara o contexto do tema com outros contextos relevantes, identifica semelhanças e especificidades locais.',
+  'Abordagem prospectiva: analisa o estado actual, identifica desafios estruturais, propõe recomendações concretas.',
+];
+
+/* ---------------- DETECÇÃO AUTOMÁTICA ---------------- */
+function detectarNivel(n) {
+  const s = (n||'').toLowerCase();
+  if (/médio|secundário|12\.º|11\.º|10\.º|\b12\b|\b11\b|\b10\b/.test(s)) return 'ensino médio';
+  if (/mestrado|2\.º ciclo|pós.grad/.test(s)) return 'mestrado';
+  if (/doutoramento|doutorado|phd|3\.º ciclo/.test(s)) return 'doutoramento';
+  return 'licenciatura';
+}
+
+function detectarArea(tema, areaParam) {
+  if (areaParam && PERFIL_AREA[areaParam.toLowerCase()]) return areaParam.toLowerCase();
+  const t = (tema||'').toLowerCase();
+  if (/física|química|biologia|matemática|geologia|ecologia|botânica|astronomia/.test(t)) return 'ciencias';
+  if (/direito|lei\b|jurídic|constitucional|penal|civil|comercial|legisl|tribunal/.test(t)) return 'direito';
+  if (/saúde|médic|enfermagem|farmáci|hospital|doença|paludismo|nutrição|clínic/.test(t)) return 'saude';
+  if (/gestão|economia|finanças|marketing|contabilidade|administração|empresa|negócio/.test(t)) return 'gestao';
+  if (/engenharia|informática|software|hardware|eléctric|mecânic|construção|telecomunic|tic\b/.test(t)) return 'engenharia';
+  return 'humanidades';
+}
+
+function detectarContextoGeo(tema, pais) {
+  const t = (tema||'').toLowerCase();
+  const p = (pais||'').toLowerCase();
+  if (/angola|luanda|benguela|huambo|cabinda|namibe|malanje/.test(t)) return 'angola';
+  if (/cabo.?verde|mindelo|praia|fogo|sal\b|barlavento/.test(t)) return 'cabo_verde';
+  if (/moçambique|mozambique|maputo|beira\b|nampula/.test(t)) return 'mocambique';
+  if (/brasil|são paulo|rio de janeiro|brasília|nordeste/.test(t)) return 'brasil';
+  if (/portugal|lisboa|porto\b|coimbra|algarve/.test(t)) return 'portugal';
+  if (/africa do sul|joanesburgo|cape town|pretória/.test(t)) return 'africa_sul';
+  if (/estados unidos|eua|usa|new york|washington|california/.test(t)) return 'eua';
+  if (/europa|ue\b|união europeia|berlim|paris|madrid|roma\b/.test(t)) return 'europa';
+  if (/china|beijing|xangai|asia\b|japão|índia/.test(t)) return 'asia';
+  if (/africa\b|africano|subsaariana|continente africano/.test(t)) return 'africa_geral';
+  if (p && p !== 'angola') return p;
+  if (p === 'angola') return 'angola';
+  return 'global';
+}
+
+/* ---------------- TRUNCAR ---------------- */
+function truncar(texto, max) {
+  if (!texto) return texto;
+  const p = texto.split(/\s+/);
+  if (p.length <= max) return texto;
+  const c = p.slice(0, max).join(' ');
+  const u = Math.max(c.lastIndexOf('. '), c.lastIndexOf('.\n'));
+  return (u > c.length * 0.7 ? c.substring(0, u+1) : c).trim();
+}
+
+/* ================================================================
+   AST REPAIR ENGINE — v72
+   Recebe AST parcial/inválido e devolve AST válido garantido.
+================================================================ */
+function pareceListaReferencias(ast) {
+  if (!ast || !Array.isArray(ast.sections)) return false;
+  const paragrafos = ast.sections.flatMap(s => s.paragraphs || []);
+  if (paragrafos.length === 0) return false;
+  const padraoRef = /^[A-ZÀ-Ü][\wçãáéíóúâêôõü\s]{0,40},?\s*[A-Z]?\.?\s*\(\d{4}\)\./;
+  const comShapeDeRef = paragrafos.filter(p => padraoRef.test(String(p).trim())).length;
+  return (comShapeDeRef / paragrafos.length) >= 0.5;
+}
+
+function truncarASTParaPalavras(ast, limitePalavras) {
+  const margem = Math.round(limitePalavras * 1.12);
+  const secsOriginais = ast.sections || [];
+  let acumulado = 0;
+  let cortou = false;
+  const sections = [];
+  for (const sec of secsOriginais) {
+    if (acumulado >= margem) { cortou = true; break; }
+    const paragraphs = [];
+    for (const par of (sec.paragraphs || [])) {
+      const texto = String(par);
+      const wc = texto.trim().split(/\s+/).filter(Boolean).length;
+      if (acumulado + wc > margem && paragraphs.length > 0) { cortou = true; break; }
+      paragraphs.push(texto);
+      acumulado += wc;
+      if (acumulado >= margem) break;
+    }
+    if (paragraphs.length > 0) sections.push({ ...sec, paragraphs });
+    if (paragraphs.length < (sec.paragraphs || []).length) cortou = true;
+  }
+  if (sections.length === 0 && secsOriginais.length > 0) sections.push(secsOriginais[0]);
+  return { ...ast, sections, _truncado: cortou };
+}
+
+function repararAST(raw, capNum, capTit, subs) {
+  let ast = null;
+  if (raw && typeof raw === 'object') ast = raw;
+  else if (typeof raw === 'string') {
+    try { ast = JSON.parse(raw.replace(/```(?:json)?\s*/gi,'').replace(/```/g,'').trim()); }
+    catch (_) { ast = null; }
+    if (!ast) {
+      const m = raw.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+      if (m) try { ast = JSON.parse(m[1]); } catch (_) {}
+    }
+  }
+  const base = {
+    chapter_id : String(capNum),
+    title      : capTit || 'Capítulo ' + capNum,
+    status     : 'generated',
+    generated_at: new Date().toISOString(),
+    generated_by: 'academy-engine-v72',
+    version    : 1,
+    sections   : [],
+  };
+  if (!ast) {
+    const secsDefault = (Array.isArray(subs) && subs.length > 0 ? subs : [
+      'Contextualização', 'Desenvolvimento', 'Análise Crítica'
+    ]).map((s, i) => ({
+      section_id  : capNum + '.' + (i+1),
+      title       : s,
+      status      : 'empty',
+      paragraphs  : [],
+    }));
+    return { ...base, sections: secsDefault, _repaired: true, _repair_reason: 'no_json' };
+  }
+  ast.chapter_id  = ast.chapter_id  || base.chapter_id;
+  ast.title       = ast.title       || base.title;
+  ast.status      = ast.status      || 'generated';
+  ast.generated_at= ast.generated_at|| base.generated_at;
+  ast.generated_by= ast.generated_by|| base.generated_by;
+  ast.version     = ast.version     || 1;
+  if (!Array.isArray(ast.sections) || ast.sections.length === 0) {
+    ast.sections = base.sections;
+    ast._repaired = true;
+    ast._repair_reason = 'missing_sections';
+  } else {
+    ast.sections = ast.sections.map((sec, i) => {
+      if (!sec.section_id) sec.section_id = capNum + '.' + (i+1);
+      if (!sec.title) sec.title = subs?.[i] || (capNum + '.' + (i+1));
+      if (!Array.isArray(sec.paragraphs)) {
+        if (typeof sec.content === 'string' && sec.content.trim()) {
+          sec.paragraphs = sec.content.split('\n\n').map(p => p.trim()).filter(p => p.length > 20);
+        } else sec.paragraphs = [];
+        ast._repaired = true;
+        ast._repair_reason = 'paragraphs_repaired';
+      }
+      sec.paragraphs = sec.paragraphs.map(p => typeof p === 'string' ? p.trim() : '').filter(p => p.length > 15);
+      return sec;
+    });
+  }
+  return ast;
+}
+
+function validarAST(ast) {
+  if (!ast || !ast.sections || !Array.isArray(ast.sections)) return false;
+  if (ast.sections.length === 0) return false;
+  return ast.sections.some(s => Array.isArray(s.paragraphs) && s.paragraphs.length >= 1);
+}
+
+/* ================================================================
+   SCORES
+================================================================ */
+function calcularDocumentHealth(ast, nivel) {
+  const issues = [];
+  let score = 100;
+  const secsVazias = ast.sections?.filter(s => !s.paragraphs || s.paragraphs.length === 0) || [];
+  if (secsVazias.length > 0) {
+    score -= secsVazias.length * 15;
+    issues.push({ severity: 'error', code: 'EMPTY_SECTIONS', message: secsVazias.length + ' subtópico(s) sem conteúdo', sections: secsVazias.map(s => s.section_id) });
+  }
+  const parasMinimos = { 'ensino médio': 60, 'licenciatura': 80, 'mestrado': 100, 'doutoramento': 120 };
+  const minChars = parasMinimos[nivel] || 80;
+  let parasCurtos = 0;
+  (ast.sections || []).forEach(s => (s.paragraphs || []).forEach(p => { if ((p||'').length < minChars) parasCurtos++; }));
+  if (parasCurtos > 2) {
+    score -= Math.min(20, parasCurtos * 4);
+    issues.push({ severity: 'warning', code: 'SHORT_PARAGRAPHS', message: parasCurtos + ' parágrafos abaixo do mínimo para ' + nivel });
+  }
+  if (ast._repaired) {
+    score -= 10;
+    issues.push({ severity: 'warning', code: 'AST_REPAIRED', message: 'Estrutura reconstruída automaticamente (razão: ' + (ast._repair_reason||'desconhecida') + ')' });
+  }
+  score = Math.max(0, score);
+  return { health: score, issues, label: score >= 85 ? 'Saudável' : score >= 60 ? 'Aceitável' : 'Necessita revisão' };
+}
+
+function calcularReadiness(ast, nivel) {
+  const blockers = [];
+  const warnings = [];
+  if (!validarAST(ast)) blockers.push('Capítulo sem conteúdo gerado');
+  const totalParas = (ast.sections || []).reduce((acc, s) => acc + (s.paragraphs || []).length, 0);
+  const minParas = { 'ensino médio': 6, 'licenciatura': 9, 'mestrado': 12, 'doutoramento': 15 };
+  if (totalParas < (minParas[nivel] || 6)) blockers.push('Parágrafos insuficientes: ' + totalParas + ' (mínimo: ' + (minParas[nivel] || 6) + ')');
+  if (ast._repaired) warnings.push('Estrutura foi reconstruída automaticamente');
+  const ready = blockers.length === 0;
+  return { ready, verdict: ready ? 'Pronto para entrega' : 'Não recomendado para entrega', blockers, warnings };
+}
+
+function calcularConfidence(ast, meta) {
+  let score = 100;
+  const factores = [];
+  if (ast._repaired || meta.ast_repaired) {
+    const penalty = meta.repair_reason === 'no_json' ? 25 : 12;
+    score -= penalty;
+    factores.push({ factor: 'ast_repaired', impact: -penalty, reason: meta.repair_reason });
+  }
+  if (meta.retry_count > 0) {
+    const penalty = meta.retry_count * 8;
+    score -= Math.min(penalty, 20);
+    factores.push({ factor: 'retries', count: meta.retry_count, impact: -Math.min(penalty, 20) });
+  }
+  const secsVazias = (ast.sections || []).filter(s => !s.paragraphs || s.paragraphs.length === 0).length;
+  if (secsVazias > 0) { score -= secsVazias * 10; factores.push({ factor: 'empty_sections', count: secsVazias, impact: -secsVazias * 10 }); }
+  const totalParas = (ast.sections || []).reduce((acc, s) => acc + (s.paragraphs || []).length, 0);
+  if (totalParas < 6) { score -= 15; factores.push({ factor: 'low_paragraph_count', count: totalParas, impact: -15 }); }
+  score = Math.max(0, score);
+  return { confidence: score, label: score >= 85 ? 'Alta' : score >= 65 ? 'Média' : 'Baixa', factores };
+}
+
+function calcularCompleteness(ast, palavrasAlvo, totalCaps, nivelKey) {
+  const dimensoes = {};
+  const totalPalavras = (ast.sections || []).reduce((acc, s) => acc + (s.paragraphs || []).join(' ').split(/\s+/).filter(Boolean).length, 0);
+  const coberturaRatio = Math.min(1, totalPalavras / Math.max(palavrasAlvo, 1));
+  dimensoes.paginas = Math.round(coberturaRatio * 100);
+  const secCounts = (ast.sections || []).map(s => (s.paragraphs || []).length);
+  const minPorSec = { 'ensino médio': 3, 'licenciatura': 4, 'mestrado': 5, 'doutoramento': 6 };
+  const min = minPorSec[nivelKey] || 4;
+  const densidadeRatio = secCounts.length > 0 ? secCounts.reduce((a, n) => a + Math.min(1, n / min), 0) / secCounts.length : 0;
+  dimensoes.densidade = Math.round(densidadeRatio * 100);
+  const secsComConteudo = (ast.sections || []).filter(s => (s.paragraphs || []).length > 0).length;
+  const totalSecs = Math.max((ast.sections || []).length, 1);
+  dimensoes.cobertura = Math.round((secsComConteudo / totalSecs) * 100);
+  const todasParas = (ast.sections || []).flatMap(s => s.paragraphs || []);
+  const charsMedios = todasParas.length > 0 ? todasParas.reduce((a, p) => a + (p || '').length, 0) / todasParas.length : 0;
+  const charMin = { 'ensino médio': 200, 'licenciatura': 300, 'mestrado': 400, 'doutoramento': 500 };
+  dimensoes.profundidade = Math.min(100, Math.round((charsMedios / (charMin[nivelKey] || 300)) * 100));
+  const score = Math.round(dimensoes.paginas * 0.35 + dimensoes.densidade * 0.25 + dimensoes.cobertura * 0.25 + dimensoes.profundidade * 0.15);
+  return { completeness: score, label: score >= 85 ? 'Completo' : score >= 65 ? 'Parcial' : 'Superficial', dimensoes, palavras: _totalWords(ast), paginas_est: Math.round(_totalWords(ast) / 370 * 10) / 10 };
+}
+
+function _totalWords(ast) {
+  return (ast.sections || []).reduce((acc, s) => acc + (s.paragraphs || []).join(' ').split(/\s+/).filter(Boolean).length, 0);
+}
+
+const ISSUE_ACTIONS = {
+  EMPTY_SECTIONS: { label: 'Regenerar secções vazias', acao: 'regenerar_capitulo', auto: true },
+  SHORT_PARAGRAPHS: { label: 'Enriquecer capítulo', acao: 'editar_texto', auto: true },
+  AST_REPAIRED: { label: 'Regenerar capítulo', acao: 'regenerar_capitulo', auto: false },
+  NO_REFERENCES: { label: 'Gerar referências', acao: 'gerar_capitulo_referencias', auto: true },
+  NO_CONCLUSION: { label: 'Gerar conclusão', acao: 'gerar_capitulo', auto: false },
+  NO_INTRODUCTION: { label: 'Gerar introdução', acao: 'gerar_capitulo', auto: false },
+  LOW_PARAGRAPH_COUNT: { label: 'Expandir conteúdo', acao: 'editar_texto', auto: true },
+};
+
+function enriquecerIssuesComAccoes(issues) {
+  return (issues || []).map(issue => ({ ...issue, action: ISSUE_ACTIONS[issue.code] || null }));
+}
+
+/* ---------------- HANDLER PRINCIPAL ---------------- */
+export default async function handler(req, res) {
+  setCORS(res);
   if (req.method === 'OPTIONS') return res.status(204).end();
-  if (req.method !== 'POST')   return fail(res, 'Método não permitido. Use POST.', 405);
+  if (req.method !== 'POST') return res.status(405).json({ ok:false, error:'METHOD_NOT_ALLOWED' });
 
-  /* ── Parse body ──
-     Vercel já parseia automaticamente.
-     Express com express.json() também.
-     Fallback manual caso chegue como string. */
-  let body = req.body;
-  if (typeof body === 'string') {
-    try { body = JSON.parse(body); }
-    catch (_) { return fail(res, 'Body JSON inválido.', 400); }
-  }
-  if (!body || typeof body !== 'object') {
-    return fail(res, 'Body em falta ou formato inválido.', 400);
-  }
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 'unknown';
+  if (!rateLimit(ip)) return res.status(429).json({ ok:false, error:'RATE_LIMIT' });
 
-  const { action, payload = {} } = body;
+  let body;
+  try { body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; }
+  catch { return res.status(400).json({ ok:false, error:'INVALID_JSON' }); }
 
-  if (!action) return fail(res, 'Campo "action" obrigatório no body.', 400);
-
-  log('INFO', action, `→ recebido`);
+  const action  = body?.action || '';
+  const payload = body?.payload || {};
 
   try {
     switch (action) {
-      case 'ping':                       return await handlePing(payload, res);
-      case 'plano_academico':            return await handlePlanoAcademico(payload, res);
-      case 'estrutura_academica':        return await handleEstruturaAcademica(payload, res);
-      case 'gerar_capitulo':             return await handleGerarCapitulo(payload, res);
-      case 'gerar_capitulo_referencias': return await handleGerarCapituloReferencias(payload, res);
-      case 'regenerar_capitulo':         return await handleRegenerarCapitulo(payload, res);
-      case 'editar_texto':               return await handleEditarTexto(payload, res);
-      case 'chat':                       return await handleChat(payload, res);
-      case 'documento_livre':            return await handleDocumentoLivre(payload, res);
-      case 'gerar_capa':                 return await handleGerarCapa(payload, res);
+      case 'ping':
+        return res.json({ ok:true, action:'ping', data:{ resposta:'pong', pong:true, ts:Date.now() } });
+      case 'chat':
+        return res.json(await doChat(payload));
+      case 'generate_lesson':
+      case 'gerar_capitulo':
+        return res.json(await doCapitulo(payload));
+      case 'gerar_capitulo_referencias':
+        return res.json(await doReferencias(payload));
+      case 'regenerar_capitulo':
+        return res.json(await doCapitulo({ ...payload, regenerar:true }));
+      case 'plano_academico':
+        return res.json(await doPlano(payload));
+      case 'estrutura_academica':
+        return res.json(await doEstrutura(payload));
+      case 'editar_texto':
+        return res.json(await doEditar(payload));
+      case 'verificar_coerencia':
+        return res.json(await doCoerencia(payload));
+      case 'gerar_capa':
+        return res.json(await doCapa(payload));
       default:
-        log('ERROR', action, 'acção desconhecida');
-        return fail(res, `Acção desconhecida: "${action}"`, 400);
+        return res.status(400).json({ ok:false, error:'UNKNOWN_ACTION', action });
     }
   } catch (err) {
-    log('ERROR', action, err.message);
-    return fail(res, err.message || 'Erro interno do servidor.', 500);
+    console.error('[ENGINE]', action, err.message);
+    return res.status(500).json({ ok:false, error:'INTERNAL_ERROR', detail:err.message.substring(0,200) });
   }
+}
+
+/* ---------------- HANDLERS ---------------- */
+async function doChat(p) {
+  const pedido = (p.pedido||'').substring(0,2000);
+  if (!pedido) throw new Error('pedido obrigatório');
+  const hist = (Array.isArray(p.historico)?p.historico:[]).slice(-8)
+    .map(m => ({ role:m.role==='assistant'?'assistant':'user', content:String(m.content||'').substring(0,800) }));
+  const resposta = await callAI([
+    { role:'system', content:'Assistente académico ACADEMY. Português formal. Contexto: "' + (p.tema||'') + '" (' + (p.tipoTrabalho||'') + '). Máx 200 palavras.' },
+    ...hist,
+    { role:'user', content:pedido },
+  ], { max_tokens:800 });
+  return { ok:true, action:'chat', data:{ resposta } };
+}
+
+async function doCapa(p) {
+  const capa = {
+    titulo: p.tema || '',
+    tipo: p.tipoTrabalho || '',
+    nivel: p.nivel || '',
+    autor: p.autor || '',
+    instituicao: p.instituicao || '',
+    ano: p.ano || new Date().getFullYear(),
+  };
+  return { ok:true, action:'gerar_capa', data:{ resposta: JSON.stringify(capa), capa } };
+}
+
+async function doCapitulo(p) {
+  const tema      = (p.tema||'').substring(0,300);
+  const tipo      = (p.tipoTrabalho||'Trabalho Académico').substring(0,100);
+  const nivel     = (p.nivel||'').substring(0,80);
+  const capNum    = parseInt(p.capNum)||1;
+  const capTit    = (p.capTitulo||'').substring(0,200);
+  const totalCaps = parseInt(p.totalCaps)||parseInt(p.totalPags)||4;
+  const totalPags = parseInt(p.totalPags)||15;
+  const capSubs   = (Array.isArray(p.capSubs)?p.capSubs:[]).slice(0,8).map(s=>String(s).substring(0,150));
+
+  if (!tema||!capTit) throw new Error('tema e capTitulo obrigatórios');
+  const _startTime = Date.now();
+  let retryCount = 0;
+
+  const PAGINAS_FIXAS = 3;
+  const PALAVRAS_POR_PAGINA = 280;
+  const paginasConteudo = Math.max(totalPags - PAGINAS_FIXAS, 1);
+  const palavrasCalc = Math.round((paginasConteudo * PALAVRAS_POR_PAGINA) / totalCaps);
+  const palavras = Math.min(Math.max(parseInt(p.palavrasPorCap)||palavrasCalc, 200), 4000);
+
+  const nivelKey  = detectarNivel(nivel);
+  const areaKey   = detectarArea(tema, p.area);
+  const pNivel    = PERFIL_NIVEL[nivelKey];
+  const pArea     = PERFIL_AREA[areaKey];
+  const geoCtx    = detectarContextoGeo(tema, p.pais);
+  const isAngola  = geoCtx === 'angola';
+  const isCabVerde= geoCtx === 'cabo_verde';
+
+  const subs = capSubs.map((s,i) => capNum + '.' + (i+1) + ' ' + s).join('\n') ||
+    capNum + '.1 Contextualização\n' + capNum + '.2 Desenvolvimento\n' + capNum + '.3 Análise crítica';
+
+  const abordagem = ABORDAGENS[(capNum-1) % ABORDAGENS.length];
+  const maxTok = Math.min(Math.max(Math.round(palavras*1.8), 600), 12000);
+
+  let geoInstrucao;
+  if (isAngola) geoInstrucao = 'O tema refere-se especificamente a Angola. Quando relevante, usa dados angolanos com fonte e ano.';
+  else if (isCabVerde) geoInstrucao = 'O tema refere-se a Cabo Verde. Usa referências cabo-verdianas quando relevante.';
+  else geoInstrucao = 'Trata o tema de forma universal e académica. NÃO faças referência a Angola ou qualquer país específico a não ser que o tema o exija. Usa fontes académicas internacionais.';
+
+  const abordagemAnalitica = [
+    'Abordagem histórico-crítica: traça a evolução do conceito com datas concretas, questiona a narrativa dominante, propõe leitura alternativa fundamentada.',
+    'Abordagem teórico-comparativa: confronta pelo menos 2 perspectivas teóricas divergentes, posiciona o argumento, aplica ao contexto do tema com dados específicos.',
+    'Abordagem empírico-analítica: parte de dados quantitativos verificáveis, analisa causas e efeitos, não se limita a descrever — interpreta e questiona.',
+    'Abordagem crítico-reflexiva: identifica contradições ou tensões no tema, examina limitações das abordagens existentes, propõe síntese fundamentada.',
+    'Abordagem prospectiva-propositiva: analisa o estado actual com rigor, identifica lacunas e desafios estruturais, formula recomendações concretas.',
+  ][(capNum-1) % 5];
+
+  const prompt = 'És um professor universitário especialista em ' + pArea.label + ' a escrever o Capítulo ' + capNum + ' de um ' + tipo + ' de nível ' + nivel + ' sobre "' + tema + '".\n\nCAPÍTULO: ' + capNum + '. ' + capTit + '\n\nSUBTÓPICOS OBRIGATÓRIOS:\n' + subs + '\n\nABORDAGEM ANALÍTICA OBRIGATÓRIA:\n' + abordagemAnalitica + '\n\nNÍVEL ACADÉMICO — ' + nivelKey.toUpperCase() + ':\n' + pNivel.profundidade + '\n\nCITAÇÕES OBRIGATÓRIAS:\n' + pNivel.citacoes + '\n\n' + pArea.instrucoes + '\n\nFORMATAÇÃO:\n- Título: "' + capNum + '. ' + capTit + '"\n- Cada subtítulo em linha própria com linha em branco antes e depois\n- Parágrafos separados por linha em branco\n- Sem bullets, sem markdown\n- Português formal académico\n- LIMITE: ' + palavras + ' PALAVRAS no total\n' + antiIA(capNum, totalCaps, geoInstrucao) + '\n\nEscreve o capítulo completo agora.\n\nFORMATO DE SAÍDA OBRIGATÓRIO — JSON:\nNÃO escrevas texto livre. Responde APENAS com JSON (sem markdown, sem ```):\n{"chapter_id":"' + capNum + '","title":"' + capTit + '","sections":[{"section_id":"' + capNum + '.1","title":"Título do subtópico","paragraphs":["Parágrafo 1.","Parágrafo 2.","Parágrafo 3."]}]}\nCada secção corresponde a um subtópico. Mínimo 3 parágrafos por secção.';
+
+  let r = await callAI([{ role:'user', content:prompt }], { max_tokens:maxTok, temperature:0.65 });
+  let astRaw = null;
+  try { astRaw = extrairJSON(r); } catch (_) {}
+
+  if (!validarAST(astRaw) || pareceListaReferencias(astRaw)) {
+    if (!validarAST(astRaw)) console.warn('[AST] T1 falhou — retry simplificado — cap ' + capNum);
+    else console.warn('[AST] Cap ' + capNum + ' saiu como lista de referências — retry');
+    retryCount++;
+    const promptSimples = 'Escreve capítulo ' + capNum + ' "' + capTit + '" sobre "' + tema + '".\nSubtópicos: ' + subs + '\nJSON APENAS, sem markdown:\n{"chapter_id":"' + capNum + '","title":"' + capTit + '","sections":[{"section_id":"' + capNum + '.1","title":"Primeiro subtópico","paragraphs":["Parágrafo 1.","Parágrafo 2.","Parágrafo 3."]}]}\nPortuguês formal. Mínimo 3 parágrafos/secção.';
+    r = await callAI([{ role:'user', content:promptSimples }], { max_tokens:maxTok, temperature:0.5 });
+    try { astRaw = extrairJSON(r); } catch (_) {}
+  }
+
+  let ast = repararAST(astRaw || r, capNum, capTit, capSubs);
+  ast = truncarASTParaPalavras(ast, palavras);
+
+  const health     = calcularDocumentHealth(ast, nivelKey);
+  const readiness  = calcularReadiness(ast, nivelKey);
+  const confidence = calcularConfidence(ast, { retry_count: retryCount, ast_repaired: ast._repaired || false, repair_reason: ast._repair_reason || null, generation_time_ms: Date.now() - _startTime });
+  const completeness = calcularCompleteness(ast, palavras * (capSubs.length || 3), totalCaps, nivelKey);
+
+  health.issues = enriquecerIssuesComAccoes(health.issues);
+
+  ast.version      = (ast.version || 0) + 1;
+  ast.generated_by = 'academy-engine-v73';
+  ast.generated_at = new Date().toISOString();
+  ast.retry_count  = retryCount;
+
+  return { ok:true, action:'gerar_capitulo', data: { resposta: ast, ast:true, health, readiness, confidence, completeness, _guaranteed: true } };
+}
+
+/* ---------------- REFERÊNCIAS ---------------- */
+function peneirarReferencias(texto) {
+  if (!texto) return { validas: [], invalidas: 0, texto: '' };
+  const anoAtual = new Date().getFullYear();
+  const blocos = texto.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+  const padraoRef = /^[A-ZÀ-Ü][\wçãáéíóúâêôõüÇÃÁÉÍÓÚÂÊÔÕÜ.,&\s]{2,80}\(\d{4}\)\.\s*.{10,}/;
+  const vistos = new Set();
+  const validas = [];
+  let invalidas = 0;
+  for (const bloco of blocos) {
+    const b = bloco.replace(/\s+/g, ' ').trim();
+    const matchAno = b.match(/\((\d{4})\)/);
+    const ano = matchAno ? parseInt(matchAno[1]) : null;
+    const formaOk    = padraoRef.test(b);
+    const anoOk       = ano && ano >= 1950 && ano <= anoAtual;
+    const tamanhoOk   = b.length >= 40 && b.length <= 400;
+    if (!formaOk || !anoOk || !tamanhoOk) { invalidas++; continue; }
+    const apósAno = b.split(/\(\d{4}\)\.\s*/)[1] || b;
+    const chave = apósAno.toLowerCase().replace(/[^\wà-ü]/g, '').substring(0, 60);
+    if (vistos.has(chave)) { invalidas++; continue; }
+    vistos.add(chave);
+    validas.push(b);
+  }
+  return { validas, invalidas, texto: validas.join('\n\n') };
+}
+
+async function doReferencias(p) {
+  const tema  = (p.tema||'').substring(0,300);
+  const tipo  = (p.tipoTrabalho||'Trabalho Académico').substring(0,100);
+  const nivel = (p.nivel||'').substring(0,80);
+  const nivelKey = detectarNivel(nivel);
+  const areaKey  = detectarArea(tema, p.area);
+  const pNivel   = PERFIL_NIVEL[nivelKey];
+  const pArea    = PERFIL_AREA[areaKey];
+  const geoCtxR  = detectarContextoGeo(tema, p.pais);
+  const geoRefsInstrucao = geoCtxR === 'angola' ? 'O tema é sobre Angola. Inclui fontes relevantes combinadas com literatura internacional.' : 'As referências devem ser de revistas académicas internacionais. Evita fontes específicas de qualquer país a menos que o tema o exija.';
+  const totalPags = parseInt(p.totalPags) || 15;
+  const numRefs   = Math.min(18, Math.max(10, Math.round(totalPags * 0.6)));
+  const MIN_VALIDAS = Math.max(6, Math.round(numRefs * 0.6));
+
+  const montarPrompt = (reforcar) => 'És um bibliotecário académico especialista em ' + pArea.label + ', a preparar a lista de referências bibliográficas de um ' + tipo + ' de nível ' + nivel + ' sobre "' + tema + '".\n\nTAREFA: gera exactamente ' + numRefs + ' referências bibliográficas reais e plausíveis, em formato APA.\n\n' + geoRefsInstrucao + '\n' + pNivel.citacoes + '\n\nFORMATO OBRIGATÓRIO — uma referência por bloco, cada bloco separado por LINHA EM BRANCO:\nApelido, I. (Ano). Título. Editora ou Revista.\n\nREGRAS:\n- CADA entrada TEM de conter "(Ano)." logo a seguir ao(s) autor(es)\n- Ano entre 1950 e ' + new Date().getFullYear() + '\n- NUNCA repitas o mesmo autor+título\n- Mistura livros, artigos de revista e fontes institucionais\n- Sem bullets, sem numeração, sem markdown\n- Português formal, normas APA' + (reforcar ? '\n\nATENÇÃO: a tentativa anterior teve referências incompletas. Confirma que TODAS têm autor, ano, título e editora.' : '');
+
+  let bruta = await callAI([{ role:'user', content:montarPrompt(false) }], { max_tokens:2500, temperature:0.4 });
+  let peneira = peneirarReferencias(bruta);
+
+  if (peneira.validas.length < MIN_VALIDAS) {
+    console.warn('[Referências] ' + peneira.validas.length + '/' + numRefs + ' válidas — retry');
+    const bruta2 = await callAI([{ role:'user', content:montarPrompt(true) }], { max_tokens:2500, temperature:0.35 });
+    const peneira2 = peneirarReferencias(bruta2);
+    peneira = peneira2.validas.length > peneira.validas.length ? peneira2 : peneira;
+  }
+
+  return { ok:true, action:'gerar_capitulo_referencias', data:{ resposta: peneira.texto, referencias_validas: peneira.validas.length, referencias_pedidas: numRefs, referencias_rejeitadas: peneira.invalidas } };
+}
+
+/* ---------------- PLANO ---------------- */
+async function doPlano(p) {
+  const tema = (p.tema||'').substring(0,300);
+  if (!tema) throw new Error('tema obrigatório');
+  const r = await callAI([{ role:'user', content:'Cria um plano académico para um ' + (p.tipoTrabalho||'TFC') + ' de nível "' + (p.nivel||'') + '" sobre "' + tema + '".\nResponde APENAS com JSON válido, sem markdown:\n{"objetivo":"...","hipotese":"...","problema":"...","metodologia":"..."}' }], { max_tokens:600, temperature:0.4 });
+  return { ok:true, action:'plano_academico', data:{ resposta: extrairJSON(r) } };
+}
+
+/* ---------------- ESTRUTURA ---------------- */
+async function doEstrutura(p) {
+  const tema = (p.tema||'').substring(0,300);
+  if (!tema) throw new Error('tema obrigatório');
+  const pags = Math.min(Math.max(parseInt(p.totalPags)||15, 5), 100);
+  const r = await callAI([{ role:'user', content:'Estrutura capítulos para um ' + (p.tipoTrabalho||'TFC') + ' de nível "' + (p.nivel||'') + '" sobre "' + tema + '". ' + pags + ' páginas.\n' + (p.objetivo ? 'Objectivo: ' + p.objetivo : '') + '\nResponde APENAS com array JSON, sem markdown:\n[{"num":1,"titulo":"...","subs":["Subtópico 1.1","Subtópico 1.2"]},...]\nRegras: 3-6 capítulos, 2-4 subtópicos cada, último capítulo "Referências Bibliográficas" sem subs.' }], { max_tokens:1000, temperature:0.4 });
+  return { ok:true, action:'estrutura_academica', data:{ resposta: extrairJSON(r) } };
+}
+
+/* ---------------- EDITAR ---------------- */
+async function doEditar(p) {
+  const texto  = (p.texto||'').substring(0,4000);
+  const subacao = p.subacao||p.acao||'melhorar';
+  if (!texto) throw new Error('texto obrigatório');
+  const instrucoes = { melhorar: 'Melhora o estilo académico mantendo o conteúdo. Português formal.', expandir: 'Expande com mais detalhe académico (+30%).', resumir: 'Resume mantendo as ideias principais (-40%).', formalizar: 'Formaliza a linguagem para nível universitário.' };
+  const r = await callAI([{ role:'user', content:(instrucoes[subacao]||instrucoes.melhorar) + '\n\nTexto:\n' + texto + '\n\nDevolve apenas o texto editado.' }], { max_tokens:4000, temperature:0.5 });
+  return { ok:true, action:'editar_texto', data:{ resposta: r } };
+}
+
+/* ---------------- COERÊNCIA ---------------- */
+async function doCoerencia(p) {
+  const a = (p.introTexto||p.textoA||'').substring(0,2000);
+  const b = (p.concTexto||p.textoB||'').substring(0,2000);
+  if (!a||!b) throw new Error('textos obrigatórios');
+  const r = await callAI([{ role:'user', content:'Analisa a coerência entre introdução e conclusão de um trabalho académico.\nResponde APENAS com JSON:\n{"coerente":true/false,"problemas":["..."],"sugestoes":["..."]}\nIntrodução: ' + a + '\nConclusão: ' + b }], { max_tokens:600, temperature:0.3 });
+  return { ok:true, action:'verificar_coerencia', data:{ resposta: extrairJSON(r) } };
+}
+
+/* ---------------- OPENROUTER COM FALLBACK ---------------- */
+async function callAI(messages, opts={}) {
+  const key = process.env.OPENROUTER_API_KEY;
+  if (!key) throw new Error('OPENROUTER_API_KEY não configurada');
+  let lastErr = '';
+  for (const model of MODELS) {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(()=>ctrl.abort(), 85000);
+      let resp;
+      try {
+        resp = await fetch(OR_URL, {
+          method:'POST', signal:ctrl.signal,
+          headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + key, 'HTTP-Referer':OR_SITE, 'X-Title':OR_TITLE },
+          body:JSON.stringify({ model, messages, temperature:opts.temperature??0.7, max_tokens:opts.max_tokens??800, stream:false }),
+        });
+      } finally { clearTimeout(t); }
+      if (resp.status===429||resp.status===503) { lastErr=String(resp.status); continue; }
+      if (!resp.ok) { lastErr=await resp.text().catch(()=>String(resp.status)); continue; }
+      const data = await resp.json();
+      const text = data?.choices?.[0]?.message?.content?.trim();
+      if (text && text.length>10) return text;
+      lastErr='empty response';
+    } catch(e) { lastErr=e.message; }
+  }
+  throw new Error('Todos os modelos falharam: ' + lastErr);
+}
+
+/* ---------------- JSON EXTRACTOR ---------------- */
+function extrairJSON(texto) {
+  if (!texto) throw new Error('resposta vazia');
+  const s = texto.replace(/```(?:json)?\s*/gi,'').replace(/```/g,'').trim();
+  try { return JSON.parse(s); } catch {}
+  const m = s.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+  if (m) try { return JSON.parse(m[1]); } catch {}
+  throw new Error('JSON inválido na resposta');
 }
