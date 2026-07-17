@@ -58,7 +58,9 @@ app.listen(PORT, () => {
 
   if (!key) {
     console.warn('⚠️  OPENROUTER_API_KEY não encontrada.');
-    console.warn('   Cria um ficheiro .env com:');
-    console.warn('   OPENROUTER_API_KEY=sk-or-v1-...\n');
+    console.warn('   Para usar modelos GRATUITOS:');
+    console.warn('   1. Cria conta em https://openrouter.ai (sem cartão)');
+    console.warn('   2. Gera uma API key em openrouter.ai/keys');
+    console.warn('   3. Cria .env com: OPENROUTER_API_KEY=sk-or-v1-...\n');
   }
 });

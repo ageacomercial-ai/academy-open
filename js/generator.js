@@ -598,7 +598,7 @@ function _mostrarErroValidacao(msg) {
     <div style="font-size:15px;font-weight:700;color:var(--t1);margin-bottom:8px">Campo obrigatório</div>
     <div style="font-size:13px;color:var(--t2);line-height:1.65;margin-bottom:20px">${msg}</div>
     <button onclick="document.getElementById('validacao-erro')?.remove();document.getElementById('validacao-overlay')?.remove()"
-      style="padding:12px 28px;border-radius:10px;background:linear-gradient(135deg,var(--b),var(--bd));border:none;color:#0A0F1A;font-family:var(--fu);font-size:14px;font-weight:700;cursor:pointer">
+      style="padding:12px 28px;border-radius:10px;background:linear-gradient(135deg,var(--b),var(--bd));border:none;color:var(--t-inv);font-family:var(--fu);font-size:14px;font-weight:700;cursor:pointer">
       OK, percebido
     </button>`;
   overlay.onclick = () => { div.remove(); overlay.remove(); };

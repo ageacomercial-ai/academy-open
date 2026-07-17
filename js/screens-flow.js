@@ -87,7 +87,7 @@ function sInicio() {
     </div>
 
     <!-- Badge do plano -->
-    <div onclick="irPara('planos')" style="margin-top:14px;background:rgba(63,255,160,.05);border:.5px solid var(--eb);border-radius:var(--r2);padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer">
+    <div onclick="irPara('planos')" style="margin-top:14px;background:var(--sf3);border:.5px solid var(--eb);border-radius:var(--r2);padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer">
       <div style="font-size:16px">${planoDef?.ic || '🎁'}</div>
       <div style="flex:1">
         <div style="font-family:var(--fm);font-size:8px;color:${planoDef?.cor || 'var(--b)'};letter-spacing:.1em">${planoDef?.n || 'Gratuito'}</div>
@@ -106,24 +106,24 @@ function sInicio() {
 
   <div class="inicio-cards-grid">
   <!-- MÓDULO 1: TRABALHOS ACADÉMICOS -->
-  <div onclick="irPara('tipo')" style="background:linear-gradient(135deg,rgba(63,255,160,.09),rgba(63,255,160,.04));border:.5px solid var(--eb);border-radius:var(--r4);padding:20px;margin-bottom:12px;cursor:pointer;transition:all .22s">
+  <div onclick="irPara('tipo')" style="background:linear-gradient(135deg,var(--eb),transparent);border:.5px solid var(--eb);border-radius:var(--r4);padding:20px;margin-bottom:12px;cursor:pointer;transition:all .22s">
     <div style="display:flex;align-items:flex-start;gap:14px">
-      <div style="width:48px;height:48px;border-radius:14px;background:rgba(63,255,160,.12);border:.5px solid var(--eb);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <div style="width:48px;height:48px;border-radius:14px;background:var(--eb);border:.5px solid var(--eb);display:flex;align-items:center;justify-content:center;flex-shrink:0">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="#43E8A7" stroke-width="1.8" stroke-linecap="round"/>
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="#43E8A7" stroke-width="1.8"/>
-          <path d="M8 7h8M8 11h6" stroke="#43E8A7" stroke-width="1.6" stroke-linecap="round"/>
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="var(--b)" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="var(--b)" stroke-width="1.8"/>
+          <path d="M8 7h8M8 11h6" stroke="var(--b)" stroke-width="1.6" stroke-linecap="round"/>
         </svg>
       </div>
       <div style="flex:1">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
           <div style="font-size:17px;font-weight:700;color:var(--t1)">Trabalhos Académicos</div>
-          <div style="font-family:var(--fm);font-size:8px;background:var(--b);color:#04090F;padding:3px 8px;border-radius:10px;font-weight:700">01</div>
+          <div style="font-family:var(--fm);font-size:8px;background:var(--b);color:var(--t-inv);padding:3px 8px;border-radius:10px;font-weight:700">01</div>
         </div>
         <div style="font-size:12.5px;color:var(--t2);line-height:1.6;margin-bottom:10px">TFC · Monografia · Artigo Científico · Trabalho Investigativo · Seminário · Relatório e muito mais.</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${['TFC','Monografia','Artigo','Investigativo','Seminário'].map(t =>
-            `<span style="font-family:var(--fm);font-size:8px;background:rgba(63,255,160,.08);border:.5px solid var(--eb);color:var(--b);padding:3px 8px;border-radius:10px">${t}</span>`
+            `<span style="font-family:var(--fm);font-size:8px;background:var(--eb);border:.5px solid var(--eb);color:var(--b);padding:3px 8px;border-radius:10px">${t}</span>`
           ).join('')}
           <span style="font-family:var(--fm);font-size:8px;color:var(--t3);padding:3px 8px">+ outros →</span>
         </div>
@@ -382,7 +382,7 @@ function sPreviewGen() {
     </div>
 
     <!-- Custo -->
-    <div style="background:linear-gradient(135deg,rgba(63,255,160,.08),rgba(63,255,160,.03));border:.5px solid var(--eb);border-radius:var(--r2);padding:14px 16px;margin-bottom:22px;display:flex;align-items:center;gap:12px">
+    <div style="background:linear-gradient(135deg,var(--eb),transparent);border:.5px solid var(--eb);border-radius:var(--r2);padding:14px 16px;margin-bottom:22px;display:flex;align-items:center;gap:12px">
       <div style="font-size:28px">📄</div>
       <div style="flex:1">
         <div style="font-size:15px;font-weight:700;color:var(--t1)">${pac.label}</div>
@@ -505,7 +505,7 @@ function sGeracao() {
     const stats = calcStats(secs);
     return `
     <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;gap:20px;text-align:center;padding:28px">
-      <div style="font-size:56px;filter:drop-shadow(0 0 20px rgba(67,232,167,.5));animation:flutuar 2.5s ease-in-out infinite">🎓</div>
+      <div style="font-size:56px;filter:drop-shadow(0 0 20px var(--b));animation:flutuar 2.5s ease-in-out infinite">🎓</div>
       <div style="font-size:22px;font-weight:700;color:var(--t1)">${nome ? `Trabalho pronto, ${nome}!` : 'Trabalho concluído!'}</div>
       <div style="font-family:var(--fm);font-size:9px;color:var(--b);letter-spacing:.14em">● ACADEMY · GERADO COM SUCESSO</div>
       <div style="display:flex;gap:16px;font-family:var(--fm);font-size:10px;color:var(--t3)">

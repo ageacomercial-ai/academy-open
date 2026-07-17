@@ -52,7 +52,7 @@ function sAdmin() {
   </button>
 
   <!-- Senha Gerada -->
-  <div id="adminSenhaGerada" style="display:none;background:rgba(63,255,160,.06);border:.5px solid var(--eb);border-radius:var(--r);padding:16px;margin-bottom:20px;text-align:center">
+  <div id="adminSenhaGerada" style="display:none;background:var(--sf3);border:.5px solid var(--eb);border-radius:var(--r);padding:16px;margin-bottom:20px;text-align:center">
     <div style="font-family:var(--fm);font-size:8px;letter-spacing:.1em;color:var(--t3);margin-bottom:8px">SENHA GERADA</div>
     <div id="adminSenhaTexto" style="font-size:22px;font-weight:800;color:var(--b);letter-spacing:.12em;margin-bottom:12px;font-family:var(--fm)"></div>
     <div style="display:flex;gap:8px;justify-content:center">
@@ -219,8 +219,8 @@ async function adminAprovar(id, tipo, plano, numPags, meses, nome, wa) {
   /* Actualizar UI do card */
   if (card) {
     card.style.opacity  = '1';
-    card.style.border   = '.5px solid rgba(67,232,167,.3)';
-    card.style.background = 'rgba(67,232,167,.04)';
+    card.style.border   = '.5px solid var(--eb)';
+    card.style.background = 'var(--sf3)';
     card.innerHTML = `
       <div style="display:flex;align-items:center;gap:10px;padding:4px 0">
         <div style="font-size:20px">✅</div>

@@ -19,7 +19,7 @@ const _estado = {
   u:    null,          /* utilizador { nome, email, whatsapp, nivel } */
   ecra: 'entrada',     /* ecrã activo */
   nav:  'inicio',      /* separador de navegação activo */
-  tema: 'escuro',      /* 'escuro' | 'claro' */
+  tema: 'claro',      /* 'escuro' | 'claro' */
 
   /* Configuração do documento em curso */
   cfg: {

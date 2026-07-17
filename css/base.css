@@ -1,46 +1,13 @@
 /* ═══════════════════════════════════════════════════════════
    ACADEMY — BASE.CSS
-   Variáveis de design, reset, tipografia, animações globais.
-   Carregado primeiro — tudo depende disto.
+   Design tokens, reset, tipografia, animações globais.
+   TODAS as cores passam por variáveis — nada hardcoded.
 ═══════════════════════════════════════════════════════════ */
 
 /* ════════════════════════════════════════════════════════════
-   VARIÁVEIS — MODO ESCURO (padrão)
+   TOKENS PARTILHADOS (ambos os temas)
 ════════════════════════════════════════════════════════════ */
-:root, [data-tema="escuro"] {
-  /* Fundos */
-  --z0: #000000;
-  --z1: #000000;
-  --z2: #111520;
-  --z3: #1F2330;
-  --z4: #2E3344;
-  --z5: #3E445B;
-
-  /* Verde — cor primária */
-  --b:  #43E8A7;
-  --bl: #66F3BD;
-  --bd: #2BB57E;
-  --bx: #E6FFF5;
-
-  /* Azul — cor secundária */
-  --o:  #38BDF8;
-  --ol: #7DD3FC;
-  --od: #0284C7;
-  --ox: #E0F2FE;
-
-  /* Texto */
-  --t1: #F8FAFC;
-  --t2: #94A3B8;
-  --t3: #64748B;
-  --t4: #334155;
-
-  /* Bordas */
-  --e0: rgba(255,255,255,.06);
-  --e1: rgba(255,255,255,.09);
-  --e2: rgba(255,255,255,.15);
-  --eb: rgba(67,232,167,.2);
-  --eo: rgba(56,189,248,.18);
-
+:root {
   /* Tipografia */
   --fu: 'DM Sans', system-ui, -apple-system, sans-serif;
   --fd: 'DM Sans', sans-serif;
@@ -64,36 +31,127 @@
 }
 
 /* ════════════════════════════════════════════════════════════
-   VARIÁVEIS — MODO CLARO
+   VARIÁVEIS — MODO ESCURO
+════════════════════════════════════════════════════════════ */
+:root, [data-tema="escuro"] {
+  /* ▸ Fundos — escuro profundo com camadas */
+  --z0: #000000;
+  --z1: #000000;
+  --z2: #111520;
+  --z3: #1F2330;
+  --z4: #2E3344;
+  --z5: #3E445B;
+
+  /* ▸ Marca — Ciano (derivado do logótipo) */
+  --b:  #00c2d8;
+  --bl: #33d4e6;
+  --bd: #008aa0;
+  --bx: #E0F7FA;
+
+  /* ▸ Marca — Azul secundário */
+  --o:  #38BDF8;
+  --ol: #7DD3FC;
+  --od: #0284C7;
+  --ox: #E0F2FE;
+
+  /* ▸ Texto */
+  --t1: #F8FAFC;
+  --t2: #94A3B8;
+  --t3: #64748B;
+  --t4: #334155;
+  --t-inv: #0A0F1A;
+
+  /* ▸ Bordas */
+  --e0: rgba(255,255,255,.06);
+  --e1: rgba(255,255,255,.09);
+  --e2: rgba(255,255,255,.15);
+  --eb: rgba(0,194,216,.25);
+  --eo: rgba(56,189,248,.18);
+
+  /* ▸ Superfícies translúcidas */
+  --sf: rgba(15,18,28,.88);
+  --sf2: rgba(0,0,0,.08);
+  --sf3: rgba(255,255,255,.04);
+
+  /* ▸ Sombras — glow luminoso (dark mode) */
+  --shadow-sm: 0 2px 8px rgba(0,0,0,.45);
+  --shadow-md: 0 8px 32px rgba(0,0,0,.5);
+  --shadow-lg: 0 16px 48px rgba(0,0,0,.65);
+  --shadow-glow-b: 0 0 18px rgba(0,194,216,.5);
+  --shadow-glow-o: 0 0 18px rgba(56,189,248,.4);
+
+  /* ▸ Blur */
+  --blur-bg: blur(14px);
+  --blur-modal: blur(20px);
+  --blur-heavy: blur(24px);
+
+  /* ▸ Nebulosa de fundo — tom sobre tom com a marca */
+  --nebula-b: rgba(0,194,216,.055);
+  --nebula-o: rgba(56,189,248,.035);
+  --grid-dot: rgba(0,194,216,.10);
+}
+
+/* ════════════════════════════════════════════════════════════
+   VARIÁVEIS — MODO CLARO PREMIUM
+   Inspirado em Vercel, Linear, Notion — off-white quente,
+   sombras físicas suaves, nunca branco puro agressivo.
 ════════════════════════════════════════════════════════════ */
 [data-tema="claro"] {
-  --z0: #F0F4F9;
-  --z1: #F5F8FC;
-  --z2: #FFFFFF;
-  --z3: #EEF2F8;
-  --z4: #E4EBF5;
-  --z5: #D6DFF0;
+  /* ▸ Fundos — off-white quente, profundidade subtil (~2-4%) */
+  --z0: #F2F0EC;
+  --z1: #F7F6F4;
+  --z2: #FCFBFA;
+  --z3: #EEEDEB;
+  --z4: #E5E4E1;
+  --z5: #D8D7D3;
 
-  --t1: #0D1829;
-  --t2: #2E3D5C;
-  --t3: #5A6A88;
-  --t4: #8A9AB8;
+  /* ▸ Marca — Ciano (recalibrado para fundo claro, WCAG AA) */
+  --b:  #009aa8;
+  --bl: #00aec0;
+  --bd: #007a84;
+  --bx: #E0F7FA;
 
-  --b:  #0057A8;
-  --bl: #006DC8;
-  --bd: #003E7A;
-  --bx: #E8F0FB;
+  /* ▸ Marca — Azul secundário */
+  --o:  #1A8BC8;
+  --ol: #3DA8E0;
+  --od: #0D6798;
+  --ox: #E6F4FA;
 
-  --o:  #0A8F14;
-  --ol: #0DA818;
-  --od: #077A10;
-  --ox: #E6F5E7;
+  /* ▸ Texto — nunca preto puro, contraste premium */
+  --t1: #1A1D1E;
+  --t2: #4A4E55;
+  --t3: #7A7E86;
+  --t4: #A8ACB4;
+  --t-inv: #FFFFFF;
 
-  --eb: rgba(0,87,168,.18);
-  --eo: rgba(10,143,20,.16);
-  --e0: rgba(0,0,0,.065);
-  --e1: rgba(0,0,0,.09);
-  --e2: rgba(0,0,0,.14);
+  /* ▸ Bordas — cinza-azulado subtil, baixa opacidade */
+  --e0: rgba(0,0,0,.05);
+  --e1: rgba(0,0,0,.08);
+  --e2: rgba(0,0,0,.12);
+  --eb: rgba(0,154,168,.15);
+  --eo: rgba(26,139,200,.13);
+
+  /* ▸ Superfícies translúcidas */
+  --sf: rgba(255,255,255,.88);
+  --sf2: rgba(0,0,0,.035);
+  --sf3: rgba(0,0,0,.02);
+
+  /* ▸ Sombras — físicas, suaves, blur alto (luz ambiente, não emissão) */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.06), 0 2px 4px rgba(0,0,0,.04);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,.07), 0 4px 12px rgba(0,0,0,.04);
+  --shadow-glow-b: 0 0 12px rgba(0,154,168,.2);
+  --shadow-glow-o: 0 0 12px rgba(26,139,200,.15);
+
+  /* ▸ Blur */
+  --blur-bg: blur(12px);
+  --blur-modal: blur(16px);
+  --blur-heavy: blur(20px);
+
+  /* ▸ Nebulosa de fundo — muito subtil em light mode */
+  --nebula-b: rgba(0,154,168,.025);
+  --nebula-o: rgba(26,139,200,.015);
+  --grid-dot: rgba(0,0,0,.04);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -108,14 +166,14 @@
 
 html, body {
   height: 100%;
-  background: #000;
+  background: var(--z1);
   color: var(--t1);
   font-family: var(--fu);
   overflow: hidden;
-  transition: color .3s;
+  transition: color .3s, background .3s;
 }
 
-::selection { background: rgba(67,232,167,.16); }
+::selection { background: var(--eb); }
 
 /* ════════════════════════════════════════════════════════════
    FUNDO DA APP — Nebulosa + Grelha
@@ -124,16 +182,15 @@ body::before {
   content: '';
   position: fixed; inset: 0; z-index: 0;
   background:
-    radial-gradient(ellipse 80% 60% at 50% 50%, rgba(67,232,167,.055) 0%, transparent 60%),
-    radial-gradient(ellipse 40% 40% at 20% 80%, rgba(56,189,248,.035) 0%, transparent 55%),
-    radial-gradient(ellipse 35% 35% at 80% 20%, rgba(167,139,250,.04) 0%, transparent 55%);
+    radial-gradient(ellipse 80% 60% at 50% 50%, var(--nebula-b) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 40% at 20% 80%, var(--nebula-o) 0%, transparent 55%);
   animation: app-nebula 8s ease-in-out infinite alternate;
   pointer-events: none;
 }
 body::after {
   content: '';
   position: fixed; inset: 0; z-index: 0;
-  background-image: radial-gradient(circle, rgba(67,232,167,.10) 1px, transparent 1px);
+  background-image: radial-gradient(circle, var(--grid-dot) 1px, transparent 1px);
   background-size: 38px 38px;
   opacity: .85;
   pointer-events: none;
@@ -233,13 +290,13 @@ select.inp {
 }
 .btn:active { transform: scale(.97) translateY(1px) !important; }
 
-.B { background: var(--b); color: #0A0F1A; border-radius: var(--r); padding: 12px 20px; font-size: 14px; border: 1px solid transparent; font-weight: 600; }
+.B { background: var(--b); color: var(--t-inv); border-radius: var(--r); padding: 12px 20px; font-size: 14px; border: 1px solid transparent; font-weight: 600; }
 .B:hover { background: var(--bl); transform: translateY(-1px); }
 .B:disabled { background: var(--z4); color: var(--t3); border-color: var(--e0); cursor: not-allowed; transform: none !important; }
 .B.w { width: 100%; padding: 13px; }
 .B.s { padding: 7px 13px; font-size: 12px; border-radius: var(--r2); }
 
-.O { background: var(--o); color: #0A0F1A; border-radius: var(--r); padding: 12px 20px; font-size: 14px; border: 1px solid transparent; font-weight: 600; }
+.O { background: var(--o); color: var(--t-inv); border-radius: var(--r); padding: 12px 20px; font-size: 14px; border: 1px solid transparent; font-weight: 600; }
 .O:hover { background: var(--ol); transform: translateY(-1px); }
 .O.w { width: 100%; padding: 13px; }
 .O.s { padding: 7px 13px; font-size: 12px; border-radius: var(--r2); }
@@ -249,7 +306,7 @@ select.inp {
 .G.w { width: 100%; padding: 12px; }
 .G.s { padding: 6px 11px; font-size: 11.5px; border-radius: var(--r2); }
 
-.WA { background: #22C55E; color: #fff; border-radius: var(--r); padding: 12px 20px; font-size: 14px; font-weight: 600; border: 1px solid transparent; }
+.WA { background: #22C55E; color: var(--t-inv); border-radius: var(--r); padding: 12px 20px; font-size: 14px; font-weight: 600; border: 1px solid transparent; }
 .WA:hover { background: #16A34A; transform: translateY(-1px); }
 .WA.w { width: 100%; padding: 13px; }
 
@@ -263,7 +320,7 @@ select.inp {
   font-family: var(--fm); font-size: 11px; letter-spacing: .06em;
   color: var(--t1); pointer-events: none; opacity: 0;
   transition: all .3s var(--expo); white-space: nowrap;
-  box-shadow: 0 8px 32px rgba(0,0,0,.4);
+  box-shadow: var(--shadow-md);
 }
 .toast.visivel { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.toast-erro { border-color: rgba(248,113,113,.35); color: #fca5a5; }
@@ -291,39 +348,39 @@ select.inp {
    ETIQUETAS
 ════════════════════════════════════════════════════════════ */
 .etq { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-family: var(--fm); font-size: 8px; letter-spacing: .05em; white-space: nowrap; }
-.etq-b { background: rgba(67,232,167,.07); color: var(--b);  border: 1px solid var(--eb); }
-.etq-o { background: rgba(56,189,248,.07); color: var(--o);  border: 1px solid var(--eo); }
-.etq-v { background: rgba(67,232,167,.07); color: var(--bl); border: 1px solid var(--eb); }
+.etq-b { background: var(--eb); color: var(--b);  border: 1px solid var(--eb); }
+.etq-o { background: var(--eo); color: var(--o);  border: 1px solid var(--eo); }
+.etq-v { background: var(--eb); color: var(--bl); border: 1px solid var(--eb); }
 
 /* ════════════════════════════════════════════════════════════
    CARTÕES
 ════════════════════════════════════════════════════════════ */
-.card   { background: rgba(22,25,34,.88); border: 1px solid var(--e0); border-radius: var(--r); }
-.card-b { background: rgba(22,25,34,.88); border: 1px solid var(--eb); border-radius: var(--r); }
-.card-o { background: rgba(22,25,34,.88); border: 1px solid var(--eo); border-radius: var(--r); }
+.card   { background: var(--sf); border: 1px solid var(--e0); border-radius: var(--r); }
+.card-b { background: var(--sf); border: 1px solid var(--eb); border-radius: var(--r); }
+.card-o { background: var(--sf); border: 1px solid var(--eo); border-radius: var(--r); }
 
 /* ════════════════════════════════════════════════════════════
    MODO LEITURA (visualização fullscreen)
 ════════════════════════════════════════════════════════════ */
 .ml-overlay {
   position: fixed; inset: 0; z-index: 600;
-  background: #fff; overflow-y: auto;
+  background: var(--z2); overflow-y: auto;
   font-family: Georgia, 'Times New Roman', serif;
 }
 .ml-header {
-  position: sticky; top: 0; background: rgba(255,255,255,.95);
-  backdrop-filter: blur(8px); border-bottom: 1px solid #EEE;
+  position: sticky; top: 0; background: var(--sf);
+  backdrop-filter: var(--blur-bg); border-bottom: 1px solid var(--e1);
   padding: 12px 20px; display: flex; align-items: center;
   justify-content: space-between; z-index: 10;
 }
 .ml-close {
-  font-family: var(--fu); font-size: 12px; color: #555;
-  background: transparent; border: 1px solid #DDD; border-radius: 6px;
+  font-family: var(--fu); font-size: 12px; color: var(--t3);
+  background: transparent; border: 1px solid var(--e1); border-radius: 6px;
   padding: 6px 12px; cursor: pointer;
 }
 .ml-content { padding: 60px 40px; max-width: 680px; margin: 0 auto; }
-.ml-titulo { font-size: 22pt; font-weight: 700; font-style: italic; color: #111; margin-bottom: 8px; line-height: 1.3; }
-.ml-meta { font-size: 9pt; color: #888; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 40px; }
-.ml-cap-titulo { font-size: 15pt; font-weight: 700; color: #111; border-bottom: 1.5pt solid #111; padding-bottom: 6pt; margin: 36pt 0 16pt; text-transform: uppercase; letter-spacing: .04em; }
-.ml-cap-corpo p { font-size: 12pt; line-height: 1.85; text-align: justify; text-indent: 1.25cm; margin-bottom: 10pt; color: #222; }
+.ml-titulo { font-size: 22pt; font-weight: 700; font-style: italic; color: var(--t1); margin-bottom: 8px; line-height: 1.3; }
+.ml-meta { font-size: 9pt; color: var(--t3); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 40px; }
+.ml-cap-titulo { font-size: 15pt; font-weight: 700; color: var(--t1); border-bottom: 1.5pt solid var(--t1); padding-bottom: 6pt; margin: 36pt 0 16pt; text-transform: uppercase; letter-spacing: .04em; }
+.ml-cap-corpo p { font-size: 12pt; line-height: 1.85; text-align: justify; text-indent: 1.25cm; margin-bottom: 10pt; color: var(--t2); }
 .ml-cap-corpo p:first-child { text-indent: 0; }

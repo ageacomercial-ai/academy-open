@@ -131,6 +131,8 @@ function togTema() {
   State.set('tema', novoTema);
   document.documentElement.setAttribute('data-tema', novoTema);
   LS.set('tema', novoTema);
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme) metaTheme.content = novoTema === 'escuro' ? '#000000' : '#F7F6F4';
   aTopbar();
   const nt = document.getElementById('nsTema');
   if (nt) nt.textContent = novoTema === 'escuro' ? '☀' : '🌙';

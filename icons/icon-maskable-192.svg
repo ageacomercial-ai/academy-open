@@ -30,7 +30,7 @@
       <stop offset="1" stop-color="#013a4a"/>
     </radialGradient>
   </defs>
-  <rect width="192" height="192" rx="42" fill="#0C0E14"/>
+  <rect width="192" height="192" rx="42" fill="#FFFFFF"/>
   <g transform="translate(96,96) scale(0.225) translate(-392,-584)">
     <path d="M 349,330 L 391.5,330 L 392,448 L 219.5,838 L 122,838 Z" fill="url(#lL)"/>
     <path d="M 434,330 L 391.5,330 L 392,448 L 564.5,838 L 662,838 Z" fill="url(#lR)"/>

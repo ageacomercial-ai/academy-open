@@ -41,7 +41,7 @@ function sEditor(secsArg, cfgArg, qualArg, isEx) {
   </div>
 
   <!-- BADGE REFERÊNCIAS -->
-  <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(67,232,167,.06);border:1px solid rgba(67,232,167,.3);border-radius:10px;margin-bottom:14px">
+  <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--sf3);border:1px solid var(--eb);border-radius:10px;margin-bottom:14px">
     <div style="width:8px;height:8px;border-radius:50%;background:var(--b);flex-shrink:0;box-shadow:0 0 6px var(--b)"></div>
     <div style="flex:1">
       <div style="font-family:var(--fm);font-size:9px;font-weight:700;color:var(--b);letter-spacing:.1em;text-transform:uppercase">Referências Académicas Incluídas</div>
@@ -97,7 +97,7 @@ function sEditor(secsArg, cfgArg, qualArg, isEx) {
 
   ${!isEx ? `
   <!-- EDITOR CONVERSACIONAL -->
-  <button class="btn B w" onclick="abrirEditorConversacional()" style="margin-bottom:14px;background:linear-gradient(135deg,rgba(63,255,160,.12),rgba(34,211,238,.08));border:1.5px solid rgba(63,255,160,.35);color:var(--t1);display:flex;align-items:center;justify-content:center;gap:10px">
+  <button class="btn B w" onclick="abrirEditorConversacional()" style="margin-bottom:14px;background:linear-gradient(135deg,var(--eb),transparent);border:1.5px solid var(--eb);color:var(--t1);display:flex;align-items:center;justify-content:center;gap:10px">
     <span style="font-size:15px">⚡</span>
     <span style="flex:1;text-align:left">
       <span style="display:block;font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:var(--b);text-transform:uppercase;margin-bottom:2px">Novo</span>
@@ -110,7 +110,7 @@ function sEditor(secsArg, cfgArg, qualArg, isEx) {
 
   ${!isEx ? `
   <!-- DICA: TEXTO EDITÁVEL -->
-  <div style="background:rgba(63,255,160,.06);border:1.5px solid var(--eb);border-radius:10px;padding:13px 16px;margin-bottom:14px;display:flex;align-items:flex-start;gap:11px">
+  <div style="background:var(--sf3);border:1.5px solid var(--eb);border-radius:10px;padding:13px 16px;margin-bottom:14px;display:flex;align-items:flex-start;gap:11px">
     <div style="font-size:20px;flex-shrink:0;margin-top:1px">✏️</div>
     <div>
       <div style="font-family:var(--fm);font-size:9px;font-weight:700;color:var(--b);letter-spacing:.1em;margin-bottom:4px;text-transform:uppercase">Conteúdo editável</div>

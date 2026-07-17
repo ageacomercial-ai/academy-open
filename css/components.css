@@ -9,9 +9,9 @@
    ALERTAS
 ════════════════════════════════════════════════════════════ */
 .al { border-radius: var(--r2); padding: 11px 13px; display: flex; gap: 10px; font-size: 13px; line-height: 1.6; margin-bottom: 11px; }
-.al-b { background: rgba(67,232,167,.04); border: 1px solid var(--eb); color: var(--bx); }
-.al-o { background: rgba(56,189,248,.04); border: 1px solid var(--eo); color: var(--ox); }
-.al-v { background: rgba(67,232,167,.04); border: 1px solid var(--eb); color: var(--bx); }
+.al-b { background: var(--eb); border: 1px solid var(--eb); color: var(--bx); }
+.al-o { background: var(--eo); border: 1px solid var(--eo); color: var(--ox); }
+.al-v { background: var(--eb); border: 1px solid var(--eb); color: var(--bx); }
 
 /* ════════════════════════════════════════════════════════════
    ZONA DE UPLOAD
@@ -21,7 +21,7 @@
   padding: 24px 16px; text-align: center; cursor: pointer;
   transition: all .2s; margin-bottom: 8px;
 }
-.zone-upload:hover { border-color: var(--eb); background: rgba(67,232,167,.04); }
+.zone-upload:hover { border-color: var(--eb); background: var(--eb); }
 
 /* ════════════════════════════════════════════════════════════
    PLANOS
@@ -36,23 +36,23 @@
 .wt { display: flex; align-items: center; gap: 12px; padding: 13px 14px; margin-bottom: 7px; background: var(--z2); border: 1px solid var(--e0); border-radius: var(--r); cursor: pointer; transition: all .14s var(--ease); touch-action: manipulation; }
 .wt:hover { border-color: var(--e1); background: var(--z3); }
 .wt:active { transform: scale(.985); }
-.wt.sel-b { border-color: var(--eb); background: rgba(67,232,167,.04); }
-.wt.sel-o { border-color: var(--eo); background: rgba(56,189,248,.04); }
+.wt.sel-b { border-color: var(--eb); background: var(--eb); }
+.wt.sel-o { border-color: var(--eo); background: var(--eo); }
 .wt-ic { font-size: 20px; width: 24px; text-align: center; flex-shrink: 0; color: var(--t3); transition: all .14s; }
 .wt.sel-b .wt-ic { color: var(--b); }
 .wt.sel-o .wt-ic { color: var(--o); }
 .wt-nome { font-size: 16px; font-weight: 500; color: var(--t1); margin-bottom: 2px; line-height: 1.2; }
 .wt-tag { font-family: var(--fm); font-size: 8px; color: var(--t3); letter-spacing: .06em; }
 .wt-ck { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--e1); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; transition: all .14s; }
-.wt.sel-b .wt-ck { background: var(--b); border-color: var(--b); color: #0A0F1A; }
-.wt.sel-o .wt-ck { background: var(--o); border-color: var(--o); color: #0A0F1A; }
+.wt.sel-b .wt-ck { background: var(--b); border-color: var(--b); color: var(--t-inv); }
+.wt.sel-o .wt-ck { background: var(--o); border-color: var(--o); color: var(--t-inv); }
 
 /* ════════════════════════════════════════════════════════════
    CHAT IA
 ════════════════════════════════════════════════════════════ */
 #chatModal {
   position: fixed; inset: 0; z-index: 400;
-  background: rgba(0,0,0,.7); backdrop-filter: blur(20px);
+  background: rgba(0,0,0,.7); backdrop-filter: var(--blur-modal);
   display: flex; align-items: flex-end; justify-content: center;
   opacity: 0; pointer-events: none; transition: opacity .3s var(--expo);
 }
@@ -73,9 +73,9 @@
 }
 #chatMsgs { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
 #chatMsgs::-webkit-scrollbar { width: 2px; }
-#chatMsgs::-webkit-scrollbar-thumb { background: rgba(67,232,167,.18); border-radius: 2px; }
+#chatMsgs::-webkit-scrollbar-thumb { background: var(--eb); border-radius: 2px; }
 .cm { max-width: 85%; padding: 9px 12px; border-radius: 12px; font-size: 13.5px; line-height: 1.6; }
-.cm.u { align-self: flex-end; background: var(--b); color: #0A0F1A; border-radius: 12px 12px 2px 12px; }
+.cm.u { align-self: flex-end; background: var(--b); color: var(--t-inv); border-radius: 12px 12px 2px 12px; }
 .cm.a { align-self: flex-start; background: var(--z3); color: var(--t1); border-radius: 12px 12px 12px 2px; border: 1px solid var(--e0); }
 .cm.load { display: flex; gap: 6px; padding: 12px 16px; }
 #chatInput {
@@ -94,7 +94,7 @@
   background: var(--b); border: none; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   font-size: 15px; flex-shrink: 0; transition: all .14s;
-  color: #0A0F1A;
+  color: var(--t-inv);
 }
 #chatSend:hover { background: var(--bl); transform: scale(1.06); }
 
@@ -112,8 +112,8 @@
 
   #sidebar {
     width: 220px; flex-shrink: 0;
-    background: rgba(0,0,0,.72);
-    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    background: var(--sf);
+    backdrop-filter: var(--blur-bg); -webkit-backdrop-filter: var(--blur-bg);
     border-right: 1px solid var(--e0);
     display: flex; flex-direction: column; padding: 20px 0;
     position: relative; z-index: 20;
@@ -127,8 +127,8 @@
     transition: all .16s; color: var(--t3); font-size: 13px;
   }
   .ns-item:hover { background: var(--z3); color: var(--t1); }
-  .ns-item.ab { background: rgba(67,232,167,.08); color: var(--b); border: 1px solid var(--eb); }
-  .ns-item.ao { background: rgba(56,189,248,.08); color: var(--o); border: 1px solid var(--eo); }
+  .ns-item.ab { background: var(--eb); color: var(--b); border: 1px solid var(--eb); }
+  .ns-item.ao { background: var(--eo); color: var(--o); border: 1px solid var(--eo); }
   .ns-ic { font-size: 15px; width: 20px; text-align: center; }
   .ns-lb { font-family: var(--fu); font-size: 12.5px; font-weight: 500; }
   .ns-user {
@@ -139,7 +139,7 @@
     width: 32px; height: 32px; border-radius: 10px;
     background: linear-gradient(135deg, var(--bd), var(--b));
     display: flex; align-items: center; justify-content: center;
-    font-size: 13px; font-weight: 700; color: #0A0F1A; flex-shrink: 0;
+    font-size: 13px; font-weight: 700; color: var(--t-inv); flex-shrink: 0;
   }
   .ns-tema {
     width: 28px; height: 28px; border-radius: var(--r3);
@@ -174,25 +174,25 @@
 #pwa-install-banner {
   position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(120px);
   z-index: 200; width: calc(100% - 24px); max-width: 410px;
-  background: linear-gradient(135deg, #161D2E 0%, #0F1420 100%);
-  border: 1px solid rgba(67,232,167,.28); border-radius: 18px;
+  background: var(--z2);
+  border: 1px solid var(--eb); border-radius: 18px;
   padding: 0; overflow: hidden;
-  box-shadow: 0 16px 48px rgba(0,0,0,.65);
+  box-shadow: var(--shadow-lg);
   transition: transform .45s cubic-bezier(.16,1,.3,1), opacity .45s ease;
   opacity: 0; pointer-events: none;
 }
-#pwa-install-banner::before { content: ''; display: block; height: 2px; background: linear-gradient(90deg, transparent, #43E8A7 30%, #2BB57E 70%, transparent); }
+#pwa-install-banner::before { content: ''; display: block; height: 2px; background: linear-gradient(90deg, transparent, var(--b) 30%, var(--bd) 70%, transparent); }
 #pwa-install-banner.visivel { transform: translateX(-50%) translateY(0); opacity: 1; pointer-events: auto; }
 #pwa-install-inner { display: flex; align-items: center; gap: 13px; padding: 16px 18px 18px; }
-#pwa-install-icon { width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0; background: linear-gradient(135deg, #111520, #1A1D2E); border: 1px solid rgba(67,232,167,.2); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+#pwa-install-icon { width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0; background: var(--z2); border: 1px solid var(--eb); display: flex; align-items: center; justify-content: center; overflow: hidden; }
 #pwa-install-texto { flex: 1; min-width: 0; }
-#pwa-install-texto strong { display: block; font-size: 13.5px; font-weight: 700; color: #F8FAFC; letter-spacing: -.01em; margin-bottom: 3px; }
-#pwa-install-texto span { font-size: 11.5px; color: #64748B; line-height: 1.4; }
+#pwa-install-texto strong { display: block; font-size: 13.5px; font-weight: 700; color: var(--t1); letter-spacing: -.01em; margin-bottom: 3px; }
+#pwa-install-texto span { font-size: 11.5px; color: var(--t3); line-height: 1.4; }
 #pwa-install-actions { display: flex; flex-direction: column; gap: 8px; align-items: stretch; padding: 0 18px 16px; }
-#pwa-install-btn { display: flex; align-items: center; justify-content: center; gap: 6px; background: linear-gradient(135deg, #43E8A7, #2BB57E); color: #0A0F1A; border: none; border-radius: 10px; padding: 11px 0; font-size: 13px; font-weight: 800; cursor: pointer; font-family: var(--fu); letter-spacing: .01em; box-shadow: 0 4px 16px rgba(67,232,167,.35); transition: all .16s; }
-#pwa-install-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(67,232,167,.45); }
-#pwa-install-fechar { position: absolute; top: 14px; right: 14px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #334155; font-size: 14px; border-radius: 6px; transition: color .14s, background .14s; background: transparent; }
-#pwa-install-fechar:hover { color: #94A3B8; background: rgba(255,255,255,.06); }
+#pwa-install-btn { display: flex; align-items: center; justify-content: center; gap: 6px; background: linear-gradient(135deg, var(--b), var(--bd)); color: var(--t-inv); border: none; border-radius: 10px; padding: 11px 0; font-size: 13px; font-weight: 800; cursor: pointer; font-family: var(--fu); letter-spacing: .01em; box-shadow: var(--shadow-glow-b); transition: all .16s; }
+#pwa-install-btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-glow-b), 0 6px 12px rgba(0,0,0,.15); }
+#pwa-install-fechar { position: absolute; top: 14px; right: 14px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--t4); font-size: 14px; border-radius: 6px; transition: color .14s, background .14s; background: transparent; }
+#pwa-install-fechar:hover { color: var(--t2); background: rgba(0,0,0,.06); }
 
 #pwa-offline {
   position: fixed; top: 0; left: 50%; transform: translateX(-50%);
@@ -209,10 +209,11 @@
 #pwa-update-banner {
   position: fixed; top: 12px; left: 50%; transform: translateX(-50%) translateY(-80px);
   z-index: 300; width: calc(100% - 32px); max-width: 398px;
-  background: #161922; border: 1px solid rgba(56,189,248,.25);
+  background: var(--z2); border: 1px solid var(--eo);
   border-radius: 10px; padding: 12px 16px;
   display: flex; align-items: center; gap: 10px;
   transition: transform .4s cubic-bezier(.16,1,.3,1);
+  box-shadow: var(--shadow-md);
 }
 #pwa-update-banner.visivel { transform: translateX(-50%) translateY(0); }
 
@@ -221,7 +222,7 @@
 ════════════════════════════════════════════════════════════ */
 #ecModal {
   position: fixed; inset: 0; z-index: 500;
-  background: rgba(0,0,0,.8); backdrop-filter: blur(24px);
+  background: rgba(0,0,0,.8); backdrop-filter: var(--blur-heavy);
   display: flex; align-items: flex-end; justify-content: center;
   opacity: 0; pointer-events: none; transition: opacity .3s var(--expo);
 }
@@ -238,7 +239,7 @@
 #ecHeader { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 10px; border-bottom: 1px solid var(--e0); flex-shrink: 0; }
 #ecBody { flex: 1; overflow-y: auto; padding: 14px 16px; }
 #ecBody::-webkit-scrollbar { width: 2px; }
-#ecBody::-webkit-scrollbar-thumb { background: rgba(67,232,167,.18); border-radius: 2px; }
+#ecBody::-webkit-scrollbar-thumb { background: var(--eb); border-radius: 2px; }
 
 /* ════════════════════════════════════════════════════════════
    ADMIN — PAINEL
@@ -255,9 +256,9 @@
 .capa-logo-zone {
   border: 1.5px dashed var(--eb); border-radius: var(--r2);
   padding: 18px; text-align: center; cursor: pointer; transition: all .2s;
-  background: rgba(67,232,167,.03);
+  background: var(--sf3);
 }
-.capa-logo-zone:hover { background: rgba(67,232,167,.06); border-color: var(--b); }
+.capa-logo-zone:hover { background: var(--eb); border-color: var(--b); }
 
 /* ════════════════════════════════════════════════════════════
    BARRA DE GERAÇÃO

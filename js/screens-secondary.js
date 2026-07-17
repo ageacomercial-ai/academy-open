@@ -203,7 +203,7 @@ function sConfig() {
     ${[['pt-AO','🇦🇴 Português (Angola)'], ['en','🇬🇧 English'], ['fr','🇫🇷 Français']].map(([l, nome]) => {
       const sel = lingua === l;
       return `<div onclick="State.set('lingua','${l}');LS.set('lingua','${l}');mostrarToast('✓ Língua alterada');renderizar()"
-        style="display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-radius:var(--r2);border:.5px solid ${sel ? 'var(--eb)' : 'var(--e0)'};background:${sel ? 'rgba(63,255,160,.06)' : 'transparent'};cursor:pointer;margin-bottom:7px;transition:all .18s">
+        style="display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-radius:var(--r2);border:.5px solid ${sel ? 'var(--eb)' : 'var(--e0)'};background:${sel ? 'var(--sf3)' : 'transparent'};cursor:pointer;margin-bottom:7px;transition:all .18s">
         <div style="font-size:14px;color:${sel ? 'var(--b)' : 'var(--t2)'}">${nome}</div>
         ${sel ? '<div style="width:8px;height:8px;border-radius:50%;background:var(--b)"></div>' : ''}
       </div>`;
@@ -213,7 +213,7 @@ function sConfig() {
   <!-- LIGAÇÃO À IA -->
   <div class="card" style="padding:20px;margin-bottom:12px">
     <div style="font-family:var(--fm);font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--t3);margin-bottom:14px">● LIGAÇÃO À INTELIGÊNCIA ARTIFICIAL</div>
-    <div style="background:rgba(63,255,160,.06);border:1px solid var(--eb);border-radius:var(--r2);padding:13px 14px;margin-bottom:12px">
+    <div style="background:var(--sf3);border:1px solid var(--eb);border-radius:var(--r2);padding:13px 14px;margin-bottom:12px">
       <div style="font-family:var(--fm);font-size:9px;color:var(--b);letter-spacing:.08em;margin-bottom:5px;text-transform:uppercase">✓ Chave da operadora — Automática</div>
       <div style="font-size:13px;color:var(--t2);line-height:1.65">
         O ACADEMY gere automaticamente a ligação à IA. <strong style="color:var(--t1)">Não precisas de inserir nenhuma chave.</strong>
@@ -225,7 +225,7 @@ function sConfig() {
           <div style="font-size:13px;font-weight:600;color:var(--t1)">Motor de IA</div>
           <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-top:2px">OpenRouter via /api/engine</div>
         </div>
-        <div style="font-family:var(--fm);font-size:8px;padding:4px 9px;border-radius:20px;background:rgba(63,255,160,.1);border:1px solid var(--eb);color:var(--b)">✓ ACTIVO</div>
+        <div style="font-family:var(--fm);font-size:8px;padding:4px 9px;border-radius:20px;background:var(--eb);border:1px solid var(--eb);color:var(--b)">✓ ACTIVO</div>
       </div>
     </div>
     <button class="btn G w" onclick="testarAPI()" style="margin-top:12px;font-size:13px">⚡ Testar ligação ao servidor</button>
@@ -300,7 +300,7 @@ function sSobre() {
     </div>
 
     <!-- Missão -->
-    <div style="background:rgba(63,255,160,.04);border:.5px solid rgba(63,255,160,.16);border-radius:14px;padding:16px">
+    <div style="background:var(--sf3);border:.5px solid var(--eb);border-radius:14px;padding:16px">
       <div style="font-family:var(--fm);font-size:8px;letter-spacing:.18em;color:var(--b);margin-bottom:9px;text-transform:uppercase">● Missão</div>
       <div style="font-size:13.5px;color:var(--t2);line-height:1.82;font-style:italic">"Democratizar a excelência académica em Angola e nos países lusófonos através de inteligência artificial. Cada estudante merece uma plataforma de nível mundial para o seu desempenho académico."</div>
     </div>
@@ -405,9 +405,9 @@ function sPlanosPrecos(opts) {
         { pags: 500,  preco: 29500, desc: 'Pacote Profissional', popular: false },
         { pags: 1000, preco: 60000, desc: 'Pacote Premium',      popular: false },
       ].map((p, i, arr) => `
-      <div style="padding:12px 16px;${i < arr.length - 1 ? 'border-bottom:.5px solid var(--e0);' : ''}display:flex;align-items:center;gap:12px;${p.popular ? 'background:rgba(63,255,160,.04);' : ''}">
+      <div style="padding:12px 16px;${i < arr.length - 1 ? 'border-bottom:.5px solid var(--e0);' : ''}display:flex;align-items:center;gap:12px;${p.popular ? 'background:var(--sf3);' : ''}">
         <div style="flex:1">
-          <div style="font-size:13px;font-weight:600;color:var(--t1)">${p.desc} ${p.popular ? '<span style="font-family:var(--fm);font-size:8px;background:var(--b);color:#04090F;padding:2px 6px;border-radius:8px;margin-left:4px">POPULAR</span>' : ''}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--t1)">${p.desc} ${p.popular ? '<span style="font-family:var(--fm);font-size:8px;background:var(--b);color:var(--t-inv);padding:2px 6px;border-radius:8px;margin-left:4px">POPULAR</span>' : ''}</div>
           <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-top:2px">${p.pags} páginas · válido 30 dias</div>
         </div>
         <div style="text-align:right">
@@ -554,7 +554,7 @@ function sDocLivre() {
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:20px">
     ${TIPOS_DOC_LIVRE.map(t => `
     <div onclick="_docLivre.tipo='${t.id}';renderizar()"
-      style="padding:14px 10px;background:${_docLivre.tipo === t.id ? 'rgba(63,255,160,.08)' : 'var(--z2)'};border:.5px solid ${_docLivre.tipo === t.id ? 'var(--eb)' : 'var(--e0)'};border-radius:var(--r2);text-align:center;cursor:pointer;transition:all .18s">
+      style="padding:14px 10px;background:${_docLivre.tipo === t.id ? 'var(--sf3)' : 'var(--z2)'};border:.5px solid ${_docLivre.tipo === t.id ? 'var(--eb)' : 'var(--e0)'};border-radius:var(--r2);text-align:center;cursor:pointer;transition:all .18s">
       <div style="font-size:22px;margin-bottom:6px">${t.i}</div>
       <div style="font-family:var(--fm);font-size:8px;color:${_docLivre.tipo === t.id ? 'var(--b)' : 'var(--t2)'};letter-spacing:.04em">${t.n}</div>
     </div>`).join('')}
