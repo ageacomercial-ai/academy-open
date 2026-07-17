@@ -15,9 +15,6 @@ const OR_URL   = 'https://openrouter.ai/api/v1/chat/completions';
 const OR_SITE  = 'https://academy-open.vercel.app';
 const OR_TITLE = 'ACADEMY';
 
-/* Fallback: se a Vercel não expuser a env var, tenta ler do .env na raiz */
-try { const fs = require('fs'); const p = require('path'); const f = fs.readFileSync(p.join(__dirname,'..','.env'),'utf8'); for (const l of f.split('\n')) { const m = l.match(/^OPENROUTER_API_KEY=(.+)/); if (m && !process.env.OPENROUTER_API_KEY) process.env.OPENROUTER_API_KEY = m[1].trim().replace(/^['"]|['"]$/g,''); } } catch(e) {}
-
 /* Modelos gratuitos OpenRouter — basta criar conta em openrouter.ai e gerar API key (sem cartão de crédito) */
 const MODELS = [
   'meta-llama/llama-3.3-70b-instruct:free',
@@ -456,6 +453,31 @@ export default async function handler(req, res) {
     switch (action) {
       case 'ping':
         return res.json({ ok:true, action:'ping', data:{ resposta:'pong', pong:true, ts:Date.now() } });
+      case '__diagnose':
+        return res.json({ ok:true, action:'__diagnose', data:{
+          hasKey:!!process.env.OPENROUTER_API_KEY,
+          keyLen: (process.env.OPENROUTER_API_KEY||'').length,
+          keyPrefix: (process.env.OPENROUTER_API_KEY||'').substring(0,7),
+          node: process.version,
+          platform: process.platform,
+          memory: process.memoryUsage(),
+        }});
+      case '__test_ai': {
+        const key = process.env.OPENROUTER_API_KEY;
+        if (!key) return res.json({ ok:false, data:{ error:'no key', keyPrefix:'' } });
+        const ctrl = new AbortController();
+        const t = setTimeout(()=>ctrl.abort(), 12000);
+        try {
+          const resp = await fetch(OR_URL, {
+            method:'POST', signal:ctrl.signal,
+            headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+key, 'HTTP-Referer':OR_SITE, 'X-Title':OR_TITLE },
+            body:JSON.stringify({ model:MODELS[0], messages:[{ role:'user', content:'Say hello in 3 words' }], max_tokens:10 }),
+          });
+          const txt = await resp.text();
+          return res.json({ ok:true, data:{ status:resp.status, bodyPreview:txt.substring(0,200) } });
+        } catch(e) { return res.json({ ok:false, data:{ error:e.message, name:e.name } });
+        } finally { clearTimeout(t); }
+      }
       case 'chat':
         return res.json(await doChat(payload));
       case 'generate_lesson':
@@ -689,7 +711,7 @@ async function callAI(messages, opts={}) {
   for (const model of MODELS) {
     try {
       const ctrl = new AbortController();
-      const t = setTimeout(()=>ctrl.abort(), 50000);
+      const t = setTimeout(()=>ctrl.abort(), 30000);
       let resp;
       try {
         resp = await fetch(OR_URL, {
