@@ -1,23 +1,14 @@
 <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="fL" x1="16" y1="4" x2="5" y2="28">
-      <stop offset="0" stop-color="#0a4a5c"/>
-      <stop offset="0.45" stop-color="#00485e"/>
-      <stop offset="1" stop-color="#013244"/>
-    </linearGradient>
-    <linearGradient id="fR" x1="16" y1="4" x2="27" y2="28">
-      <stop offset="0" stop-color="#0a4a5c"/>
-      <stop offset="0.30" stop-color="#00b8cf"/>
-      <stop offset="0.55" stop-color="#00d6e8"/>
-      <stop offset="0.8" stop-color="#005f74"/>
-      <stop offset="1" stop-color="#013244"/>
+    <linearGradient id="fg" x1="0" y1="0" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#43E8A7"/>
+      <stop offset="100%" stop-color="#38BDF8"/>
     </linearGradient>
   </defs>
   <rect width="32" height="32" rx="7" fill="#FFFFFF"/>
-  <g transform="translate(16,16) scale(0.036) translate(-392,-584)">
-    <path d="M 349,330 L 391.5,330 L 392,448 L 219.5,838 L 122,838 Z" fill="url(#fL)"/>
-    <path d="M 434,330 L 391.5,330 L 392,448 L 564.5,838 L 662,838 Z" fill="url(#fR)"/>
-    <path d="M 134,795 C 168,752 220,718 258,694 C 296,670 336,652 392,648 C 448,644 498,660 566,706 C 528,704 486,696 448,698 C 396,701 330,722 270,742 C 226,756 180,764 158,776 C 148,782 140,788 134,795 Z" fill="#00c7dc"/>
-    <path d="M 148,784 C 195,738 255,700 300,678 C 344,656 372,650 396,649" fill="none" stroke="#8FF6FF" stroke-width="4" stroke-linecap="round" opacity="0.5"/>
+  <g transform="translate(16,16) scale(0.11)">
+    <path d="M54 148 L96 44 L138 148" stroke="url(#fg)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="70" y1="110" x2="122" y2="110" stroke="url(#fg)" stroke-width="11" stroke-linecap="round"/>
+    <circle cx="152" cy="50" r="8" fill="#43E8A7" opacity=".9"/>
   </g>
 </svg>
