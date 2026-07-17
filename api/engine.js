@@ -1,11 +1,12 @@
 /* =======================================================================
    ACADEMY ENGINE - SAAS BLINDADO (PRODUÇÃO)
-   v67: GOOGLE GEMINI API — backend usa Gemini 2.0 Flash grátis
+   v68: GROQ API — inferência rápida grátis
    O frontend deixa de inferir estrutura de texto
 ======================================================================= */
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/'+GEMINI_MODEL+':generateContent';
+const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_SITE = 'https://academy-open.vercel.app';
+const GROQ_MODEL = 'llama3-70b-8192';
 
 /* ---------------- RATE LIMIT ---------------- */
 const RATE = new Map();
@@ -440,23 +441,23 @@ export default async function handler(req, res) {
         return res.json({ ok:true, action:'ping', data:{ resposta:'pong', pong:true, ts:Date.now() } });
       case '__diagnose':
         return res.json({ ok:true, action:'__diagnose', data:{
-          hasGeminiKey:!!process.env.GEMINI_API_KEY,
-          keyLen: (process.env.GEMINI_API_KEY||'').length,
-          keyPrefix: (process.env.GEMINI_API_KEY||'').substring(0,7),
+          hasGroqKey:!!process.env.GROQ_API_KEY,
+          keyLen: (process.env.GROQ_API_KEY||'').length,
+          keyPrefix: (process.env.GROQ_API_KEY||'').substring(0,7),
           node: process.version,
           platform: process.platform,
           memory: process.memoryUsage(),
         }});
       case '__test_ai': {
-        const key = process.env.GEMINI_API_KEY;
-        if (!key) return res.json({ ok:false, data:{ error:'no gemini key' } });
+        const key = process.env.GROQ_API_KEY;
+        if (!key) return res.json({ ok:false, data:{ error:'no groq key' } });
         const ctrl = new AbortController();
         const t = setTimeout(()=>ctrl.abort(), 12000);
         try {
-          const resp = await fetch(GEMINI_URL+'?key='+key, {
+          const resp = await fetch(GROQ_URL, {
             method:'POST', signal:ctrl.signal,
-            headers:{ 'Content-Type':'application/json' },
-            body:JSON.stringify({ contents:[{ role:'user', parts:[{ text:'Say hello in 3 words' }] }], generationConfig:{ maxOutputTokens:10 } }),
+            headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+key },
+            body:JSON.stringify({ model:GROQ_MODEL, messages:[{ role:'user', content:'Say hello in 3 words' }], max_tokens:10 }),
           });
           const txt = await resp.text();
           return res.json({ ok:true, data:{ status:resp.status, bodyPreview:txt.substring(0,300) } });
@@ -688,33 +689,24 @@ async function doCoerencia(p) {
   return { ok:true, action:'verificar_coerencia', data:{ resposta: extrairJSON(r) } };
 }
 
-/* ---------------- GEMINI API ---------------- */
+/* ---------------- GROQ API ---------------- */
 async function callAI(messages, opts={}) {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error('GEMINI_API_KEY não configurada');
-  const contents = []; let sys = null;
-  for (const m of messages) {
-    if (m.role==='system') { sys = m.content; continue; }
-    contents.push({ role:m.role==='assistant'?'model':'user', parts:[{ text:m.content }] });
-  }
+  const key = process.env.GROQ_API_KEY;
+  if (!key) throw new Error('GROQ_API_KEY não configurada');
   const ctrl = new AbortController();
   const t = setTimeout(()=>ctrl.abort(), 25000);
   let resp;
   try {
-    resp = await fetch(GEMINI_URL+'?key='+key, {
+    resp = await fetch(GROQ_URL, {
       method:'POST', signal:ctrl.signal,
-      headers:{ 'Content-Type':'application/json' },
-      body:JSON.stringify({
-        contents,
-        systemInstruction: sys ? { parts:[{ text:sys }] } : undefined,
-        generationConfig: { temperature:opts.temperature??0.7, maxOutputTokens:opts.max_tokens??800 },
-      }),
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+key },
+      body:JSON.stringify({ model:GROQ_MODEL, messages, temperature:opts.temperature??0.7, max_tokens:opts.max_tokens??800, stream:false }),
     });
   } finally { clearTimeout(t); }
-  if (!resp.ok) { const e = await resp.text().catch(()=>''); throw new Error('Gemini '+resp.status+': '+e.substring(0,100)); }
+  if (!resp.ok) { const e = await resp.text().catch(()=>''); throw new Error('Groq '+resp.status+': '+e.substring(0,100)); }
   const data = await resp.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-  if (!text || text.length<10) throw new Error('Gemini resposta vazia');
+  const text = data?.choices?.[0]?.message?.content?.trim();
+  if (!text || text.length<10) throw new Error('Groq resposta vazia');
   return text;
 }
 
