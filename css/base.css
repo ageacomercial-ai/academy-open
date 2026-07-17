@@ -34,7 +34,7 @@
    VARIÁVEIS — MODO ESCURO
 ════════════════════════════════════════════════════════════ */
 :root, [data-tema="escuro"] {
-  /* ▸ Fundos — escuro profundo com camadas */
+  /* Fundos — originais */
   --z0: #000000;
   --z1: #000000;
   --z2: #111520;
@@ -42,53 +42,49 @@
   --z4: #2E3344;
   --z5: #3E445B;
 
-  /* ▸ Marca — Verde-menta (identidade original) */
+  /* Verde — original */
   --b:  #43E8A7;
   --bl: #66F3BD;
   --bd: #2BB57E;
   --bx: #E6FFF5;
 
-  /* ▸ Marca — Azul secundário */
+  /* Azul — original */
   --o:  #38BDF8;
   --ol: #7DD3FC;
   --od: #0284C7;
   --ox: #E0F2FE;
 
-  /* ▸ Texto — mais claro para melhor legibilidade */
-  --t1: #FFFFFF;
-  --t2: #C8D0DC;
-  --t3: #8892A8;
-  --t4: #55607A;
+  /* Texto — original */
+  --t1: #F8FAFC;
+  --t2: #94A3B8;
+  --t3: #64748B;
+  --t4: #334155;
   --t-inv: #0A0F1A;
 
-  /* ▸ Bordas */
+  /* Bordas — originais */
   --e0: rgba(255,255,255,.06);
   --e1: rgba(255,255,255,.09);
   --e2: rgba(255,255,255,.15);
   --eb: rgba(67,232,167,.2);
   --eo: rgba(56,189,248,.18);
 
-  /* ▸ Superfícies translúcidas */
-  --sf: rgba(15,18,28,.88);
+  /* Superfícies translúcidas */
+  --sf: rgba(0,0,0,.72);
   --sf2: rgba(0,0,0,.08);
   --sf3: rgba(255,255,255,.04);
+  --card: rgba(22,25,34,.88);
 
-  /* ▸ Sombras — glow luminoso (dark mode) */
-  --shadow-sm: 0 2px 8px rgba(0,0,0,.45);
+  /* Sombras — originais */
+  --shadow-sm: 0 2px 8px rgba(0,0,0,.4);
   --shadow-md: 0 8px 32px rgba(0,0,0,.5);
   --shadow-lg: 0 16px 48px rgba(0,0,0,.65);
   --shadow-glow-b: 0 0 18px rgba(67,232,167,.5);
   --shadow-glow-o: 0 0 18px rgba(56,189,248,.4);
 
-  /* ▸ Blur */
+  /* Blur */
   --blur-bg: blur(14px);
   --blur-modal: blur(20px);
   --blur-heavy: blur(24px);
-
-  /* ▸ Nebulosa de fundo — tom sobre tom com a marca */
-  --nebula-b: rgba(67,232,167,.055);
-  --nebula-o: rgba(56,189,248,.035);
-  --grid-dot: rgba(67,232,167,.10);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -135,6 +131,7 @@
   --sf: rgba(255,255,255,.88);
   --sf2: rgba(0,0,0,.035);
   --sf3: rgba(0,0,0,.02);
+  --card: var(--z2);
 
   /* ▸ Sombras — físicas, suaves, blur alto (luz ambiente, não emissão) */
   --shadow-sm: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
@@ -182,18 +179,26 @@ body::before {
   content: '';
   position: fixed; inset: 0; z-index: 0;
   background:
-    radial-gradient(ellipse 80% 60% at 50% 50%, var(--nebula-b) 0%, transparent 60%),
-    radial-gradient(ellipse 40% 40% at 20% 80%, var(--nebula-o) 0%, transparent 55%);
+    radial-gradient(ellipse 80% 60% at 50% 50%, rgba(67,232,167,.055) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 40% at 20% 80%, rgba(56,189,248,.035) 0%, transparent 55%);
   animation: app-nebula 8s ease-in-out infinite alternate;
   pointer-events: none;
+}
+[data-tema="claro"] body::before {
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 50%, rgba(0,154,168,.025) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 40% at 20% 80%, rgba(26,139,200,.015) 0%, transparent 55%);
 }
 body::after {
   content: '';
   position: fixed; inset: 0; z-index: 0;
-  background-image: radial-gradient(circle, var(--grid-dot) 1px, transparent 1px);
+  background-image: radial-gradient(circle, rgba(67,232,167,.10) 1px, transparent 1px);
   background-size: 38px 38px;
   opacity: .85;
   pointer-events: none;
+}
+[data-tema="claro"] body::after {
+  background-image: radial-gradient(circle, rgba(0,0,0,.04) 1px, transparent 1px);
 }
 @keyframes app-nebula {
   from { opacity: .75; transform: scale(1); }
@@ -355,9 +360,9 @@ select.inp {
 /* ════════════════════════════════════════════════════════════
    CARTÕES
 ════════════════════════════════════════════════════════════ */
-.card   { background: var(--sf); border: 1px solid var(--e0); border-radius: var(--r); }
-.card-b { background: var(--sf); border: 1px solid var(--eb); border-radius: var(--r); }
-.card-o { background: var(--sf); border: 1px solid var(--eo); border-radius: var(--r); }
+.card   { background: var(--card); border: 1px solid var(--e0); border-radius: var(--r); }
+.card-b { background: var(--card); border: 1px solid var(--eb); border-radius: var(--r); }
+.card-o { background: var(--card); border: 1px solid var(--eo); border-radius: var(--r); }
 
 /* ════════════════════════════════════════════════════════════
    MODO LEITURA (visualização fullscreen)
