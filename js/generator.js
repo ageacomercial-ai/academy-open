@@ -615,5 +615,5 @@ function verificarAntesDeGerar(gerarDirecto) {
   }
   /* Utilizador gratuito: guardar rascunho e mostrar paywall */
   guardarRascunhoPendente();
-  _mostrarPaywallGeracao();
+  mostrarToast('🔒 Funcionalidade premium — faz upgrade para gerar trabalhos.');
 }
