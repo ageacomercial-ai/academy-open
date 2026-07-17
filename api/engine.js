@@ -15,6 +15,9 @@ const OR_URL   = 'https://openrouter.ai/api/v1/chat/completions';
 const OR_SITE  = 'https://academy-open.vercel.app';
 const OR_TITLE = 'ACADEMY';
 
+/* Fallback: se a Vercel não expuser a env var, tenta ler do .env na raiz */
+try { const fs = require('fs'); const p = require('path'); const f = fs.readFileSync(p.join(__dirname,'..','.env'),'utf8'); for (const l of f.split('\n')) { const m = l.match(/^OPENROUTER_API_KEY=(.+)/); if (m && !process.env.OPENROUTER_API_KEY) process.env.OPENROUTER_API_KEY = m[1].trim().replace(/^['"]|['"]$/g,''); } } catch(e) {}
+
 /* Modelos gratuitos OpenRouter — basta criar conta em openrouter.ai e gerar API key (sem cartão de crédito) */
 const MODELS = [
   'meta-llama/llama-3.3-70b-instruct:free',
