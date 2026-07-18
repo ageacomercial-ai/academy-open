@@ -117,9 +117,20 @@ function sAdmin() {
     </div>
   </div>
 
-  <!-- Estatísticas -->
+  <!-- Dashboard Global (carregado do Supabase) -->
   <div style="margin-top:20px;padding:16px;background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r)">
-    <div style="font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:var(--t3);margin-bottom:12px;text-transform:uppercase">📊 Estatísticas da Sessão</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:var(--t3);text-transform:uppercase">📊 Dashboard Global</div>
+      <button onclick="carregarDashboard()" style="font-family:var(--fm);font-size:8px;color:var(--b);background:none;border:none;cursor:pointer;letter-spacing:.06em">↺ Actualizar</button>
+    </div>
+    <div id="adminDashboard" style="min-height:36px">
+      <div style="font-size:12px;color:var(--t3);padding:8px;text-align:center">A carregar...</div>
+    </div>
+  </div>
+
+  <!-- Estatísticas da Sessão -->
+  <div style="margin-top:20px;padding:16px;background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r)">
+    <div style="font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:var(--t3);margin-bottom:12px;text-transform:uppercase">💻 Sessão Actual</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       ${[
         ['Documentos criados', getDocs().length],
@@ -381,6 +392,52 @@ async function adminGuardarPrecos() {
   } catch (e) {
     status.textContent = '✗ Erro ao guardar: ' + (e.message || '');
     status.style.color = '#f87171';
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   DASHBOARD GLOBAL
+════════════════════════════════════════════════════════════ */
+async function carregarDashboard() {
+  const el = document.getElementById('adminDashboard');
+  if (!el) return;
+  el.innerHTML = '<div style="font-size:12px;color:var(--t3);padding:8px;text-align:center">A carregar métricas...</div>';
+  try {
+    const [uR, pR, dR] = await Promise.allSettled([
+      fetch(SB_URL + '/rest/v1/utilizadores?select=id&limit=1000', { headers: SB_H() }),
+      fetch(SB_URL + '/rest/v1/pagamentos?select=valor,estado&limit=1000', { headers: SB_H() }),
+      fetch(SB_URL + '/rest/v1/documentos?select=uid&limit=1000', { headers: SB_H() }),
+    ]);
+    const users = uR.status === 'fulfilled' && uR.value.ok ? await uR.value.json() : [];
+    const pags  = pR.status === 'fulfilled' && pR.value.ok ? await pR.value.json() : [];
+    const docs  = dR.status === 'fulfilled' && dR.value.ok ? await dR.value.json() : [];
+    const totalUsers = Array.isArray(users) ? users.length : 0;
+    const totalDocs  = Array.isArray(docs) ? docs.length : 0;
+    const totalPags  = Array.isArray(pags) ? pags.length : 0;
+    const receita    = Array.isArray(pags) ? pags.filter(p => p.estado === 'aprovado' || p.estado === 'processado').reduce((s, p) => s + (parseInt(p.valor) || 0), 0) : 0;
+    const uniqUsers  = Array.isArray(docs) ? new Set(docs.map(d => d.uid)).size : 0;
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="background:var(--sf3);border-radius:var(--r2);padding:10px">
+          <div style="font-family:var(--fm);font-size:7px;color:var(--t3);letter-spacing:.06em">UTILIZADORES</div>
+          <div style="font-size:20px;font-weight:800;color:var(--b)">${totalUsers}</div>
+        </div>
+        <div style="background:var(--sf3);border-radius:var(--r2);padding:10px">
+          <div style="font-family:var(--fm);font-size:7px;color:var(--t3);letter-spacing:.06em">DOCUMENTOS</div>
+          <div style="font-size:20px;font-weight:800;color:var(--b)">${totalDocs}</div>
+        </div>
+        <div style="background:var(--sf3);border-radius:var(--r2);padding:10px">
+          <div style="font-family:var(--fm);font-size:7px;color:var(--t3);letter-spacing:.06em">PAGAMENTOS</div>
+          <div style="font-size:20px;font-weight:800;color:var(--b)">${totalPags}</div>
+        </div>
+        <div style="background:var(--sf3);border-radius:var(--r2);padding:10px">
+          <div style="font-family:var(--fm);font-size:7px;color:var(--t3);letter-spacing:.06em">RECEITA (Kz)</div>
+          <div style="font-size:16px;font-weight:800;color:var(--b)">${receita.toLocaleString()}</div>
+        </div>
+      </div>
+      <div style="margin-top:8px;font-family:var(--fm);font-size:8px;color:var(--t3)">${uniqUsers} utilizadores activos · ${totalDocs} documentos totais</div>`;
+  } catch (e) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--t3)">Erro ao carregar dashboard</div>';
   }
 }
 
