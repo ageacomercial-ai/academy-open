@@ -609,6 +609,40 @@ function _mostrarErroValidacao(msg) {
 
 /* ── Gate de geração (verifica plano antes de avançar) ── */
 function verificarAntesDeGerar(gerarDirecto) {
-  if (gerarDirecto) iniciarGer();
-  else irPara('preview_gen');
+  if (!gerarDirecto) { irPara('preview_gen'); return; }
+  const pags = nPags();
+  const saldo = getSaldoDisponivel();
+  if (saldo < pags) {
+    _desbloquearBtnGerar();
+    _mostrarSaldoInsuficiente(pags, saldo);
+    return;
+  }
+  iniciarGer();
+}
+
+function _mostrarSaldoInsuficiente(pags, saldo) {
+  mostrarToast(`⚠ Saldo insuficiente: precisas de ${pags} páginas, tens ${saldo}.`);
+  const overlay = document.createElement('div');
+  overlay.id = 'saldo-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:699;background:rgba(0,0,0,.6);backdrop-filter:blur(8px)';
+  const div = document.createElement('div');
+  div.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:700;background:var(--z2);border:1.5px solid rgba(248,113,113,.5);border-radius:14px;padding:24px 22px;width:calc(100% - 48px);max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,.7);text-align:center;animation:aparecer .2s;`;
+  div.innerHTML = `
+    <div style="font-size:32px;margin-bottom:12px">📄</div>
+    <div style="font-size:15px;font-weight:700;color:var(--t1);margin-bottom:4px">Saldo insuficiente</div>
+    <div style="font-size:13px;color:var(--t2);line-height:1.65;margin-bottom:16px">
+      Este trabalho requer <strong>${pags} páginas</strong>.<br/>
+      Teu saldo actual: <strong>${saldo} páginas</strong>.
+    </div>
+    <button onclick="this.closest('#saldo-overlay').remove();irPara('planos',{numPags:${pags}})"
+      style="width:100%;padding:12px;border-radius:10px;background:linear-gradient(135deg,var(--b),var(--bd));border:none;color:var(--t-inv);font-family:var(--fu);font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px">
+      🚀 Adquirir páginas
+    </button>
+    <button onclick="document.getElementById('saldo-overlay').remove()"
+      style="width:100%;padding:10px;border-radius:10px;background:transparent;border:.5px solid var(--e0);color:var(--t3);font-family:var(--fu);font-size:13px;cursor:pointer">
+      Voltar
+    </button>`;
+  overlay.onclick = () => { div.remove(); overlay.remove(); };
+  document.body.appendChild(overlay);
+  document.body.appendChild(div);
 }

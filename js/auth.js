@@ -180,6 +180,23 @@ function getCreditos() {
 
 function setCreditos(c) { LS.set('creditos', c); }
 
+/* ── Saldo disponível para geração ── */
+function getSaldoDisponivel() {
+  const c = getCreditos();
+  const plano = planoActivo();
+  if (plano === 'gratuito') return c.gen_usada >= 1 ? 0 : 9999;
+  if (temCreditoActivo()) return getCreditosPags();
+  const def = PLANOS_DEF[plano] || PLANOS_DEF.gratuito;
+  return Math.max(0, def.pags_mes - (c.pags || 0));
+}
+
+function getSaldoExpiracao() {
+  const c = getCreditos();
+  if (temCreditoActivo() && c.credito_expiry) return new Date(c.credito_expiry).toLocaleDateString();
+  if (c.plano_expiry) return new Date(c.plano_expiry).toLocaleDateString();
+  return null;
+}
+
 function temCreditoActivo() {
   const c = getCreditos();
   return c.credito_pags > 0 && c.credito_expiry && Date.now() < c.credito_expiry;

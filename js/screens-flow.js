@@ -86,7 +86,7 @@ function sInicio() {
       <span style="color:var(--t2);font-size:20px;font-weight:600">O que criamos hoje?</span>
     </div>
 
-    <!-- Badge do plano -->
+    <!-- Badge do plano e saldo -->
     <div onclick="irPara('planos')" style="margin-top:14px;background:var(--sf3);border:.5px solid var(--eb);border-radius:var(--r2);padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer">
       <div style="font-size:16px">${planoDef?.ic || '🎁'}</div>
       <div style="flex:1">
@@ -96,9 +96,10 @@ function sInicio() {
             ? (creditos.gen_usada
                 ? `Geração gratuita utilizada · <span style="color:var(--b)">Upgrade →</span>`
                 : `1 geração gratuita disponível · <span style="color:var(--b)">Usar agora →</span>`)
-            : `${creditos.pags || 0} / ${planoDef?.pags_mes} páginas usadas este mês`}
+            : `${creditos.pags || 0} / ${planoDef?.pags_mes} páginas usadas · ${getSaldoDisponivel()} restantes`}
           ${temCreditoActivo() ? ` · <span style="color:var(--b)">📄 ${getCreditosPags()} págs crédito</span>` : ''}
         </div>
+        ${getSaldoExpiracao() ? `<div style="font-family:var(--fm);font-size:8px;color:var(--t3);margin-top:2px">⏳ válido até ${getSaldoExpiracao()}</div>` : ''}
       </div>
       <div style="color:var(--t3);font-size:16px">›</div>
     </div>
@@ -424,14 +425,30 @@ function sPreviewGen() {
   const numSub = est.reduce((a, c) => a + (c.subs?.length || 0), 0);
   const pags   = cfg.pags || 15;
   const pac    = calcPacote(pags);
+  const saldo  = getSaldoDisponivel();
+  const saldoOk = saldo >= pags;
+  const exp    = getSaldoExpiracao();
 
   return `
   <div style="padding-bottom:32px">
     <div style="font-family:var(--fm);font-size:8px;letter-spacing:.18em;color:var(--b);margin-bottom:6px">CONFIRMAR</div>
     <div style="font-size:22px;font-weight:800;color:var(--t1);letter-spacing:-.02em;margin-bottom:18px">O teu trabalho está pronto para gerar</div>
 
+    <!-- Saldo -->
+    <div style="background:var(--z2);border:.5px solid var(--e1);border-radius:var(--r2);padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
+      <div style="font-size:20px">${saldo > 0 ? '✅' : '⚠️'}</div>
+      <div style="flex:1">
+        <div style="font-family:var(--fm);font-size:7px;color:var(--t3);letter-spacing:.1em;text-transform:uppercase">Teu saldo</div>
+        <div style="font-size:14px;font-weight:700;color:${saldoOk ? 'var(--b)' : '#f87171'}">
+          ${saldo >= 9999 ? 'Gratuito (1 geração)' : `${saldo} páginas disponíveis`}
+        </div>
+        ${exp ? `<div style="font-family:var(--fm);font-size:8px;color:var(--t3);margin-top:1px">Válido até ${exp}</div>` : ''}
+        ${!saldoOk ? `<div style="font-family:var(--fm);font-size:9px;color:#f87171;margin-top:2px">Precisas de ${pags - saldo} páginas adicionais</div>` : ''}
+      </div>
+    </div>
+
     <!-- Resumo -->
-    <div style="background:var(--z2);border:.5px solid var(--e1);border-radius:var(--r2);padding:16px;margin-bottom:16px">
+    <div style="background:var(--z2);border:.5px solid var(--e1);border-radius:var(--r2);padding:16px;margin-bottom:12px">
       <div style="font-family:var(--fm);font-size:8px;color:var(--b);letter-spacing:.1em;margin-bottom:12px">RESUMO DO TRABALHO</div>
       <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--t2)">
         <div><span style="color:var(--t3)">Tipo:</span> <strong style="color:var(--t1)">${tp.n}</strong></div>
@@ -446,13 +463,34 @@ function sPreviewGen() {
     </div>
 
     <!-- Custo -->
-    <div style="background:linear-gradient(135deg,var(--eb),transparent);border:.5px solid var(--eb);border-radius:var(--r2);padding:14px 16px;margin-bottom:22px;display:flex;align-items:center;gap:12px">
+    <div style="background:linear-gradient(135deg,var(--eb),transparent);border:.5px solid var(--eb);border-radius:var(--r2);padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px">
       <div style="font-size:28px">📄</div>
       <div style="flex:1">
         <div style="font-size:15px;font-weight:700;color:var(--t1)">${pac.label}</div>
         <div style="font-family:var(--fm);font-size:10px;color:var(--t3);margin-top:2px">${pags} páginas · ${pac.preco.toLocaleString()} Kz · válido 30 dias</div>
       </div>
     </div>
+
+    ${!saldoOk ? `
+    <!-- Opções rápidas de páginas -->
+    <div style="margin-bottom:12px">
+      <div style="font-family:var(--fm);font-size:8px;color:var(--b);letter-spacing:.1em;margin-bottom:8px">ADQUIRIR PÁGINAS</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        ${[
+          { p: 15,  preco: 950 },
+          { p: 30,  preco: 1650 },
+          { p: 200, preco: 12000 },
+          { p: 500, preco: 29500 },
+        ].filter(opt => opt.p >= pags - saldo).slice(0, 4).map(opt => `
+        <div style="background:var(--z2);border:.5px solid var(--eb);border-radius:var(--r2);padding:10px;text-align:center;cursor:pointer" onclick="_iniciarPagamentoAvulso(${opt.p},${opt.preco})">
+          <div style="font-size:15px;font-weight:700;color:var(--t1)">${opt.p}p</div>
+          <div style="font-family:var(--fm);font-size:9px;color:var(--t3)">${opt.preco.toLocaleString()} Kz</div>
+        </div>`).join('')}
+      </div>
+    </div>
+    <button class="btn G w" onclick="irPara('planos',{numPags:${pags}})" style="font-size:13px;margin-bottom:22px">
+      🚀 Ver todos os planos
+    </button>` : ''}
 
     <button class="btn B w" id="btnGerarFinal" onclick="btnGerarFinalClick()" style="font-size:15px;padding:16px;margin-bottom:10px">
       Gerar o meu trabalho →
