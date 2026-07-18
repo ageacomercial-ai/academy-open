@@ -1,4 +1,4 @@
-const CACHE = 'academy-v81';
+const CACHE = 'academy-v82';
 const ASSETS = [
   './',
   './index.html',
@@ -10,6 +10,8 @@ const ASSETS = [
   './js/supabase.js',
   './js/auth.js',
   './js/navigation.js',
+  './js/doc-blocks.js',
+  './js/doc-history.js',
   './js/generator.js',
   './js/layout.js',
   './js/export.js',
