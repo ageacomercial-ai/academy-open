@@ -8,13 +8,13 @@
    Operações de admin passam sempre pelo backend Vercel.
 ═══════════════════════════════════════════════════════════ */
 
-const SB_URL = 'https://kogbgrqwyezgpbpynryi.supabase.co';
+const SB_URL = 'https://avdzkucdehggueafyukw.supabase.co';
 
 const SB_KEY = (()=>{
   const p = [
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
-    'eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvZ2JncnF3eWV6Z3BicHlucnlpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1Mzc3MjcsImV4cCI6MjA5NTExMzcyN30',
-    'LjtNHbMfh0LjSwiu_8-5tVyBcLejZbl7vHPTeoRqfqo',
+    'eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF2ZHprdWNkZWhnZ3VlYWZ5dWt3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzNjE4MTMsImV4cCI6MjA5OTkzNzgxM30',
+    'hGmrDP5A0EhX-Ax2-QSIH434yxjQnIg48mHR_vMW6tw',
   ];
   return p.join('.');
 })();
