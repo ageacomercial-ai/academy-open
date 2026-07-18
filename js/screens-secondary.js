@@ -373,6 +373,8 @@ function sPlanosPrecos(opts) {
   const creditos   = getCreditos();
   const temCred    = temCreditoActivo();
   const creditoPags = getCreditosPags();
+  const diasRest   = getDiasRestantes();
+  const expCor     = diasRest === null ? '' : diasRest <= 3 ? '#f87171' : diasRest <= 7 ? '#FBBF24' : 'var(--t3)';
 
   return `
   <div style="padding-bottom:32px">
@@ -389,9 +391,11 @@ function sPlanosPrecos(opts) {
         <div style="font-size:12px;color:var(--t3);margin-top:2px">
           ${planoAtual === 'gratuito'
             ? (creditos.gen_usada ? 'Geração gratuita já utilizada' : '1 geração gratuita disponível')
-            : `${creditos.pags || 0} / ${PLANOS_DEF[planoAtual]?.pags_mes} páginas este mês`}
+            : `${creditos.pags || 0} / ${PLANOS_DEF[planoAtual]?.pags_mes} páginas usadas · ${getSaldoDisponivel()} restantes`}
           ${temCred ? ` · 📄 ${creditoPags} págs crédito` : ''}
         </div>
+        ${diasRest !== null ? `<div style="font-family:var(--fm);font-size:9px;color:${expCor};margin-top:4px">${diasRest <= 0 ? '⚠️ Plano expirado — renova para continuar' : `⏳ Expira em ${diasRest} dia(s) · ${getSaldoExpiracao()}`}</div>` : ''}
+        ${diasRest !== null && diasRest <= 3 && diasRest > 0 ? `<div style="font-family:var(--fm);font-size:9px;color:#FBBF24;margin-top:2px">⚠️ O teu plano expira em breve. Renova para não perderes o acesso.</div>` : ''}
       </div>
     </div>
 

@@ -76,6 +76,18 @@ function sInicio() {
   const creditos   = getCreditos();
   const nome       = State.get('u')?.nome?.split(' ')[0] || '';
   const cfg        = State.get('cfg');
+  const diasRest   = getDiasRestantes();
+  const expCor     = diasRest === null ? '' : diasRest <= 3 ? '#f87171' : diasRest <= 7 ? '#FBBF24' : 'var(--t3)';
+
+  /* Toast de expiração se <3 dias */
+  if (diasRest !== null && diasRest > 0 && diasRest <= 3 && !sessionStorage.getItem('expWarn')) {
+    sessionStorage.setItem('expWarn', '1');
+    setTimeout(() => mostrarToast(`⚠️ Teu plano expira em ${diasRest} dia(s). Renova em Planos →`), 800);
+  }
+  if (diasRest !== null && diasRest <= 0 && !sessionStorage.getItem('expWarn')) {
+    sessionStorage.setItem('expWarn', '1');
+    setTimeout(() => mostrarToast(`⚠️ Teu plano expirou. Adquire novo plano para continuares a exportar.`), 800);
+  }
 
   return `
   <!-- SAUDAÇÃO -->
@@ -99,7 +111,7 @@ function sInicio() {
             : `${creditos.pags || 0} / ${planoDef?.pags_mes} páginas usadas · ${getSaldoDisponivel()} restantes`}
           ${temCreditoActivo() ? ` · <span style="color:var(--b)">📄 ${getCreditosPags()} págs crédito</span>` : ''}
         </div>
-        ${getSaldoExpiracao() ? `<div style="font-family:var(--fm);font-size:8px;color:var(--t3);margin-top:2px">⏳ válido até ${getSaldoExpiracao()}</div>` : ''}
+        ${diasRest !== null ? `<div style="font-family:var(--fm);font-size:8px;color:${expCor};margin-top:2px">${diasRest <= 0 ? '⚠️ Expirado' : `⏳ ${diasRest} dia(s) restantes · até ${getSaldoExpiracao()}`}</div>` : ''}
       </div>
       <div style="color:var(--t3);font-size:16px">›</div>
     </div>

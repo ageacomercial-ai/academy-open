@@ -197,6 +197,17 @@ function getSaldoExpiracao() {
   return null;
 }
 
+function getDiasRestantes() {
+  const c = getCreditos();
+  let ms = null;
+  if (temCreditoActivo() && c.credito_expiry) ms = c.credito_expiry;
+  else if (c.plano_expiry) ms = c.plano_expiry;
+  if (!ms) return null;
+  const diff = ms - Date.now();
+  if (diff <= 0) return 0;
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
 function temCreditoActivo() {
   const c = getCreditos();
   return c.credito_pags > 0 && c.credito_expiry && Date.now() < c.credito_expiry;
@@ -264,6 +275,7 @@ function activarPlano(planoId, meses, redirect = true) {
   c.plano_expiry = Date.now() + (meses || 1) * 30 * 24 * 3600 * 1000;
   c.pags         = 0;
   setCreditos(c);
+  sessionStorage.removeItem('expWarn');
   mostrarToast(`✓ Plano ${PLANOS_DEF[planoId]?.n} activado!`);
   if (redirect) irPara('inicio');
 }
@@ -274,6 +286,7 @@ function activarCredito(numPags, redirect = true) {
   c.credito_pags   = (c.credito_pags || 0) + numPags;
   c.credito_expiry = Date.now() + 30 * 24 * 3600 * 1000; /* 30 dias */
   setCreditos(c);
+  sessionStorage.removeItem('expWarn');
   mostrarToast(`✓ ${numPags} páginas de crédito activadas (válidas 30 dias)!`);
   if (redirect) irPara('inicio');
 }
