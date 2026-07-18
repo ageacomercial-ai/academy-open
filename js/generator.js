@@ -24,6 +24,9 @@ let _treRetroRefCount = 0;
 async function callAcademyAPI(rawPayload) {
   const action = rawPayload.acao || rawPayload.tipo || '';
   const { acao: _a, tipo: _t, ...payload } = rawPayload;
+  const engine = (LS.get('engine_pref') || '').split('/');
+  const ac_model = engine[0] === 'openrouter' ? engine.slice(1).join('/') : (engine[1] || 'llama-3.3-70b-versatile');
+  const ac_engine = engine[0] || 'groq';
 
   const ctrl = new AbortController();
   const tid  = setTimeout(() => ctrl.abort(), 60000);
@@ -33,7 +36,7 @@ async function callAcademyAPI(rawPayload) {
       mode:    'cors',
       signal:  ctrl.signal,
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ action, payload }),
+      body:    JSON.stringify({ action, payload: { ...payload, ac_model, ac_engine } }),
     });
 
     if (!resp.ok) {

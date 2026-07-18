@@ -223,10 +223,18 @@ function sConfig() {
       <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--z3);border-radius:var(--r2);border:.5px solid var(--e0)">
         <div>
           <div style="font-size:13px;font-weight:600;color:var(--t1)">Motor de IA</div>
-          <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-top:2px">OpenRouter via /api/engine</div>
+          <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-top:2px">${_engineAtual()}</div>
         </div>
         <div style="font-family:var(--fm);font-size:8px;padding:4px 9px;border-radius:20px;background:var(--eb);border:1px solid var(--eb);color:var(--b)">✓ ACTIVO</div>
       </div>
+      <select class="inp" id="engineSelect" onchange="mudarEngine(this.value)" style="margin-top:4px">
+        <option value="groq/llama-3.3-70b-versatile" ${_enginePref()==='groq/llama-3.3-70b-versatile'?'selected':''}>Groq · LLaMA 3.3 70B</option>
+        <option value="groq/llama-3.1-8b-instant" ${_enginePref()==='groq/llama-3.1-8b-instant'?'selected':''}>Groq · LLaMA 3.1 8B (rápido)</option>
+        <option value="groq/mixtral-8x7b-32768" ${_enginePref()==='groq/mixtral-8x7b-32768'?'selected':''}>Groq · Mixtral 8x7B</option>
+        <option value="openrouter/meta-llama/llama-3.3-70b-instruct" ${_enginePref()==='openrouter/meta-llama/llama-3.3-70b-instruct'?'selected':''}>OpenRouter · LLaMA 3.3 70B</option>
+        <option value="openrouter/google/gemini-2.0-flash-001" ${_enginePref()==='openrouter/google/gemini-2.0-flash-001'?'selected':''}>OpenRouter · Gemini 2.0 Flash</option>
+        <option value="openrouter/microsoft/wizardlm-2-8x22b" ${_enginePref()==='openrouter/microsoft/wizardlm-2-8x22b'?'selected':''}>OpenRouter · WizardLM 2 8x22B</option>
+      </select>
     </div>
     <button class="btn G w" onclick="testarAPI()" style="margin-top:12px;font-size:13px">⚡ Testar ligação ao servidor</button>
     <div id="cfgMsg" style="margin-top:8px"></div>
@@ -238,6 +246,21 @@ function sConfig() {
   <button class="btn G w" onclick="sairConta()" style="margin-bottom:8px;border-color:rgba(239,68,68,.25);color:#f87171">⬡ Apagar tudo e sair</button>
   <div style="font-family:var(--fm);font-size:10px;color:var(--t3);text-align:center;margin-bottom:16px">Apaga todos os dados deste dispositivo</div>
   ${RODAPE_HTML}`;
+}
+
+/* ── Engine / modelo seleccionado ── */
+function _enginePref() {
+  return LS.get('engine_pref') || 'groq/llama-3.3-70b-versatile';
+}
+function _engineAtual() {
+  const p = _enginePref().split('/');
+  const e = p[0] === 'openrouter' ? 'OpenRouter' : 'Groq';
+  const m = p.slice(1).join('/').split('-').slice(0, 3).join(' ');
+  return `${e} · ${m}`;
+}
+function mudarEngine(val) {
+  LS.set('engine_pref', val);
+  mostrarToast(`✓ Motor alterado para ${_engineAtual()}`);
 }
 
 /* ── Testar API ── */

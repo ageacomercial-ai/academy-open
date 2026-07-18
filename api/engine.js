@@ -578,13 +578,18 @@ export default async function handler(req, res) {
   try { body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; }
   catch { return res.status(400).json({ ok:false, error:'INVALID_JSON' }); }
 
-  const action  = body?.action || '';
-  const payload = body?.payload || {};
+  const action    = body?.action || '';
+  const payload   = body?.payload || {};
+  /* Engine opts — propagado globalmente para todas as calls a callAI */
+  const ac_engine = payload.ac_engine || 'groq';
+  const ac_model  = payload.ac_model  || 'llama-3.3-70b-versatile';
+  globalThis.__ac_engine = ac_engine;
+  globalThis.__ac_model  = ac_model;
 
   try {
     switch (action) {
       case 'ping':
-        return res.json({ ok:true, action:'ping', data:{ resposta:'pong', pong:true, ts:Date.now(), site:OR_SITE, groq:!!process.env.GROQ_API_KEY } });
+        return res.json({ ok:true, action:'ping', data:{ resposta:'pong', pong:true, ts:Date.now(), site:OR_SITE, groq:!!process.env.GROQ_API_KEY, openrouter:!!process.env.OPENROUTER_API_KEY } });
       case 'chat':
         return res.json(ok('chat', await doChat(payload)));
       case 'generate_lesson':
@@ -1034,32 +1039,73 @@ async function doGetHistory(p) {
   return { rows: Array.isArray(rows)?rows:[] };
 }
 
-/* ---------------- GROQ API COM FALLBACK ---------------- */
+/* ---------------- ENGINES IA (Groq + OpenRouter) ---------------- */
+const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+
 async function callAI(messages, opts={}) {
-  const key = process.env.GROQ_API_KEY;
-  if (!key) throw new Error('GROQ_API_KEY não configurada');
-  let lastErr = '';
-  for (const model of MODELS) {
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(()=>ctrl.abort(), 25000);
-      let resp;
-      try {
-        resp = await fetch(OR_URL, {
-          method:'POST', signal:ctrl.signal,
-          headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+key },
-          body:JSON.stringify({ model, messages, temperature:opts.temperature??0.7, max_tokens:opts.max_tokens??800, stream:false }),
-        });
-      } finally { clearTimeout(t); }
-      if (resp.status===429||resp.status===503) { lastErr=String(resp.status); continue; }
-      if (!resp.ok) { lastErr=await resp.text().catch(()=>String(resp.status)); continue; }
-      const data = await resp.json();
-      const text = data?.choices?.[0]?.message?.content?.trim();
-      if (text && text.length>10) return text;
-      lastErr='empty response';
-    } catch(e) { lastErr=e.message; }
+  const ac_engine = opts.ac_engine || globalThis.__ac_engine || 'groq';
+  const ac_model  = opts.ac_model  || globalThis.__ac_model || 'llama-3.3-70b-versatile';
+  const groqKey   = process.env.GROQ_API_KEY;
+  const orKey     = process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_KEY;
+
+  /* Tenta engine principal primeiro, depois fallback */
+  const engines = [];
+  if (ac_engine === 'openrouter' && orKey) {
+    engines.push({ url: OPENROUTER_URL, key: orKey, model: ac_model, label: 'OpenRouter' });
   }
-  throw new Error('Todos os modelos falharam: '+lastErr);
+  if (groqKey) {
+    /* Groq: mapear modelo curto para nome completo */
+    const groqModels = {
+      'llama-3.3-70b-versatile': 'llama-3.3-70b-versatile',
+      'llama-3.1-8b-instant':    'llama-3.1-8b-instant',
+      'mixtral-8x7b-32768':      'mixtral-8x7b-32768',
+    };
+    const gm = groqModels[ac_model] || 'llama-3.3-70b-versatile';
+    engines.push({ url: GROQ_URL, key: groqKey, model: gm, label: 'Groq' });
+  }
+  /* Fallback: se engine OpenRouter mas sem chave, tentar Groq */
+  if (ac_engine === 'openrouter' && !orKey && groqKey) {
+    const groqModels = {
+      'llama-3.3-70b-versatile': 'llama-3.3-70b-versatile',
+      'llama-3.1-8b-instant':    'llama-3.1-8b-instant',
+      'mixtral-8x7b-32768':      'mixtral-8x7b-32768',
+    };
+    const gm = groqModels['llama-3.3-70b-versatile'] || 'llama-3.3-70b-versatile';
+    engines.push({ url: GROQ_URL, key: groqKey, model: gm, label: 'Groq (fallback)' });
+  }
+
+  if (!engines.length) throw new Error('Nenhuma engine configurada — define GROQ_API_KEY ou OPENROUTER_API_KEY');
+
+  let lastErr = '';
+  for (const engine of engines) {
+    const models = engine.label === 'Groq' ? MODELS : [engine.model];
+    for (const model of models) {
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(()=>ctrl.abort(), 30000);
+        let resp;
+        try {
+          resp = await fetch(engine.url, {
+            method:'POST', signal:ctrl.signal,
+            headers:{
+              'Content-Type':'application/json',
+              'Authorization':'Bearer '+engine.key,
+              ...(engine.label==='OpenRouter' ? { 'HTTP-Referer':'https://academy-open.vercel.app', 'X-Title':'ACADEMY' } : {}),
+            },
+            body:JSON.stringify({ model, messages, temperature:opts.temperature??0.7, max_tokens:opts.max_tokens??800, stream:false }),
+          });
+        } finally { clearTimeout(t); }
+        if (resp.status===429||resp.status===503) { lastErr=String(resp.status); continue; }
+        if (!resp.ok) { lastErr=await resp.text().catch(()=>String(resp.status)); continue; }
+        const data = await resp.json();
+        const text = data?.choices?.[0]?.message?.content?.trim();
+        if (text && text.length>10) return text;
+        lastErr='empty response';
+      } catch(e) { lastErr=e.message; }
+    }
+  }
+  throw new Error('Todas as engines falharam: '+lastErr);
 }
 
 /* ---------------- JSON EXTRACTOR ---------------- */
@@ -1074,5 +1120,5 @@ function extrairJSON(texto) {
 
 /* ---------------- HELPER ---------------- */
 function ok(action, data) {
-  return { ok:true, action, data, meta:{ ts:Date.now(), provider:'groq' } };
+  return { ok:true, action, data, meta:{ ts:Date.now(), provider:globalThis.__ac_engine||'groq', model:globalThis.__ac_model||'llama-3.3-70b-versatile' } };
 }
