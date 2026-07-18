@@ -1,22 +1,18 @@
 <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <radialGradient id="bg" cx=".3" cy=".3" r="1">
-      <stop offset="0%" stop-color="#4becb0"/>
-      <stop offset="100%" stop-color="#3ddb9c"/>
-    </radialGradient>
     <linearGradient id="a" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#ffffff"/>
-      <stop offset="100%" stop-color="#d4f6e6"/>
+      <stop offset="0%" stop-color="#43E8A7"/>
+      <stop offset="100%" stop-color="#3ddb9c"/>
     </linearGradient>
     <linearGradient id="r" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity=".3"/>
-      <stop offset="100%" stop-color="#ffffff" stop-opacity=".06"/>
+      <stop offset="0%" stop-color="#43E8A7" stop-opacity=".25"/>
+      <stop offset="100%" stop-color="#43E8A7" stop-opacity=".05"/>
     </linearGradient>
   </defs>
-  <rect width="512" height="512" rx="100" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="100" fill="#0a0a0a"/>
   <rect x="30" y="30" width="452" height="452" rx="86" fill="none" stroke="url(#r)" stroke-width="4"/>
   <circle cx="256" cy="256" r="192" fill="none" stroke="url(#r)" stroke-width="3"/>
-  <g stroke="#ffffff" stroke-opacity=".12" stroke-width="6" stroke-linecap="round">
+  <g stroke="#43E8A7" stroke-opacity=".12" stroke-width="6" stroke-linecap="round">
     <line x1="60" y1="60" x2="124" y2="60"/><line x1="60" y1="60" x2="60" y2="124"/>
     <line x1="452" y1="60" x2="388" y2="60"/><line x1="452" y1="60" x2="452" y2="124"/>
     <line x1="60" y1="452" x2="124" y2="452"/><line x1="60" y1="452" x2="60" y2="388"/>
