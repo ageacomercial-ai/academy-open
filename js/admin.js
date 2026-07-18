@@ -155,6 +155,17 @@ function sAdmin() {
     </div>
   </div>
 
+  <!-- Relatórios -->
+  <div style="margin-bottom:20px;padding:16px;background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:var(--t3);text-transform:uppercase">📋 Relatórios</div>
+      <button onclick="gerarRelatorio()" style="font-family:var(--fm);font-size:8px;color:var(--b);background:none;border:none;cursor:pointer;letter-spacing:.06em">↺ Gerar</button>
+    </div>
+    <div id="adminRelatorios" style="min-height:36px">
+      <div style="font-size:11px;color:var(--t3);padding:6px 0">Carrega em "Gerar" para obter relatório</div>
+    </div>
+  </div>
+
   <!-- Dashboard Global (carregado do Supabase) -->
   <div style="margin-top:20px;padding:16px;background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r)">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -542,6 +553,87 @@ async function carregarDashboard() {
   } catch (e) {
     el.innerHTML = '<div style="font-size:11px;color:var(--t3)">Erro ao carregar dashboard</div>';
   }
+}
+
+/* ════════════════════════════════════════════════════════════
+   RELATÓRIOS
+════════════════════════════════════════════════════════════ */
+async function gerarRelatorio() {
+  const el = document.getElementById('adminRelatorios');
+  if (!el) return;
+  el.innerHTML = '<div style="font-size:11px;color:var(--t3);padding:6px 0">A gerar relatório...</div>';
+  try {
+    const [uR, pR, dR, iR, cR] = await Promise.allSettled([
+      fetch(SB_URL + '/rest/v1/utilizadores?select=nome,email,nivel,whatsapp,updated_at&limit=500', { headers: SB_H() }),
+      fetch(SB_URL + '/rest/v1/pagamentos?order=criado_em.desc&limit=500', { headers: SB_H() }),
+      fetch(SB_URL + '/rest/v1/documentos?select=uid,titulo,tipo,pags,updated_at&limit=500', { headers: SB_H() }),
+      fetch(SB_URL + '/rest/v1/instituicoes?order=nome.asc', { headers: SB_H() }),
+      fetch(SB_URL + '/rest/v1/comissoes?order=criado_em.desc&limit=100', { headers: SB_H() }),
+    ]);
+    const users = uR.status==='fulfilled'&&uR.value.ok ? await uR.value.json() : [];
+    const pags  = pR.status==='fulfilled'&&pR.value.ok ? await pR.value.json() : [];
+    const docs  = dR.status==='fulfilled'&&dR.value.ok ? await dR.value.json() : [];
+    const insts = iR.status==='fulfilled'&&iR.value.ok ? await iR.value.json() : [];
+    const coms  = cR.status==='fulfilled'&&cR.value.ok ? await cR.value.json() : [];
+
+    const totalUsers = Array.isArray(users) ? users.length : 0;
+    const totalPags  = Array.isArray(pags) ? pags.length : 0;
+    const totalDocs  = Array.isArray(docs) ? docs.length : 0;
+    const receita    = Array.isArray(pags) ? pags.filter(p => p.estado==='aprovado'||p.estado==='processado').reduce((s,p) => s+(parseInt(p.valor)||0),0) : 0;
+    const comPend   = Array.isArray(coms) ? coms.filter(c => c.estado==='pendente').reduce((s,c) => s+(parseInt(c.valor_comissao)||0),0) : 0;
+    const comPago   = Array.isArray(coms) ? coms.filter(c => c.estado==='pago').reduce((s,c) => s+(parseInt(c.valor_comissao)||0),0) : 0;
+
+    /* CSV */
+    const csvLinhas = [
+      'Relatório ACADEMY,Valor',
+      `Utilizadores,${totalUsers}`,
+      `Documentos,${totalDocs}`,
+      `Pagamentos,${totalPags}`,
+      `Receita Total,${receita} Kz`,
+      `Comissões Pendentes,${comPend} Kz`,
+      `Comissões Pagas,${comPago} Kz`,
+      `Instituições Parceiras,${Array.isArray(insts)?insts.length:0}`,
+      '',
+      'Documentos Recentes',
+      'Utilizador,Título,Tipo,Páginas,Data',
+      ...(Array.isArray(docs) ? docs.slice(0,20).map(d => `"${d.uid||''}","${(d.titulo||'').replace(/"/g,'""')}","${d.tipo||''}",${d.pags||0},"${d.updated_at?new Date(d.updated_at).toLocaleDateString('pt-PT'):''}"`) : []),
+    ].join('\n');
+
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">
+        <div style="background:var(--z3);border-radius:var(--r);padding:8px">
+          <div style="font-family:var(--fm);font-size:7px;color:var(--t3);letter-spacing:.06em">UTILIZADORES</div>
+          <div style="font-size:18px;font-weight:800;color:var(--t1)">${totalUsers}</div>
+        </div>
+        <div style="background:var(--z3);border-radius:var(--r);padding:8px">
+          <div style="font-family:var(--fm);font-size:7px;color:var(--t3);letter-spacing:.06em">DOCUMENTOS</div>
+          <div style="font-size:18px;font-weight:800;color:var(--t1)">${totalDocs}</div>
+        </div>
+        <div style="background:var(--z3);border-radius:var(--r);padding:8px">
+          <div style="font-family:var(--fm);font-size:7px;color:var(--t3);letter-spacing:.06em">RECEITA (Kz)</div>
+          <div style="font-size:14px;font-weight:800;color:var(--b)">${receita.toLocaleString()}</div>
+        </div>
+        <div style="background:var(--z3);border-radius:var(--r);padding:8px">
+          <div style="font-family:var(--fm);font-size:7px;color:var(--t3);letter-spacing:.06em">COMISSÕES PENDENTES</div>
+          <div style="font-size:14px;font-weight:800;color:#FBBF24">${comPend.toLocaleString()} Kz</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn B s" onclick="navigator.clipboard.writeText(decodeURIComponent('${encodeURIComponent(csvLinhas)}')).then(()=>mostrarToast('✓ CSV copiado!'))" style="font-size:10px">📋 Copiar CSV</button>
+        <button class="btn G s" onclick="baixarCSV()" style="font-size:10px">⬇ Baixar CSV</button>
+      </div>`;
+    window.__relatorioCSV = csvLinhas;
+  } catch(e) {
+    el.innerHTML = '<div style="font-size:11px;color:#f87171">Erro ao gerar relatório</div>';
+  }
+}
+function baixarCSV() {
+  if (!window.__relatorioCSV) return;
+  const blob = new Blob([window.__relatorioCSV], { type:'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `academy_relatorio_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click(); URL.revokeObjectURL(url);
 }
 
 /* ════════════════════════════════════════════════════════════

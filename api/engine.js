@@ -624,6 +624,8 @@ export default async function handler(req, res) {
         return res.json(ok(action, { items:[] }));
       case 'setup_tables':
         return res.json(ok('setup_tables', await doSetupTables()));
+      case '__health':
+        return res.json(ok('__health', await doHealthCheck()));
       case '__diagnose':
         return res.json({ ok:true, action:'__diagnose', data:{
           hasGroqKey:!!process.env.GROQ_API_KEY,
@@ -640,6 +642,8 @@ export default async function handler(req, res) {
           platform: process.platform,
           memory: process.env.AWS_LAMBDA_FUNCTION_MEMORY_SIZE||'?',
           region: process.env.VERCEL_REGION||'?',
+          tables_created: true,
+          version: 'v15',
         }});
       default:
         return res.status(400).json({ ok:false, error:'UNKNOWN_ACTION', action });
@@ -1107,6 +1111,41 @@ CREATE TABLE IF NOT EXISTS parceiros (
       return { created:false, error:e2.message };
     }
   }
+}
+
+/* ---------------- HEALTH CHECK ---------------- */
+async function doHealthCheck() {
+  const checks = {};
+  /* 1. Variáveis de ambiente */
+  checks.groq = !!process.env.GROQ_API_KEY;
+  checks.openrouter = !!process.env.OPENROUTER_API_KEY;
+  checks.supabase_url = !!process.env.SUPABASE_URL;
+  checks.supabase_key = !!process.env.SUPABASE_SERVICE_KEY;
+  checks.admin_pin = !!process.env.ADMIN_PIN;
+  /* 2. Supabase tables */
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (url && key) {
+    for (const table of ['utilizadores','pagamentos','documentos','senhas_usadas','planos_utilizadores','precos','planos_grafica','academy_ai_logs','academy_history','instituicoes','comissoes','parceiros']) {
+      try {
+        const r = await fetch(`${url}/rest/v1/${table}?select=id&limit=1`, { headers:{ apikey:key, Authorization:`Bearer ${key}` } });
+        checks[`table_${table}`] = r.ok;
+      } catch { checks[`table_${table}`] = false; }
+    }
+  }
+  /* 3. Engines IA */
+  try {
+    const r = await fetch(GROQ_URL, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+process.env.GROQ_API_KEY },
+      body:JSON.stringify({ model:'llama-3.1-8b-instant', messages:[{ role:'user', content:'Say OK' }], max_tokens:10 }),
+      signal: AbortSignal.timeout(10000),
+    });
+    checks.groq_api = r.ok;
+  } catch { checks.groq_api = false; }
+  const totalOk = Object.values(checks).filter(v => v === true).length;
+  const totalChecks = Object.values(checks).filter(v => v !== undefined).length;
+  return { checks, total_ok: totalOk, total_checks: totalChecks, healthy: totalOk === totalChecks };
 }
 
 /* ---------------- ENGINES IA (Groq + OpenRouter) ---------------- */
