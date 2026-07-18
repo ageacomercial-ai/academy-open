@@ -106,6 +106,17 @@ function sAdmin() {
     <div id="adminPrecosStatus" style="font-family:var(--fm);font-size:9px;color:var(--b);margin-top:6px"></div>
   </div>
 
+  <!-- Monitorização IA -->
+  <div style="margin-top:20px;padding:16px;background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:var(--t3);text-transform:uppercase">🤖 Monitorização IA</div>
+      <button onclick="carregarMonitorIA()" style="font-family:var(--fm);font-size:8px;color:var(--b);background:none;border:none;cursor:pointer;letter-spacing:.06em">↺ Actualizar</button>
+    </div>
+    <div id="adminMonitorIA" style="min-height:36px">
+      <div style="font-size:12px;color:var(--t3);padding:8px;text-align:center">A carregar...</div>
+    </div>
+  </div>
+
   <!-- Estatísticas -->
   <div style="margin-top:20px;padding:16px;background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r)">
     <div style="font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:var(--t3);margin-bottom:12px;text-transform:uppercase">📊 Estatísticas da Sessão</div>
@@ -306,6 +317,32 @@ async function adminRejeitar(id) {
   await sbRejeitar(id);
   mostrarToast('Pagamento rejeitado.');
   if (card) setTimeout(() => card.remove(), 800);
+}
+
+/* ════════════════════════════════════════════════════════════
+   MONITORIZAÇÃO IA
+════════════════════════════════════════════════════════════ */
+async function carregarMonitorIA() {
+  const el = document.getElementById('adminMonitorIA');
+  if (!el) return;
+  try {
+    const r = await fetch(SB_URL + '/rest/v1/academy_ai_logs?order=ts.desc&limit=5', { headers: SB_H() });
+    if (!r.ok) { el.innerHTML = '<div style="font-size:11px;color:var(--t3)">Sem acesso aos logs</div>'; return; }
+    const rows = await r.json();
+    if (!rows.length) { el.innerHTML = '<div style="font-size:11px;color:var(--t3)">Nenhum registo de IA ainda</div>'; return; }
+    el.innerHTML = `
+      <div style="font-family:var(--fm);font-size:8px;color:var(--t3);margin-bottom:6px">Últimas ${rows.length} chamadas:</div>
+      ${rows.map(r => `
+      <div style="background:var(--z3);border-radius:var(--r);padding:8px 10px;margin-bottom:4px;font-size:11px;color:var(--t2)">
+        <span style="color:var(--t3)">${new Date(r.ts).toLocaleString('pt-PT').substring(0,16)}</span>
+        <strong style="color:var(--b)">${r.model_used||'?'}</strong>
+        ${r.pages_requested ? `· ${r.pages_requested}p` : ''}
+        ${r.confidence ? `· ${r.confidence}%` : ''}
+      </div>`).join('')}
+      <div style="margin-top:6px;font-family:var(--fm);font-size:8px;color:var(--t3)">Total: ${rows.length} chamadas recentes</div>`;
+  } catch (e) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--t3)">Erro ao carregar monitorização</div>';
+  }
 }
 
 /* ════════════════════════════════════════════════════════════
