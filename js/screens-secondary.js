@@ -228,12 +228,11 @@ function sConfig() {
         <div style="font-family:var(--fm);font-size:8px;padding:4px 9px;border-radius:20px;background:var(--eb);border:1px solid var(--eb);color:var(--b)">✓ ACTIVO</div>
       </div>
       <select class="inp" id="engineSelect" onchange="mudarEngine(this.value)" style="margin-top:4px">
+        <option value="openrouter/google/gemini-2.0-flash-001" ${_enginePref()==='openrouter/google/gemini-2.0-flash-001'?'selected':''}>💰 OpenRouter · Gemini 2.0 Flash (mais barato)</option>
+        <option value="openrouter/meta-llama/llama-3.1-8b-instruct" ${_enginePref()==='openrouter/meta-llama/llama-3.1-8b-instruct'?'selected':''}>OpenRouter · LLaMA 3.1 8B</option>
+        <option value="openrouter/microsoft/phi-3-mini-128k-instruct" ${_enginePref()==='openrouter/microsoft/phi-3-mini-128k-instruct'?'selected':''}>OpenRouter · Phi-3 Mini</option>
+        <option value="groq/llama-3.1-8b-instant" ${_enginePref()==='groq/llama-3.1-8b-instant'?'selected':''}>Groq · LLaMA 3.1 8B (grátis)</option>
         <option value="groq/llama-3.3-70b-versatile" ${_enginePref()==='groq/llama-3.3-70b-versatile'?'selected':''}>Groq · LLaMA 3.3 70B</option>
-        <option value="groq/llama-3.1-8b-instant" ${_enginePref()==='groq/llama-3.1-8b-instant'?'selected':''}>Groq · LLaMA 3.1 8B (rápido)</option>
-        <option value="groq/mixtral-8x7b-32768" ${_enginePref()==='groq/mixtral-8x7b-32768'?'selected':''}>Groq · Mixtral 8x7B</option>
-        <option value="openrouter/meta-llama/llama-3.3-70b-instruct" ${_enginePref()==='openrouter/meta-llama/llama-3.3-70b-instruct'?'selected':''}>OpenRouter · LLaMA 3.3 70B</option>
-        <option value="openrouter/google/gemini-2.0-flash-001" ${_enginePref()==='openrouter/google/gemini-2.0-flash-001'?'selected':''}>OpenRouter · Gemini 2.0 Flash</option>
-        <option value="openrouter/microsoft/wizardlm-2-8x22b" ${_enginePref()==='openrouter/microsoft/wizardlm-2-8x22b'?'selected':''}>OpenRouter · WizardLM 2 8x22B</option>
       </select>
     </div>
     <button class="btn G w" onclick="testarAPI()" style="margin-top:12px;font-size:13px">⚡ Testar ligação ao servidor</button>
@@ -250,7 +249,7 @@ function sConfig() {
 
 /* ── Engine / modelo seleccionado ── */
 function _enginePref() {
-  return LS.get('engine_pref') || 'groq/llama-3.3-70b-versatile';
+  return LS.get('engine_pref') || 'openrouter/google/gemini-2.0-flash-001';
 }
 function _engineAtual() {
   const p = _enginePref().split('/');
