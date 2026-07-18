@@ -5,7 +5,7 @@
 ======================================================================= */
 
 const OR_URL   = 'https://api.groq.com/openai/v1/chat/completions';
-const OR_SITE  = 'https://academy-open.vercel.app';
+const OR_SITE  = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://academy-open.vercel.app';
 const OR_TITLE = 'ACADEMY';
 
 const MODELS = [
@@ -584,7 +584,7 @@ export default async function handler(req, res) {
   try {
     switch (action) {
       case 'ping':
-        return res.json({ ok:true, action:'ping', data:{ resposta:'pong', pong:true, ts:Date.now() } });
+        return res.json({ ok:true, action:'ping', data:{ resposta:'pong', pong:true, ts:Date.now(), site:OR_SITE, groq:!!process.env.GROQ_API_KEY } });
       case 'chat':
         return res.json(ok('chat', await doChat(payload)));
       case 'generate_lesson':
@@ -622,8 +622,16 @@ export default async function handler(req, res) {
           hasGroqKey:!!process.env.GROQ_API_KEY,
           keyLen: (process.env.GROQ_API_KEY||'').length,
           keyPrefix: (process.env.GROQ_API_KEY||'').substring(0,7),
+          hasSupabaseUrl:!!process.env.SUPABASE_URL,
+          hasSupabaseKey:!!process.env.SUPABASE_SERVICE_KEY,
+          supabaseUrl: (process.env.SUPABASE_URL||'').substring(0,30),
+          hasAdminPin:!!process.env.ADMIN_PIN,
+          adminPinLen: (process.env.ADMIN_PIN||'').length,
+          site: OR_SITE,
           node: process.version,
           platform: process.platform,
+          memory: process.env.AWS_LAMBDA_FUNCTION_MEMORY_SIZE||'?',
+          region: process.env.VERCEL_REGION||'?',
         }});
       default:
         return res.status(400).json({ ok:false, error:'UNKNOWN_ACTION', action });
