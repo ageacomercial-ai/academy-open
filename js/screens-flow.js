@@ -310,14 +310,38 @@ function sNivel() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   ECRÃ 5 — IDENTIDADE (prof, inst, membros)
+   ECRÃ 5 — IDENTIDADE (prof, inst, membros, modo grupo)
 ════════════════════════════════════════════════════════════ */
 function sIdentidade() {
+  const mbs = State.getCfg('mbs') || [];
+  const isGrupo = mbs.length > 0;
   return `
   <div style="padding-bottom:32px">
     <div style="font-family:var(--fm);font-size:8px;letter-spacing:.18em;color:var(--t3);margin-bottom:6px">PASSO 4 DE 4</div>
     <div style="font-size:22px;font-weight:800;color:var(--t1);letter-spacing:-.02em;margin-bottom:6px">Identidade do trabalho</div>
     <div style="font-size:13px;color:var(--t2);margin-bottom:22px;line-height:1.6">Estes dados aparecem na capa e nos cabeçalhos do documento.</div>
+
+    <!-- Modo Individual / Grupo -->
+    <label class="lbl">Modalidade</label>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <div onclick="toggleModo(false)" id="modIndBtn" style="flex:1;padding:12px;text-align:center;border-radius:var(--r);cursor:pointer;background:${!isGrupo?'var(--b)':'var(--z2)'};color:${!isGrupo?'var(--t-inv)':'var(--t2)'};border:.5px solid var(--e1);font-weight:600;font-size:13px;transition:all .2s">Individual</div>
+      <div onclick="toggleModo(true)" id="modGrpBtn" style="flex:1;padding:12px;text-align:center;border-radius:var(--r);cursor:pointer;background:${isGrupo?'var(--b)':'var(--z2)'};color:${isGrupo?'var(--t-inv)':'var(--t2)'};border:.5px solid var(--e1);font-weight:600;font-size:13px;transition:all .2s">Grupo</div>
+    </div>
+
+    <!-- Membros do grupo (visível apenas se grupo) -->
+    <div id="grupoCampos" style="display:${isGrupo?'block':'none'}">
+      <label class="lbl">Número de integrantes</label>
+      <select class="inp" id="iNumMbs" style="margin-bottom:14px" onchange="actualizarMembros(+this.value)">
+        ${[2,3,4,5,6,7,8,9,10].map(n => `<option value="${n}" ${mbs.length===n?'selected':''}>${n} integrantes</option>`).join('')}
+      </select>
+      <div id="membrosLista" style="margin-bottom:16px">
+        ${mbs.map((m, i) => `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="font-family:var(--fm);font-size:9px;color:var(--t3);width:20px;flex-shrink:0">${i+1}.</span>
+          <input class="inp" placeholder="Nome do integrante ${i+1}" value="${m.nome||''}" style="flex:1;font-size:12px;margin:0" oninput="mbsNome(${i},this.value)"/>
+        </div>`).join('')}
+      </div>
+    </div>
 
     <label class="lbl">Nome do Orientador/Professor</label>
     <input class="inp" id="iProf" placeholder="Ex: Prof. Dr. João Silva"
@@ -350,6 +374,45 @@ function sIdentidade() {
   </div>`;
 }
 
+/* ── Helpers do ecrã de identidade ── */
+function toggleModo(isGrupo) {
+  const indBtn = document.getElementById('modIndBtn');
+  const grpBtn = document.getElementById('modGrpBtn');
+  const campos = document.getElementById('grupoCampos');
+  if (!indBtn || !grpBtn) return;
+  if (isGrupo) {
+    indBtn.style.background = 'var(--z2)'; indBtn.style.color = 'var(--t2)';
+    grpBtn.style.background = 'var(--b)';  grpBtn.style.color = 'var(--t-inv)';
+    campos.style.display = 'block';
+    if (!State.getCfg('mbs')?.length) actualizarMembros(2);
+  } else {
+    indBtn.style.background = 'var(--b)';  indBtn.style.color = 'var(--t-inv)';
+    grpBtn.style.background = 'var(--z2)'; grpBtn.style.color = 'var(--t2)';
+    campos.style.display = 'none';
+    State.setCfg('mbs', []);
+  }
+}
+function actualizarMembros(n) {
+  const mbs = State.getCfg('mbs') || [];
+  while (mbs.length < n) mbs.push({ nome: '' });
+  while (mbs.length > n) mbs.pop();
+  State.setCfg('mbs', mbs);
+  const div = document.getElementById('membrosLista');
+  if (!div) return;
+  div.innerHTML = mbs.map((m, i) =>
+    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="font-family:var(--fm);font-size:9px;color:var(--t3);width:20px;flex-shrink:0">${i+1}.</span>
+      <input class="inp" placeholder="Nome do integrante ${i+1}" value="${m.nome||''}" style="flex:1;font-size:12px;margin:0" oninput="mbsNome(${i},this.value)"/>
+    </div>`
+  ).join('');
+}
+function mbsNome(i, nome) {
+  const mbs = State.getCfg('mbs') || [];
+  mbs[i] = mbs[i] || { nome: '' };
+  mbs[i].nome = nome;
+  State.setCfg('mbs', mbs);
+}
+
 /* ════════════════════════════════════════════════════════════
    ECRÃ 6 — PREVIEW DA GERAÇÃO
 ════════════════════════════════════════════════════════════ */
@@ -378,6 +441,7 @@ function sPreviewGen() {
         <div><span style="color:var(--t3)">Extensão:</span> ${pags} páginas · estilo ${cfg.refStyle || 'APA'}</div>
         ${cfg.prof ? `<div><span style="color:var(--t3)">Orientador:</span> ${cfg.prof}</div>` : ''}
         ${cfg.inst ? `<div><span style="color:var(--t3)">Instituição:</span> ${cfg.inst}</div>` : ''}
+        ${(cfg.mbs || []).length > 0 ? `<div><span style="color:var(--t3)">Modalidade:</span> Grupo · ${cfg.mbs.length} integrantes</div>` : `<div><span style="color:var(--t3)">Modalidade:</span> Individual</div>`}
       </div>
     </div>
 

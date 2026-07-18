@@ -439,6 +439,7 @@ function htmlCapa(meta) {
     <div style="width:70mm;height:1px;background:#111;margin:0 auto 20px"></div>
 
     ${autores.map(a => `<div style="font-family:Georgia,serif;font-size:11pt;font-weight:700;color:#111;line-height:1.5;position:relative">${a}</div>`).join('')}
+    ${(meta.mbs || []).map(m => `<div style="font-family:Georgia,serif;font-size:10pt;color:#444;line-height:1.5;position:relative">${m.nome || 'Integrante'}</div>`).join('')}
     ${meta.prof ? `<div style="font-family:Georgia,serif;font-size:9pt;font-style:italic;color:#555;margin-top:10px;position:relative">Orientador: ${meta.prof}</div>` : ''}
     <div style="font-family:Georgia,serif;font-size:9pt;color:#777;margin-top:18px;position:relative">${meta.data || ''}</div>
   </div>`;

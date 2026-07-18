@@ -178,10 +178,11 @@ function expPDF(exId) {
     const tp     = tipoActual() || { n: 'Trabalho Académico', s: 'TFC' };
     const cfg    = State.get('cfg');
     const capa   = State.get('capa') || {};
-    const autores = cfg.mbs?.length
-      ? [...new Set(cfg.mbs.map(m => m.trim()).filter(Boolean))].join('\n')
+    const mbs = cfg.mbs?.filter(m => m?.nome?.trim()) || [];
+    const autores = mbs.length
+      ? mbs.map(m => m.nome.trim()).join('\n')
       : (State.get('u')?.nome || '');
-    meta = { titulo: cfg.tema, tipo: tp.n, sigla: tp.s, inst: cfg.inst, prof: cfg.prof, nivel: cfg.nivel, autor: autores, isEx: false, capaImg: capa.imagem || null, logoInst: capa.logoInst || null, logoRepublica: capa.logoRepublica || null, usarCapa: capa.usarCapa !== false };
+    meta = { titulo: cfg.tema, tipo: tp.n, sigla: tp.s, inst: cfg.inst, prof: cfg.prof, nivel: cfg.nivel, autor: autores, mbs: mbs, isEx: false, capaImg: capa.imagem || null, logoInst: capa.logoInst || null, logoRepublica: capa.logoRepublica || null, usarCapa: capa.usarCapa !== false };
   }
 
   /* Gate de monetização */
