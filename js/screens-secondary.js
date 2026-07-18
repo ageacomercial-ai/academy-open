@@ -247,8 +247,12 @@ function sConfig() {
 }
 
 /* ── Engine / modelo seleccionado ── */
+const _ENGINE_DEFAULT = 'openrouter/google/gemini-2.5-flash-lite';
+const _ENGINE_OLD     = 'openrouter/google/gemini-2.0-flash-001';
 function _enginePref() {
-  return LS.get('engine_pref') || 'openrouter/google/gemini-2.5-flash-lite';
+  let p = LS.get('engine_pref');
+  if (p === _ENGINE_OLD) { LS.set('engine_pref', _ENGINE_DEFAULT); p = _ENGINE_DEFAULT; }
+  return p || _ENGINE_DEFAULT;
 }
 function _engineAtual() {
   const p = _enginePref().split('/');

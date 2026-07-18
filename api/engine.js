@@ -672,11 +672,15 @@ async function doChat(p) {
   if (!pedido) throw new Error('pedido obrigatório');
   const hist = (Array.isArray(p.historico)?p.historico:[]).slice(-8)
     .map(m => ({ role:m.role==='assistant'?'assistant':'user', content:String(m.content||'').substring(0,800) }));
-  return { resposta: await callAI([
+  const engineUsed = globalThis.__ac_engine || 'groq';
+  const modelUsed  = globalThis.__ac_model  || 'llama-3.3-70b-versatile';
+  const resposta = await callAI([
     { role:'system', content:`Assistente académico ACADEMY. Português formal. Contexto: "${p.tema||''}" (${p.tipoTrabalho||''}). Máx 200 palavras.` },
     ...hist,
     { role:'user', content:pedido },
-  ], { max_tokens:800 }) };
+  ], { max_tokens:800 });
+  console.log(`[CHAT] engine=${engineUsed} model=${modelUsed}`);
+  return { resposta, _engine: engineUsed, _model: modelUsed };
 }
 
 /* ---------------- CAPÍTULO (v65: estratificado) ---------------- */

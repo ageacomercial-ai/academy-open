@@ -24,7 +24,9 @@ let _treRetroRefCount = 0;
 async function callAcademyAPI(rawPayload) {
   const action = rawPayload.acao || rawPayload.tipo || '';
   const { acao: _a, tipo: _t, ...payload } = rawPayload;
-  const engine = (LS.get('engine_pref') || '').split('/');
+  let ep = LS.get('engine_pref') || '';
+  if (!ep || ep === 'openrouter/google/gemini-2.0-flash-001') { LS.set('engine_pref', 'openrouter/google/gemini-2.5-flash-lite'); ep = 'openrouter/google/gemini-2.5-flash-lite'; }
+  const engine = (ep || '').split('/');
   const ac_model = engine[0] === 'openrouter' ? engine.slice(1).join('/') : (engine[1] || 'llama-3.3-70b-versatile');
   const ac_engine = engine[0] || 'groq';
 
