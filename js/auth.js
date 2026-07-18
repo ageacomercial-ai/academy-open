@@ -56,27 +56,48 @@ async function carregarPrecos() {
     }
   } catch {}
   if (!_planosGraficaCache || !_planosGraficaCache.length) _planosGraficaCache = _PLANOS_GRAFICA_DEFAULT;
+
+  /* Instituições parceiras (para desconto) */
+  try {
+    const r = await fetch(SB_URL + '/rest/v1/instituicoes?activa=eq.true&order=nome.asc',
+      { headers: SB_H(), signal: AbortSignal.timeout(5000) });
+    if (r.ok) _instituicoesCache = await r.json();
+  } catch {}
+  if (!_instituicoesCache) _instituicoesCache = [];
+}
+
+/* Desconto institucional */
+function getDescontoInst() {
+  const inst = State.getCfg('inst');
+  if (!inst) return 0;
+  const found = (_instituicoesCache||[]).find(i => i.nome === inst);
+  return found?.desconto_porcentagem || 0;
+}
+
+function _aplDesc(preco) {
+  const desc = getDescontoInst();
+  return desc > 0 ? Math.round(preco * (100 - desc) / 100) : preco;
 }
 
 /* Tabela oficial de preços (dinâmica do Supabase ou fallback) */
 function calcPreco(pags) {
   const tabela = _precosCache || _PRECOS_DEFAULT;
   for (const faixa of tabela) {
-    if (pags >= faixa.faixa_inicio && pags <= faixa.faixa_fim) return faixa.preco;
+    if (pags >= faixa.faixa_inicio && pags <= faixa.faixa_fim) return _aplDesc(faixa.preco);
   }
   const ultimo = tabela[tabela.length - 1];
-  return ultimo ? ultimo.preco : 1850;
+  return ultimo ? _aplDesc(ultimo.preco) : 1850;
 }
 
 function calcPacote(pags) {
   const tabela = _precosCache || _PRECOS_DEFAULT;
   for (const faixa of tabela) {
     if (pags >= faixa.faixa_inicio && pags <= faixa.faixa_fim) {
-      return { pags: faixa.faixa_fim, preco: faixa.preco, label: faixa.label || `${faixa.faixa_inicio}-${faixa.faixa_fim} págs` };
+      return { pags: faixa.faixa_fim, preco: _aplDesc(faixa.preco), label: faixa.label || `${faixa.faixa_inicio}-${faixa.faixa_fim} págs` };
     }
   }
   const ultimo = tabela[tabela.length - 1];
-  return { pags: ultimo.faixa_fim, preco: ultimo.preco, label: ultimo.label };
+  return { pags: ultimo.faixa_fim, preco: _aplDesc(ultimo.preco), label: ultimo.label };
 }
 
 function getPrecosCache() { return _precosCache || _PRECOS_DEFAULT; }

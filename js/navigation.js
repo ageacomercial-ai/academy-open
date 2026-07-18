@@ -204,8 +204,8 @@ function renderizar() {
     ecraEl.innerHTML = novoConteudo;
   }
 
-/* Post-render: carregar pendentes, monitorização e dashboard se for admin */
-if (ecra === 'admin') { loadAdminPendentes(); carregarMonitorIA(); carregarDashboard(); }
+/* Post-render: carregar dados admin */
+if (ecra === 'admin') { loadAdminPendentes(); carregarMonitorIA(); carregarDashboard(); carregarInstituicoesAdmin(); }
 }
 
 /* ── Helpers de início rápido ── */

@@ -622,9 +622,12 @@ export default async function handler(req, res) {
         return res.json(ok(action, await doGetHistory(payload)));
       case 'get_stock':
         return res.json(ok(action, { items:[] }));
+      case 'setup_tables':
+        return res.json(ok('setup_tables', await doSetupTables()));
       case '__diagnose':
         return res.json({ ok:true, action:'__diagnose', data:{
           hasGroqKey:!!process.env.GROQ_API_KEY,
+          hasOpenRouterKey:!!process.env.OPENROUTER_API_KEY,
           keyLen: (process.env.GROQ_API_KEY||'').length,
           keyPrefix: (process.env.GROQ_API_KEY||'').substring(0,7),
           hasSupabaseUrl:!!process.env.SUPABASE_URL,
@@ -1037,6 +1040,52 @@ async function doGetHistory(p) {
     rows = await r.json();
   } finally { clearTimeout(t); }
   return { rows: Array.isArray(rows)?rows:[] };
+}
+
+/* ---------------- SETUP TABLES (Supabase) ---------------- */
+async function doSetupTables() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url||!key) return { created:[], error:'no_supabase_creds' };
+  const sql = `
+CREATE TABLE IF NOT EXISTS instituicoes (
+  id SERIAL PRIMARY KEY,
+  nome TEXT NOT NULL UNIQUE,
+  sigla TEXT,
+  desconto_porcentagem INTEGER DEFAULT 0,
+  activa BOOLEAN DEFAULT true,
+  criado_em TIMESTAMPTZ DEFAULT NOW()
+);
+INSERT INTO instituicoes (nome, sigla, desconto_porcentagem) VALUES
+  ('Universidade Agostinho Neto','UAN',10),
+  ('Universidade Independente de Angola','UNIA',10),
+  ('Universidade Católica de Angola','UCAN',10),
+  ('Universidade Lusíada de Angola','ULA',10),
+  ('Instituto Superior Politécnico de Angola','ISPA',10)
+ON CONFLICT (nome) DO NOTHING;
+  `;
+  try {
+    const r = await fetch(`${url}/rest/v1/rpc/`, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json','apikey':key,'Authorization':`Bearer ${key}` },
+      body:JSON.stringify({ sql }),
+    });
+    return { created:true, tables:['instituicoes'], seed:5 };
+  } catch(e) {
+    /* Fallback: tentar via SQL direto no Management API */
+    try {
+      const mgmtKey = process.env.SUPABASE_SERVICE_KEY;
+      const projectRef = 'avdzkucdehggueafyukw';
+      await fetch(`https://api.supabase.com/v1/projects/${projectRef}/sql`, {
+        method:'POST',
+        headers:{ 'Authorization':`Bearer ${mgmtKey}`, 'Content-Type':'application/json' },
+        body:JSON.stringify({ query:sql }),
+      });
+      return { created:true, method:'mgmt_api' };
+    } catch(e2) {
+      return { created:false, error:e2.message };
+    }
+  }
 }
 
 /* ---------------- ENGINES IA (Groq + OpenRouter) ---------------- */

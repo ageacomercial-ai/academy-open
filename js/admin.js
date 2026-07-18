@@ -117,6 +117,23 @@ function sAdmin() {
     </div>
   </div>
 
+  <!-- Instituições Parceiras -->
+  <div style="margin-bottom:20px;padding:16px;background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:var(--t3);text-transform:uppercase">🏫 Instituições Parceiras</div>
+      <button onclick="carregarInstituicoesAdmin()" style="font-family:var(--fm);font-size:8px;color:var(--b);background:none;border:none;cursor:pointer;letter-spacing:.06em">↺</button>
+    </div>
+    <div id="adminInstituicoes" style="min-height:24px">
+      <div style="font-size:11px;color:var(--t3);padding:4px 0">A carregar...</div>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+      <input class="inp" id="adminInstNome" placeholder="Nome" style="flex:2;font-size:11px;margin:0"/>
+      <input class="inp" id="adminInstSigla" placeholder="Sigla" style="flex:1;font-size:11px;margin:0"/>
+      <input class="inp" id="adminInstDesc" type="number" placeholder="% desc" style="width:50px;font-size:11px;margin:0"/>
+      <button class="btn B s" onclick="adminCriarInst()" style="font-size:10px">+</button>
+    </div>
+  </div>
+
   <!-- Dashboard Global (carregado do Supabase) -->
   <div style="margin-top:20px;padding:16px;background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r)">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -393,6 +410,32 @@ async function adminGuardarPrecos() {
     status.textContent = '✗ Erro ao guardar: ' + (e.message || '');
     status.style.color = '#f87171';
   }
+}
+
+/* ════════════════════════════════════════════════════════════
+   INSTITUIÇÕES PARCEIRAS (ADMIN)
+════════════════════════════════════════════════════════════ */
+async function carregarInstituicoesAdmin() {
+  const el = document.getElementById('adminInstituicoes');
+  if (!el) return;
+  const rows = await sbCarregarInstituicoes();
+  if (!rows.length) { el.innerHTML = '<div style="font-size:11px;color:var(--t3)">Nenhuma instituição</div>'; return; }
+  el.innerHTML = rows.map(r => `
+    <div style="display:flex;align-items:center;gap:6px;padding:5px 8px;background:var(--z3);border-radius:var(--r);margin-bottom:3px;font-size:11px">
+      <span style="flex:1;color:var(--t1)">${r.nome}</span>
+      <span style="font-family:var(--fm);color:var(--t3);width:40px">${r.sigla||''}</span>
+      <span style="color:var(--b);width:30px;text-align:right">${r.desconto_porcentagem||0}%</span>
+      <button onclick="if(confirm('Remover ${r.nome}?')){sbRemoverInstituicao(${r.id});carregarInstituicoesAdmin()}" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:12px">✕</button>
+    </div>`).join('');
+}
+async function adminCriarInst() {
+  const nome = document.getElementById('adminInstNome')?.value?.trim();
+  const sigla = document.getElementById('adminInstSigla')?.value?.trim().toUpperCase();
+  const desc = parseInt(document.getElementById('adminInstDesc')?.value) || 0;
+  if (!nome) { mostrarToast('Insere o nome da instituição.'); return; }
+  const ok = await sbCriarInstituicao(nome, sigla, desc);
+  if (ok) { mostrarToast(`✓ ${nome} adicionada!`); document.getElementById('adminInstNome').value=''; document.getElementById('adminInstSigla').value=''; document.getElementById('adminInstDesc').value=''; carregarInstituicoesAdmin(); }
+  else mostrarToast('Erro ao criar instituição.');
 }
 
 /* ════════════════════════════════════════════════════════════

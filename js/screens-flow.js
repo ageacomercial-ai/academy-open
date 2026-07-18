@@ -362,8 +362,13 @@ function sIdentidade() {
       oninput="State.setCfg('prof',this.value)"/>
 
     <label class="lbl">Nome da Instituição</label>
-    <input class="inp" id="iInst" placeholder="Ex: Universidade Agostinho Neto"
-      value="${State.getCfg('inst') || ''}" style="margin-bottom:14px"
+    <select class="inp" id="iInst" style="margin-bottom:14px" onchange="mudarInst(this.value)">
+      <option value="">— Selecciona ou escreve abaixo —</option>
+      ${(_instituicoesCache||[]).map(i => `<option value="${i.nome}" ${State.getCfg('inst')===i.nome?'selected':''}>${i.nome}${i.desconto_porcentagem?` (${i.desconto_porcentagem}% desc)`:''}</option>`).join('')}
+      <option value="OUTRA">Outra instituição (escrever manualmente)</option>
+    </select>
+    <input class="inp" id="iInstOutra" placeholder="Ex: Universidade Agostinho Neto"
+      value="${State.getCfg('inst') || ''}" style="margin-bottom:14px;display:${State.getCfg('inst') && !(_instituicoesCache||[]).find(i=>i.nome===State.getCfg('inst'))?'block':'none'}"
       oninput="State.setCfg('inst',this.value)"/>
 
     <label class="lbl">Número de capítulos</label>
@@ -419,6 +424,15 @@ function actualizarMembros(n) {
     </div>`
   ).join('');
 }
+function mudarInst(val) {
+  if (val === 'OUTRA') {
+    document.getElementById('iInstOutra').style.display = 'block';
+    State.setCfg('inst', '');
+  } else {
+    document.getElementById('iInstOutra').style.display = 'none';
+    State.setCfg('inst', val);
+  }
+}
 function mbsNome(i, nome) {
   const mbs = State.getCfg('mbs') || [];
   mbs[i] = mbs[i] || { nome: '' };
@@ -440,6 +454,7 @@ function sPreviewGen() {
   const saldo  = getSaldoDisponivel();
   const saldoOk = saldo >= pags;
   const exp    = getSaldoExpiracao();
+  const descInst = getDescontoInst();
 
   return `
   <div style="padding-bottom:32px">
@@ -480,6 +495,7 @@ function sPreviewGen() {
       <div style="flex:1">
         <div style="font-size:15px;font-weight:700;color:var(--t1)">${pac.label}</div>
         <div style="font-family:var(--fm);font-size:10px;color:var(--t3);margin-top:2px">${pags} páginas · ${pac.preco.toLocaleString()} Kz · válido 30 dias</div>
+        ${descInst > 0 ? `<div style="font-family:var(--fm);font-size:9px;color:var(--b);margin-top:4px">🏫 Desconto institucional ${descInst}% aplicado!</div>` : ''}
       </div>
     </div>
 

@@ -9,6 +9,7 @@
 ═══════════════════════════════════════════════════════════ */
 
 const SB_URL = 'https://avdzkucdehggueafyukw.supabase.co';
+let _instituicoesCache = null;
 
 const SB_KEY = (()=>{
   const p = [
@@ -207,6 +208,36 @@ async function _verificarCredenciaisAdmin(email, pin) {
     const r = await callAcademyAPI({ acao: 'verificar_admin', pin: (pin || '').trim() });
     return r?.ok === true;
   } catch (e) { console.warn('[ADMIN] Verificação falhou:', e.message); return false; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INSTITUIÇÕES PARCEIRAS
+═══════════════════════════════════════════════════════════ */
+async function sbCarregarInstituicoes() {
+  if (_instituicoesCache) return _instituicoesCache;
+  try {
+    const r = await fetch(SB_URL + '/rest/v1/instituicoes?select=*&activa=eq.true&order=nome.asc', { headers: SB_H() });
+    if (!r.ok) { _instituicoesCache = []; return []; }
+    _instituicoesCache = await r.json();
+    return _instituicoesCache;
+  } catch { return []; }
+}
+async function sbCriarInstituicao(nome, sigla, desconto) {
+  try {
+    await fetch(SB_URL + '/rest/v1/instituicoes', {
+      method:'POST', headers:{ ...SB_H(), 'Prefer':'return=minimal' },
+      body:JSON.stringify({ nome, sigla: sigla||null, desconto_porcentagem: desconto||0 }),
+    });
+    _instituicoesCache = null;
+    return true;
+  } catch { return false; }
+}
+async function sbRemoverInstituicao(id) {
+  try {
+    await fetch(SB_URL + '/rest/v1/instituicoes?id=eq.'+id, { method:'DELETE', headers:SB_H() });
+    _instituicoesCache = null;
+    return true;
+  } catch { return false; }
 }
 
 /* ── Detectar se Supabase está acessível ── */
