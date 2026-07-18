@@ -336,8 +336,6 @@ function chatSec(i) {
     }
   }, 300);
 }
-  }, 300);
-}
 
 /* ── Regenerar capítulo via engine ── */
 async function _regenerarCapitulo(idx) {
