@@ -96,15 +96,17 @@ function sEditor(secsArg, cfgArg, qualArg, isEx) {
   </div>
 
   ${!isEx ? `
-  <!-- EDITOR CONVERSACIONAL -->
-  <button class="btn B w" onclick="abrirEditorConversacional()" style="margin-bottom:14px;background:linear-gradient(135deg,var(--eb),transparent);border:1.5px solid var(--eb);color:var(--t1);display:flex;align-items:center;justify-content:center;gap:10px">
-    <span style="font-size:15px">⚡</span>
-    <span style="flex:1;text-align:left">
-      <span style="display:block;font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:var(--b);text-transform:uppercase;margin-bottom:2px">Novo</span>
-      <span style="font-size:14px;font-weight:600;color:var(--t1)">Editar com IA Conversacional</span>
-    </span>
-    <span style="font-size:12px;color:var(--b)">→</span>
-  </button>` : ''}
+  <!-- EDITOR CONVERSACIONAL + DOCUMENTO VIVO -->
+  <div style="display:flex;gap:8px;margin-bottom:14px">
+    <button class="btn B w" onclick="abrirEditorConversacional()" style="flex:1;background:linear-gradient(135deg,var(--eb),transparent);border:1.5px solid var(--eb);color:var(--t1);display:flex;align-items:center;justify-content:center;gap:8px">
+      <span style="font-size:13px">⚡</span>
+      <span style="font-size:12px;font-weight:600;color:var(--t1)">Editar com IA</span>
+    </button>
+    <button class="btn G w" onclick="togChat();setTimeout(()=>ativarChatDocumento?.(),400)" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px">
+      <span style="font-size:13px">💬</span>
+      <span style="font-size:12px;font-weight:600">Documento Vivo</span>
+    </button>
+  </div>` : ''}
 
   ${!isEx ? renderCapaPanel() : ''}
 
@@ -151,7 +153,7 @@ function sEditor(secsArg, cfgArg, qualArg, isEx) {
     <div class="ed-sec-body" id="sc-${i}${isEx ? '-x' : ''}"
       ${!isEx ? `contenteditable="true" oninput="onEdit(${i})" onfocus="mostrarTb(${i})" onblur="ocultarTb(${i})"` : ''}
       style="display:${i === 0 ? 'block' : 'none'}">
-      ${_renderSecConteudo(sec)}
+      ${_renderSecConteudo(sec, i)}
     </div>
   </div>`).join('')}
 
@@ -162,7 +164,11 @@ function sEditor(secsArg, cfgArg, qualArg, isEx) {
 }
 
 /* ── Renderizar conteúdo de uma secção (sanitizado + HTML) ── */
-function _renderSecConteudo(sec) {
+function _renderSecConteudo(sec, chapterIdx) {
+  if (sec.blocks && sec.blocks.length > 0) {
+    if (chapterIdx >= 0) sec.blocks.forEach(b => { b.chapterIdx = chapterIdx; });
+    return blkRender(sec.blocks);
+  }
   const raw       = sec.c || sec.conteudo || '';
   const sanitized = sanitizeAcademic(raw);
   const paragrafos = sanitized.split('\n\n').filter(p => p.trim().length > 0);
@@ -196,7 +202,10 @@ let _tGuardar = null;
 function onEdit(i) {
   const c    = document.getElementById(`sc-${i}`);
   const secs = State.get('secs');
-  if (c && secs[i]) secs[i].c = c.innerText;
+  if (c && secs[i]) {
+    secs[i].c = c.innerText;
+    secs[i].blocks = blkExtrair(secs[i]);
+  }
   State.set('secs', secs);
   State.set('guardarEst', 'editado');
   _actualizarGuardarUI('editado');
@@ -247,7 +256,7 @@ async function regenSec(i) {
   /* Actualizar DOM do editor inline */
   const el = document.getElementById(`sc-${i}`);
   if (el) {
-    el.innerHTML = _renderSecConteudo(State.get('secs')[i]);
+    el.innerHTML = _renderSecConteudo(State.get('secs')[i], i);
   }
 }
 
@@ -265,9 +274,10 @@ async function melhorarSec(i) {
     });
     const novoTexto = typeof res === 'string' ? res : sec.c;
     secs[i].c = novoTexto;
+    secs[i].blocks = blkExtrair({ c: novoTexto });
     State.set('secs', secs);
     const el = document.getElementById(`sc-${i}`);
-    if (el) el.innerHTML = _renderSecConteudo(secs[i]);
+    if (el) el.innerHTML = _renderSecConteudo(secs[i], i);
     autoGuardar();
     mostrarToast('✓ Linguagem melhorada.');
   } catch (e) {
@@ -289,9 +299,10 @@ async function expandirSec(i) {
     });
     const novoTexto = typeof res === 'string' ? res : sec.c;
     secs[i].c = novoTexto;
+    secs[i].blocks = blkExtrair({ c: novoTexto });
     State.set('secs', secs);
     const el = document.getElementById(`sc-${i}`);
-    if (el) el.innerHTML = _renderSecConteudo(secs[i]);
+    if (el) el.innerHTML = _renderSecConteudo(secs[i], i);
     autoGuardar();
     mostrarToast('✓ Capítulo expandido.');
   } catch (e) {
@@ -305,13 +316,26 @@ function chatSec(i) {
   const sec  = secs[i];
   if (!sec) return;
   window._chatContextoCap = { idx: i, titulo: sec.titulo, preview: (sec.c || '').substring(0, 300) };
+  /* Activar modo documento se ainda não estiver */
+  if (typeof ativarChatDocumento === 'function') ativarChatDocumento();
+  else {
+    if (!_chatModoDocumento) {
+      secs.forEach((s, ci) => {
+        if (!s.blocks) s.blocks = blkExtrair(s);
+        s.blocks.forEach(b => { b.chapterIdx = ci; });
+      });
+      _chatModoDocumento = true;
+    }
+  }
   togChat();
   setTimeout(() => {
-    const inp = document.getElementById('chatInp');
+    const inp  = document.getElementById('chatInp');
     if (inp) {
       inp.value = `Sobre o capítulo "${sec.titulo}": `;
       inp.focus();
     }
+  }, 300);
+}
   }, 300);
 }
 
@@ -353,6 +377,7 @@ async function _regenerarCapitulo(idx) {
 
     secs[idx].e           = 'p';
     secs[idx].c           = textoFinal;
+    secs[idx].blocks      = blkExtrair({ c: textoFinal });
     secs[idx].ast         = astFinal;
     secs[idx].health      = raw?.health      || null;
     secs[idx].readiness   = raw?.readiness   || null;
@@ -786,7 +811,7 @@ function abrirModoLeitura(secs, meta) {
       <div class="ml-meta">${tipo}${inst ? ' · ' + inst : ''}${autor ? ' · ' + autor : ''}</div>
       ${secs.map(sec => `
         <div class="ml-cap-titulo">CAP. ${sec.num || ''} — ${sec.titulo}</div>
-        <div class="ml-cap-corpo">${_renderSecConteudo(sec)}</div>
+        <div class="ml-cap-corpo">${_renderSecConteudo(sec, -1)}</div>
       `).join('')}
     </div>`;
   document.body.appendChild(ml);

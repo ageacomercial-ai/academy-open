@@ -2,17 +2,19 @@
    ACADEMY — CHAT.JS
    Chat IA · Voz (STT) · Texto para Voz (TTS)
    Editor Conversacional Inteligente
-   Depende de: state.js, navigation.js, generator.js
-═══════════════════════════════════════════════════════════ */
+   Documento Vivo — edição por blocos via chat
+   Depende de: state.js, navigation.js, generator.js, doc-blocks.js, doc-history.js
+╔═══════════════════════════════════════════════════════════ */
 
 /* ════════════════════════════════════════════════════════════
    ESTADO DO CHAT
-════════════════════════════════════════════════════════════ */
+╔═══════════════════════════════════════════════════════════ */
 
 let chatPrimeiro   = true;
 let chatHistorico  = [];
 let _chatUserScrolled = false;
 let _chatContextoCap  = null; /* contexto do capítulo activo no editor */
+let _chatModoDocumento = false; /* true quando o chat tem acesso ao documento aberto */
 
 const CHAT_LIMITE = 20; /* mensagens por sessão (gratuito) */
 let _chatMsgsJanela = 0;
@@ -229,12 +231,34 @@ async function enviarChat() {
       ? `\n\n[Contexto do capítulo activo]\nTítulo: ${_chatContextoCap.titulo}\nPreview: ${_chatContextoCap.preview}`
       : '';
 
+    /* ── Modo Documento Vivo: processar edição via blocos ── */
+    if (_chatModoDocumento && _detectarComandoEdicao(texto)) {
+      typing.remove();
+      await _chatProcessarEdicao(texto);
+      if (btn) btn.disabled = false;
+      inp?.focus();
+      return;
+    }
+
+    /* Contexto completo do documento para o chat */
+    let docContexto = '';
+    if (_chatModoDocumento) {
+      const secs = State.get('secs') || [];
+      docContexto = '\n\n[Documento actual]\n';
+      secs.forEach((s, i) => {
+        const titulo = s.titulo || `Capítulo ${i + 1}`;
+        const num = s.num || i + 1;
+        const preview = (s.c || '').substring(0, 200);
+        docContexto += `Cap.${num} — ${titulo}\nPreview: ${preview}\n\n`;
+      });
+    }
+
     const resposta = await callAcademyAPI({
       acao:         'chat',
       tema:         State.getCfg('tema') || '',
       tipoTrabalho: tp.n,
       historico:    chatHistorico.slice(-3),
-      pedido:       texto + contextoCap,
+      pedido:       texto + contextoCap + docContexto,
     });
 
     typing.remove();
@@ -254,6 +278,147 @@ function enviarMsgChat(texto) {
   const inp = document.getElementById('chatInp');
   if (inp) inp.value = texto;
   enviarChat();
+}
+
+/* ════════════════════════════════════════════════════════════
+   MODO DOCUMENTO VIVO — Edição por blocos via chat
+╔═══════════════════════════════════════════════════════════ */
+
+const _COMANDOS_EDICAO = [
+  'melhora', 'melhore', 'reduz', 'reduza', 'explica', 'explique',
+  'reorganiza', 'reorganize', 'transforma', 'transforme', 'corrige', 'corrija',
+  'torna', 'torne', 'adiciona', 'adicione', 'remove', 'remova',
+  'expande', 'expanda', 'reescreve', 'reescreva', 'edita', 'edite',
+  'altera', 'altere', 'actualiza', 'actualize', 'refaz', 'refaça',
+  'insere', 'insira', 'apaga', 'delete', 'muda', 'mude',
+];
+
+function _detectarComandoEdicao(texto) {
+  const t = texto.toLowerCase().trim();
+  return _COMANDOS_EDICAO.some(cmd => t.includes(cmd));
+}
+
+async function _chatProcessarEdicao(pedido) {
+  const secs = State.get('secs');
+  if (!secs || !secs.length) {
+    _adicionarMsgChat('acad', '⚠ Nenhum documento aberto. Gera um documento primeiro.');
+    return;
+  }
+
+  const alvo = blkLocalizar(secs, pedido);
+  if (!alvo) {
+    await _chatEditarViaIA(pedido, secs);
+    return;
+  }
+
+  const { chapterIdx, block, blockIdx, section } = alvo;
+  const proximos = blkLocalizarProximos(secs, chapterIdx, blockIdx);
+  const cfg = State.get('cfg');
+  const tp = tipoActual() || { n: 'Trabalho Académico' };
+
+  const promptEdicao = [
+    `És um orientador académico. Edita o bloco seguinte conforme o pedido do utilizador.`,
+    `\n\nPedido: "${pedido}"`,
+    `\n\nContexto do documento:`,
+    `Tema: ${cfg.tema || '—'}`,
+    `Tipo: ${tp.n}`,
+    `Capítulo: ${section.titulo || `Cap.${chapterIdx + 1}`}`,
+    `\n\nBloco ANTERIOR:\n${proximos.anterior ? proximos.anterior.content.substring(0, 300) : '(início do capítulo)'}`,
+    `\n\nBLOCO A EDITAR:\n${block.content}`,
+    `\n\nBloco SEGUINTE:\n${proximos.posterior ? proximos.posterior.content.substring(0, 300) : '(fim do capítulo)'}`,
+    `\n\nNormas:`,
+    `- Mantém o tom académico formal`,
+    `- Preserva o estilo APA se aplicável`,
+    `- Não inventes referências bibliográficas`,
+    `- Responde APENAS com o novo conteúdo do bloco editado, sem explicações`,
+    `- Mantém o mesmo tipo de conteúdo (parágrafo, lista, etc.)`,
+  ].join('\n');
+
+  try {
+    _adicionarMsgChat('acad', `✏️ A editar "${block.content.substring(0, 60)}…" no capítulo "${section.titulo}"…`);
+
+    const resposta = await callAcademyAPI({
+      acao:   'editar_texto',
+      texto:  block.content,
+      subacao: 'editar_bloco',
+      pedido: pedido,
+      tema:   cfg.tema || '',
+      tipoTrabalho: tp.n,
+    });
+
+    const novoConteudo = typeof resposta === 'string' ? resposta.trim() : null;
+    if (!novoConteudo || novoConteudo.length < 3) {
+      _adicionarMsgChat('acad', '⚠ A IA não conseguiu editar este bloco. Tenta reformular o pedido.');
+      return;
+    }
+
+    const antigo = block.content;
+    DocHistory.fromBlkAtualizar(secs, chapterIdx, block.id, novoConteudo, 'ia');
+    blkAtualizar(secs, chapterIdx, block.id, novoConteudo, 'ia');
+    State.set('secs', secs);
+    blkAtualizarDOM(chapterIdx, block.id);
+    autoGuardar();
+
+    _adicionarMsgChat('acad', `✓ Bloco editado com sucesso.`);
+    _mostrarSugestoesChat([
+      'Melhora o tom académico',
+      'Reduz este parágrafo',
+      'Torna mais formal',
+      'Adiciona uma referência',
+    ]);
+  } catch (e) {
+    _adicionarMsgChat('acad', `⚠ Erro ao editar: ${e.message || 'sem resposta'}. Tenta novamente.`);
+  }
+}
+
+async function _chatEditarViaIA(pedido, secs) {
+  const cfg = State.get('cfg');
+  const tp = tipoActual() || { n: 'Trabalho Académico' };
+
+  const resumo = secs.map((s, i) => {
+    const preview = (s.c || '').substring(0, 150);
+    return `Cap.${s.num || i + 1} — ${s.titulo || `Capítulo ${i + 1}`}: ${preview}`;
+  }).join('\n\n');
+
+  try {
+    _adicionarMsgChat('acad', '🔍 A analisar o documento para localizar o que editar…');
+
+    const resposta = await callAcademyAPI({
+      acao:   'editar_texto',
+      texto:  resumo,
+      subacao: 'detectar_edicao',
+      pedido: pedido,
+      tema:   cfg.tema || '',
+      tipoTrabalho: tp.n,
+    });
+
+    const novaResposta = typeof resposta === 'string' ? resposta : JSON.stringify(resposta);
+    chatHistorico.push({ role: 'assistant', content: novaResposta });
+    _tiparMsgChat(novaResposta, () => _mostrarSugestoesChat(SUGESTOES_POS));
+  } catch (e) {
+    _adicionarMsgChat('acad', `⚠ Erro: ${e.message || 'sem resposta'}. Tenta novamente.`);
+  }
+}
+
+function ativarChatDocumento() {
+  const secs = State.get('secs');
+  if (!secs || !secs.length) {
+    _adicionarMsgChat('acad', '⚠ Gera um documento primeiro.');
+    return;
+  }
+  _chatModoDocumento = true;
+  secs.forEach((sec, i) => {
+    if (!sec.blocks) sec.blocks = blkExtrair(sec);
+    sec.blocks.forEach(b => { b.chapterIdx = i; });
+  });
+  State.set('secs', secs);
+  _adicionarMsgChat('acad', '📄 **Modo Documento activo.**\n\nPodes pedir edições como:\n• *"Melhora a introdução"*\n• *"Reduz o parágrafo sobre metodologia"*\n• *"Adiciona uma referência no capítulo 2"*\n• *"Corrige o português da conclusão"*');
+  _mostrarSugestoesChat([
+    'Melhora a introdução',
+    'Torna o capítulo 3 mais acadêmico',
+    'Corrige o português da conclusão',
+    'Adiciona uma referência',
+  ]);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -449,10 +614,12 @@ function abrirEditorConversacional() {
 }
 
 function fecharEditorConversacional() {
-  /* Guardar alterações de volta para State */
   ecState.capitulos.forEach((cap, i) => {
     const secs = State.get('secs');
-    if (secs[i]) secs[i].c = cap.conteudo;
+    if (secs[i]) {
+      secs[i].c = cap.conteudo;
+      secs[i].blocks = blkExtrair({ c: cap.conteudo });
+    }
     State.set('secs', secs);
   });
   autoGuardar();
@@ -554,7 +721,10 @@ async function _ecEnviarPedido() {
     /* Guardar automaticamente */
     ecState.capitulos.forEach((cap, i) => {
       const secs = State.get('secs');
-      if (secs[i]) secs[i].c = cap.conteudo;
+      if (secs[i]) {
+        secs[i].c = cap.conteudo;
+        secs[i].blocks = blkExtrair({ c: cap.conteudo });
+      }
       State.set('secs', secs);
     });
     autoGuardar();

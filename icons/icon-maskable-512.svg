@@ -1,14 +1,27 @@
 <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="mg" x1="0" y1="0" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#43E8A7"/>
-      <stop offset="100%" stop-color="#38BDF8"/>
+    <radialGradient id="bg" cx=".3" cy=".3" r="1">
+      <stop offset="0%" stop-color="#4becb0"/>
+      <stop offset="100%" stop-color="#3ddb9c"/>
+    </radialGradient>
+    <linearGradient id="a" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#d4f6e6"/>
+    </linearGradient>
+    <linearGradient id="r" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity=".3"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity=".06"/>
     </linearGradient>
   </defs>
-  <rect width="512" height="512" rx="100" fill="#FFFFFF"/>
-  <g transform="translate(256,256) scale(0.65)">
-    <path d="M54 148 L96 44 L138 148" stroke="url(#mg)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-    <line x1="70" y1="110" x2="122" y2="110" stroke="url(#mg)" stroke-width="11" stroke-linecap="round"/>
-    <circle cx="152" cy="50" r="8" fill="#43E8A7" opacity=".9"/>
+  <rect width="512" height="512" rx="100" fill="url(#bg)"/>
+  <rect x="30" y="30" width="452" height="452" rx="86" fill="none" stroke="url(#r)" stroke-width="4"/>
+  <circle cx="256" cy="256" r="192" fill="none" stroke="url(#r)" stroke-width="3"/>
+  <g stroke="#ffffff" stroke-opacity=".12" stroke-width="6" stroke-linecap="round">
+    <line x1="60" y1="60" x2="124" y2="60"/><line x1="60" y1="60" x2="60" y2="124"/>
+    <line x1="452" y1="60" x2="388" y2="60"/><line x1="452" y1="60" x2="452" y2="124"/>
+    <line x1="60" y1="452" x2="124" y2="452"/><line x1="60" y1="452" x2="60" y2="388"/>
+    <line x1="452" y1="452" x2="388" y2="452"/><line x1="452" y1="452" x2="452" y2="388"/>
   </g>
+  <path d="M151 412 L256 96 L361 412" fill="none" stroke="url(#a)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="188" y1="318" x2="324" y2="318" stroke="url(#a)" stroke-width="24" stroke-linecap="round"/>
 </svg>

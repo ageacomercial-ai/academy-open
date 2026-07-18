@@ -468,6 +468,7 @@ async function iniciarGer(retomar) {
     const secsArr   = State.get('secs');
     secsArr[i].e   = 'p';
     secsArr[i].c   = textoFinal;
+    secsArr[i].blocks = blkExtrair({ c: textoFinal });
     secsArr[i].ast = astFinal;
     State.set('secs', secsArr);
 
