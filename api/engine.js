@@ -917,9 +917,43 @@ Regras: 3-6 capítulos, 2-4 subtópicos cada, último capítulo "Referências Bi
 
 /* ---------------- EDITAR TEXTO ---------------- */
 async function doEditar(p) {
-  const texto  = (p.texto||'').substring(0,4000);
+  const texto  = (p.texto||'').substring(0,8000);
   const subacao = p.subacao||p.acao||'melhorar';
   if (!texto) throw new Error('texto obrigatório');
+
+  /* Edição completa do documento — IA retorna JSON estruturado */
+  if (subacao === 'editar_documento_completo') {
+    const prompt = [
+      `És um orientador académico. O documento abaixo mostra blocos de conteúdo.`,
+      `\n\nPedido do utilizador: "${(p.pedido||'').substring(0,500)}"`,
+      `\n\nDocumento actual (blocos separados por ---):`,
+      `\n${texto}`,
+      `\n\nResponde APENAS com JSON no formato:`,
+      `{"operacoes":[`,
+      `  {"accao":"editar","chapterIdx":0,"blockId":"...","conteudo":"novo texto"},`,
+      `  {"accao":"inserir","chapterIdx":0,"afterBlockId":"...","conteudo":"novo parágrafo","type":"paragraph"},`,
+      `  {"accao":"remover","chapterIdx":0,"blockId":"..."}`,
+      `]}`,
+      `\nRegras:`,
+      `- Mantém tom académico formal português`,
+      `- Preserva conteúdo não mencionado no pedido`,
+      `- Usa os mesmos blockId existentes para editar`,
+      `- Para inserir, usa afterBlockId do bloco anterior (ou null para fim)`,
+      `- Remove apenas se o pedido explicitamente pedir`,
+      `- Devolve array vazio se não houver alterações: {"operacoes":[]}`,
+      `- APENAS JSON, sem markdown, sem explicações`,
+    ].join('\n');
+    const r = await callAI([{ role:'user', content: prompt }],
+      { max_tokens:4000, temperature:0.3 });
+    /* Tentar extrair JSON */
+    let json;
+    try {
+      const m = r.match(/```json\n?([\s\S]*?)\n?```/);
+      json = JSON.parse(m ? m[1] : r);
+    } catch { json = { operacoes: [] }; }
+    return json;
+  }
+
   const instrucoes = {
     melhorar:   'Melhora o estilo académico mantendo o conteúdo. Português formal académico.',
     expandir:   'Expande com mais detalhe académico (+30%). Português formal académico.',

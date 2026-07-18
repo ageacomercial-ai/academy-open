@@ -373,28 +373,69 @@ async function _chatProcessarEdicao(pedido) {
 
 async function _chatEditarViaIA(pedido, secs) {
   const cfg = State.get('cfg');
-  const tp = tipoActual() || { n: 'Trabalho Académico' };
+  const tp  = tipoActual() || { n: 'Trabalho Académico' };
 
-  const resumo = secs.map((s, i) => {
-    const preview = (s.c || '').substring(0, 150);
-    return `Cap.${s.num || i + 1} — ${s.titulo || `Capítulo ${i + 1}`}: ${preview}`;
-  }).join('\n\n');
+  const contextoDoc = secs.map((s, i) => {
+    const blocks = s.blocks || blkExtrair(s);
+    return blocks.map((b, bi) =>
+      `[sec.${s.num||i+1} bloco.${b.id}] ${b.content.substring(0, 200)}`
+    ).join('\n');
+  }).join('\n---\n');
 
   try {
-    _adicionarMsgChat('acad', '🔍 A analisar o documento para localizar o que editar…');
+    _adicionarMsgChat('acad', '🔍 A analisar o documento para aplicar a edição…');
 
     const resposta = await callAcademyAPI({
-      acao:   'editar_texto',
-      texto:  resumo,
-      subacao: 'detectar_edicao',
-      pedido: pedido,
-      tema:   cfg.tema || '',
+      acao:         'editar_texto',
+      texto:        contextoDoc,
+      subacao:      'editar_documento_completo',
+      pedido,
+      tema:         cfg.tema || '',
       tipoTrabalho: tp.n,
     });
 
     const novaResposta = typeof resposta === 'string' ? resposta : JSON.stringify(resposta);
-    chatHistorico.push({ role: 'assistant', content: novaResposta });
-    _tiparMsgChat(novaResposta, () => _mostrarSugestoesChat(SUGESTOES_POS));
+    if (novaResposta.length < 10) throw new Error('Resposta vazia');
+
+    /* Tentar parsear como JSON de edição estruturada */
+    let edits = null;
+    try {
+      const jsonMatch = novaResposta.match(/```json\n?([\s\S]*?)\n?```/);
+      const raw = jsonMatch ? jsonMatch[1] : novaResposta;
+      edits = JSON.parse(raw.trim());
+    } catch {}
+
+    if (edits && Array.isArray(edits.operacoes)) {
+      let aplicadas = 0;
+      for (const op of edits.operacoes) {
+        if (op.accao === 'editar' && op.chapterIdx != null && op.blockId) {
+          const ok = blkAtualizar(secs, op.chapterIdx, op.blockId, op.conteudo, 'ia');
+          if (ok) { blkAtualizarDOM(op.chapterIdx, op.blockId); aplicadas++; }
+        } else if (op.accao === 'inserir' && op.chapterIdx != null) {
+          const nb = blkInserir(secs, op.chapterIdx, op.afterBlockId || null, {
+            type: op.type || 'paragraph',
+            content: op.conteudo || '',
+          });
+          if (nb) { aplicadas++; blkRender(secs[op.chapterIdx], op.chapterIdx, true); }
+        } else if (op.accao === 'remover' && op.chapterIdx != null && op.blockId) {
+          const ok = blkRemover(secs, op.chapterIdx, op.blockId);
+          if (ok) { aplicadas++; blkRender(secs[op.chapterIdx], op.chapterIdx, true); }
+        }
+      }
+      State.set('secs', secs);
+      autoGuardar();
+      if (aplicadas > 0) {
+        _adicionarMsgChat('acad', `✓ ${aplicadas} edição(ões) aplicada(s) com sucesso.`);
+      } else {
+        _adicionarMsgChat('acad', '⚠ Não consegui identificar o que editar. Reformula o pedido.');
+      }
+    } else {
+      /* Resposta textual da IA — adicionar como notificação + tentar aplicar */
+      chatHistorico.push({ role: 'assistant', content: novaResposta });
+      _tiparMsgChat(novaResposta, () => {
+        _adicionarMsgChat('acad', '💡 Para editar, diz exatamente o que queres mudar (ex: "melhora o parágrafo sobre metodologia").');
+      });
+    }
   } catch (e) {
     _adicionarMsgChat('acad', `⚠ Erro: ${e.message || 'sem resposta'}. Tenta novamente.`);
   }
