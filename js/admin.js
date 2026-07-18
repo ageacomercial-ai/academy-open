@@ -117,6 +117,27 @@ function sAdmin() {
     </div>
   </div>
 
+  <!-- Parceiros e Comissões -->
+  <div style="margin-bottom:20px;padding:16px;background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:var(--t3);text-transform:uppercase">🤝 Parceiros e Comissões</div>
+      <button onclick="carregarParceirosAdmin();carregarComissoesAdmin()" style="font-family:var(--fm);font-size:8px;color:var(--b);background:none;border:none;cursor:pointer;letter-spacing:.06em">↺</button>
+    </div>
+    <div id="adminParceiros" style="min-height:20px;margin-bottom:8px">
+      <div style="font-size:11px;color:var(--t3);padding:2px 0">A carregar parceiros...</div>
+    </div>
+    <div id="adminComissoes" style="min-height:20px">
+      <div style="font-size:11px;color:var(--t3);padding:2px 0">A carregar comissões...</div>
+    </div>
+    <div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap">
+      <input class="inp" id="adminParNome" placeholder="Nome" style="flex:2;font-size:10px;margin:0"/>
+      <input class="inp" id="adminParWA" placeholder="WhatsApp" style="flex:2;font-size:10px;margin:0"/>
+      <input class="inp" id="adminParPerc" type="number" placeholder="%" value="10" style="width:36px;font-size:10px;margin:0"/>
+      <input class="inp" id="adminParCod" placeholder="Código" style="flex:1;font-size:10px;margin:0"/>
+      <button class="btn B s" onclick="adminCriarParceiro()" style="font-size:9px">+</button>
+    </div>
+  </div>
+
   <!-- Instituições Parceiras -->
   <div style="margin-bottom:20px;padding:16px;background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r)">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -410,6 +431,45 @@ async function adminGuardarPrecos() {
     status.textContent = '✗ Erro ao guardar: ' + (e.message || '');
     status.style.color = '#f87171';
   }
+}
+
+/* ════════════════════════════════════════════════════════════
+   PARCEIROS E COMISSÕES (ADMIN)
+════════════════════════════════════════════════════════════ */
+async function carregarParceirosAdmin() {
+  const el = document.getElementById('adminParceiros');
+  if (!el) return;
+  const rows = await sbCarregarParceiros();
+  if (!rows.length) { el.innerHTML = '<div style="font-size:10px;color:var(--t3)">Nenhum parceiro</div>'; return; }
+  el.innerHTML = rows.map(r => `
+    <div style="display:flex;align-items:center;gap:4px;padding:3px 6px;background:var(--z3);border-radius:var(--r);margin-bottom:2px;font-size:10px">
+      <span style="flex:1;color:var(--t1)">${r.nome}</span>
+      <span style="font-family:var(--fm);color:var(--t3);font-size:9px">${r.comissao_porcentagem||0}%</span>
+      <button onclick="if(confirm('Remover ${r.nome}?')){sbRemoverParceiro(${r.id});carregarParceirosAdmin()}" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:10px">✕</button>
+    </div>`).join('');
+}
+async function carregarComissoesAdmin() {
+  const el = document.getElementById('adminComissoes');
+  if (!el) return;
+  const rows = await sbCarregarComissoes();
+  if (!rows.length) { el.innerHTML = '<div style="font-size:10px;color:var(--t3)">Nenhuma comissão registada</div>'; return; }
+  el.innerHTML = rows.map(r => `
+    <div style="display:flex;align-items:center;gap:4px;padding:3px 6px;background:var(--z3);border-radius:var(--r);margin-bottom:2px;font-size:10px">
+      <span style="flex:1;color:var(--t1)">${r.parceiro_nome}</span>
+      <span style="color:var(--b)">${r.valor_comissao.toLocaleString()} Kz</span>
+      <span style="font-family:var(--fm);color:${r.estado==='pago'?'var(--b)':'#FBBF24'};font-size:8px">${r.estado==='pago'?'✓ PAGO':'⏳'}</span>
+      ${r.estado==='pendente'?`<button onclick="sbPagarComissao(${r.id});carregarComissoesAdmin()" style="background:none;border:.5px solid var(--eb);color:var(--b);border-radius:6px;cursor:pointer;font-size:9px;padding:2px 6px">Pagar</button>`:''}
+    </div>`).join('');
+}
+async function adminCriarParceiro() {
+  const nome = document.getElementById('adminParNome')?.value?.trim();
+  const wa = document.getElementById('adminParWA')?.value?.trim();
+  const perc = parseInt(document.getElementById('adminParPerc')?.value) || 10;
+  const cod = document.getElementById('adminParCod')?.value?.trim().toUpperCase() || ('PAR' + Date.now().toString(36).toUpperCase());
+  if (!nome) { mostrarToast('Insere o nome do parceiro.'); return; }
+  const ok = await sbCriarParceiro(nome, wa, perc, cod);
+  if (ok) { mostrarToast(`✓ Parceiro ${nome} criado! Código: ${cod}`); document.getElementById('adminParNome').value=''; document.getElementById('adminParWA').value=''; document.getElementById('adminParPerc').value='10'; document.getElementById('adminParCod').value=''; carregarParceirosAdmin(); }
+  else mostrarToast('Erro ao criar parceiro.');
 }
 
 /* ════════════════════════════════════════════════════════════

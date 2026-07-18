@@ -1063,6 +1063,27 @@ INSERT INTO instituicoes (nome, sigla, desconto_porcentagem) VALUES
   ('Universidade Lusíada de Angola','ULA',10),
   ('Instituto Superior Politécnico de Angola','ISPA',10)
 ON CONFLICT (nome) DO NOTHING;
+CREATE TABLE IF NOT EXISTS comissoes (
+  id SERIAL PRIMARY KEY,
+  parceiro_nome TEXT NOT NULL,
+  parceiro_whatsapp TEXT,
+  valor_venda INTEGER NOT NULL,
+  percentagem INTEGER NOT NULL DEFAULT 10,
+  valor_comissao INTEGER NOT NULL,
+  estado TEXT DEFAULT 'pendente',
+  pagamento_ref TEXT,
+  criado_em TIMESTAMPTZ DEFAULT NOW(),
+  pago_em TIMESTAMPTZ
+);
+CREATE TABLE IF NOT EXISTS parceiros (
+  id SERIAL PRIMARY KEY,
+  nome TEXT NOT NULL,
+  whatsapp TEXT,
+  comissao_porcentagem INTEGER DEFAULT 10,
+  codigo TEXT UNIQUE,
+  activo BOOLEAN DEFAULT true,
+  criado_em TIMESTAMPTZ DEFAULT NOW()
+);
   `;
   try {
     const r = await fetch(`${url}/rest/v1/rpc/`, {

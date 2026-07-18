@@ -205,7 +205,7 @@ function renderizar() {
   }
 
 /* Post-render: carregar dados admin */
-if (ecra === 'admin') { loadAdminPendentes(); carregarMonitorIA(); carregarDashboard(); carregarInstituicoesAdmin(); }
+if (ecra === 'admin') { loadAdminPendentes(); carregarMonitorIA(); carregarDashboard(); carregarInstituicoesAdmin(); carregarParceirosAdmin(); carregarComissoesAdmin(); }
 }
 
 /* ── Helpers de início rápido ── */

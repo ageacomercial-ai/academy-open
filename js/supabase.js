@@ -240,6 +240,58 @@ async function sbRemoverInstituicao(id) {
   } catch { return false; }
 }
 
+/* ═══════════════════════════════════════════════════════════
+   PARCEIROS E COMISSÕES
+═══════════════════════════════════════════════════════════ */
+async function sbCarregarParceiros() {
+  try {
+    const r = await fetch(SB_URL + '/rest/v1/parceiros?activo=eq.true&order=nome.asc', { headers: SB_H() });
+    if (!r.ok) return [];
+    return await r.json();
+  } catch { return []; }
+}
+async function sbCriarParceiro(nome, whatsapp, porcentagem, codigo) {
+  try {
+    await fetch(SB_URL + '/rest/v1/parceiros', {
+      method:'POST', headers:{ ...SB_H(), 'Prefer':'return=minimal' },
+      body:JSON.stringify({ nome, whatsapp: whatsapp||null, comissao_porcentagem: porcentagem||10, codigo: codigo||null }),
+    });
+    return true;
+  } catch { return false; }
+}
+async function sbRemoverParceiro(id) {
+  try {
+    await fetch(SB_URL + '/rest/v1/parceiros?id=eq.'+id, { method:'DELETE', headers:SB_H() });
+    return true;
+  } catch { return false; }
+}
+async function sbCarregarComissoes() {
+  try {
+    const r = await fetch(SB_URL + '/rest/v1/comissoes?order=criado_em.desc&limit=20', { headers: SB_H() });
+    if (!r.ok) return [];
+    return await r.json();
+  } catch { return []; }
+}
+async function sbRegistarComissao(parceiroNome, valorVenda, percentagem) {
+  try {
+    const valorComissao = Math.round(valorVenda * percentagem / 100);
+    await fetch(SB_URL + '/rest/v1/comissoes', {
+      method:'POST', headers:{ ...SB_H(), 'Prefer':'return=minimal' },
+      body:JSON.stringify({ parceiro_nome: parceiroNome, valor_venda: valorVenda, percentagem, valor_comissao: valorComissao }),
+    });
+    return true;
+  } catch { return false; }
+}
+async function sbPagarComissao(id, pagamentoRef) {
+  try {
+    await fetch(SB_URL + '/rest/v1/comissoes?id=eq.'+id, {
+      method:'PATCH', headers:SB_H(),
+      body:JSON.stringify({ estado:'pago', pago_em: new Date().toISOString(), pagamento_ref: pagamentoRef||null }),
+    });
+    return true;
+  } catch { return false; }
+}
+
 /* ── Detectar se Supabase está acessível ── */
 let _sbConectado = null;
 async function _detetarSB() {
