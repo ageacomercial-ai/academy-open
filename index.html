@@ -277,6 +277,7 @@ window.addEventListener('load', function() {
     sbCheckAprovados();
     setInterval(function() { sbCheckAprovados(); }, 45000);
     setTimeout(function() { if (typeof sbSincronizarDocs === 'function') sbSincronizarDocs(); }, 1200);
+    carregarPrecos();
   } else {
     irPara('entrada');
   }

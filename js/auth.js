@@ -21,22 +21,66 @@ const SENHA_TIPOS = {
   'C1K':  { tipo: 'credito', pags: 1000, valor: 60000, desc: 'Créditos 1.000 páginas — 60.000 Kz'  },
 };
 
-/* ── Tabela oficial de preços ── */
+/* ── Cache dinâmico de preços (carregado do Supabase) ── */
+let _precosCache = null;
+let _planosGraficaCache = null;
+
+/* Preços padrão (fallback se Supabase offline) */
+const _PRECOS_DEFAULT = [
+  { faixa_inicio: 0,  faixa_fim: 15, preco: 1850, label: '0-15 páginas' },
+  { faixa_inicio: 16, faixa_fim: 20, preco: 3500, label: '16-20 páginas' },
+  { faixa_inicio: 21, faixa_fim: 30, preco: 5500, label: '21-30 páginas' },
+  { faixa_inicio: 31, faixa_fim: 50, preco: 8500, label: '31-50 páginas' },
+];
+const _PLANOS_GRAFICA_DEFAULT = [
+  { nome: 'Gráfica Base',     paginas: 150, preco: 25000 },
+  { nome: 'Gráfica Plus',     paginas: 300, preco: 45000 },
+  { nome: 'Gráfica Premium',  paginas: 500, preco: 65000 },
+];
+
+async function carregarPrecos() {
+  try {
+    const r = await fetch(SB_URL + '/rest/v1/precos?ativo=eq.true&order=faixa_inicio.asc',
+      { headers: SB_H(), signal: AbortSignal.timeout(5000) });
+    if (r.ok) {
+      _precosCache = await r.json();
+    }
+  } catch {}
+  if (!_precosCache || !_precosCache.length) _precosCache = _PRECOS_DEFAULT;
+
+  try {
+    const r = await fetch(SB_URL + '/rest/v1/planos_grafica?ativo=eq.true&order=preco.asc',
+      { headers: SB_H(), signal: AbortSignal.timeout(5000) });
+    if (r.ok) {
+      _planosGraficaCache = await r.json();
+    }
+  } catch {}
+  if (!_planosGraficaCache || !_planosGraficaCache.length) _planosGraficaCache = _PLANOS_GRAFICA_DEFAULT;
+}
+
+/* Tabela oficial de preços (dinâmica do Supabase ou fallback) */
 function calcPreco(pags) {
-  if (pags <= 15)  return 950;
-  if (pags <= 30)  return 1650;
-  if (pags <= 200) return 12000;
-  if (pags <= 500) return 29500;
-  return 60000;
+  const tabela = _precosCache || _PRECOS_DEFAULT;
+  for (const faixa of tabela) {
+    if (pags >= faixa.faixa_inicio && pags <= faixa.faixa_fim) return faixa.preco;
+  }
+  const ultimo = tabela[tabela.length - 1];
+  return ultimo ? ultimo.preco : 1850;
 }
 
 function calcPacote(pags) {
-  if (pags <= 15)  return { pags: 15,   preco: 950,   label: 'Pacote Base' };
-  if (pags <= 30)  return { pags: 30,   preco: 1650,  label: 'Pacote Essencial' };
-  if (pags <= 200) return { pags: 200,  preco: 12000, label: 'Pacote Avançado' };
-  if (pags <= 500) return { pags: 500,  preco: 29500, label: 'Pacote Profissional' };
-  return               { pags: 1000, preco: 60000, label: 'Pacote Premium' };
+  const tabela = _precosCache || _PRECOS_DEFAULT;
+  for (const faixa of tabela) {
+    if (pags >= faixa.faixa_inicio && pags <= faixa.faixa_fim) {
+      return { pags: faixa.faixa_fim, preco: faixa.preco, label: faixa.label || `${faixa.faixa_inicio}-${faixa.faixa_fim} págs` };
+    }
+  }
+  const ultimo = tabela[tabela.length - 1];
+  return { pags: ultimo.faixa_fim, preco: ultimo.preco, label: ultimo.label };
 }
+
+function getPrecosCache() { return _precosCache || _PRECOS_DEFAULT; }
+function getPlanosGraficaCache() { return _planosGraficaCache || _PLANOS_GRAFICA_DEFAULT; }
 
 /* ═══════════════════════════════════════════════════════════
    VALIDAÇÃO DE SENHAS (offline — sem internet)

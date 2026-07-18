@@ -74,6 +74,21 @@ function sAdmin() {
     </div>`).join('') || `<div style="font-size:13px;color:var(--t3)">Nenhuma senha gerada ainda.</div>`}
   </div>
 
+  <!-- Gestão de Preços -->
+  <div style="margin-bottom:20px;padding:16px;background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r)">
+    <div style="font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:var(--t3);margin-bottom:12px;text-transform:uppercase">💰 Gestão de Preços</div>
+    <div id="adminPrecosLista">
+      ${(getPrecosCache() || []).map(p => `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-family:var(--fm);font-size:9px;color:var(--t3);width:80px;flex-shrink:0">${p.faixa_inicio}-${p.faixa_fim}p</span>
+        <input class="inp" value="${p.preco}" style="flex:1;font-size:12px;margin:0;text-align:right" id="precoInp_${p.faixa_inicio}_${p.faixa_fim}"/>
+        <span style="font-family:var(--fm);font-size:9px;color:var(--t3);width:30px">Kz</span>
+      </div>`).join('')}
+    </div>
+    <button class="btn B s" onclick="adminGuardarPrecos()" style="margin-top:8px;font-size:11px">💾 Guardar Preços</button>
+    <div id="adminPrecosStatus" style="font-family:var(--fm);font-size:9px;color:var(--b);margin-top:6px"></div>
+  </div>
+
   <!-- Estatísticas -->
   <div style="margin-top:20px;padding:16px;background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r)">
     <div style="font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:var(--t3);margin-bottom:12px;text-transform:uppercase">📊 Estatísticas da Sessão</div>
@@ -245,6 +260,45 @@ async function adminRejeitar(id) {
   await sbRejeitar(id);
   mostrarToast('Pagamento rejeitado.');
   if (card) setTimeout(() => card.remove(), 800);
+}
+
+/* ════════════════════════════════════════════════════════════
+   GESTÃO DE PREÇOS
+════════════════════════════════════════════════════════════ */
+async function adminGuardarPrecos() {
+  const status = document.getElementById('adminPrecosStatus');
+  if (!status) return;
+  status.textContent = 'A guardar…';
+  try {
+    const tabela = getPrecosCache() || [];
+    let atualizados = 0;
+    for (const p of tabela) {
+      const inp = document.getElementById(`precoInp_${p.faixa_inicio}_${p.faixa_fim}`);
+      if (!inp) continue;
+      const novoPreco = parseInt(inp.value);
+      if (isNaN(novoPreco) || novoPreco < 0) continue;
+      if (novoPreco === p.preco) continue;
+      await fetch(SB_URL + `/rest/v1/precos?faixa_inicio=eq.${p.faixa_inicio}&faixa_fim=eq.${p.faixa_fim}`, {
+        method: 'PATCH',
+        headers: { ...SB_H(), 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ preco: novoPreco }),
+      });
+      p.preco = novoPreco;
+      atualizados++;
+    }
+    if (atualizados > 0) {
+      _precosCache = tabela;
+      status.textContent = `✓ ${atualizados} preço(s) actualizado(s) com sucesso!`;
+      status.style.color = 'var(--b)';
+      mostrarToast('✓ Preços actualizados!');
+    } else {
+      status.textContent = 'Nenhuma alteração detectada.';
+      status.style.color = 'var(--t3)';
+    }
+  } catch (e) {
+    status.textContent = '✗ Erro ao guardar: ' + (e.message || '');
+    status.style.color = '#f87171';
+  }
 }
 
 /* ════════════════════════════════════════════════════════════
