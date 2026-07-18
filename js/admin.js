@@ -38,7 +38,7 @@ function sAdmin() {
     </div>
   </div>
 
-  <!-- Gerar Senha -->
+  <!-- Gerar Senha Padrão -->
   <div style="font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:var(--t3);margin-bottom:10px;text-transform:uppercase">🔑 Gerar Senha de Acesso</div>
   <label class="lbl">Tipo de Acesso</label>
   <select class="inp" id="adminTipo" style="margin-bottom:12px">
@@ -47,9 +47,26 @@ function sAdmin() {
     ).join('')}
   </select>
 
-  <button class="btn B w" onclick="adminGerarSenha()" style="font-size:15px;padding:14px;margin-bottom:16px">
+  <button class="btn B w" onclick="adminGerarSenha()" style="font-size:15px;padding:14px;margin-bottom:6px">
     ⚡ Gerar Nova Senha
   </button>
+
+  <!-- Gerar Senha Promocional -->
+  <div style="margin-top:16px;padding:14px;background:var(--sf3);border:.5px solid rgba(251,191,36,.2);border-radius:var(--r);margin-bottom:16px">
+    <div style="font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:#FBBF24;margin-bottom:10px;text-transform:uppercase">🎁 Código Promocional (páginas bónus)</div>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <input class="inp" id="adminPromoPags" type="number" min="1" max="9999" value="50" style="flex:1;text-align:center" placeholder="Páginas"/>
+      <button class="btn B" onclick="adminGerarPromo()">Gerar →</button>
+    </div>
+    <div id="adminPromoResult" style="display:none;background:var(--z2);border:.5px solid var(--eb);border-radius:var(--r);padding:10px;margin-top:8px;text-align:center">
+      <div style="font-family:var(--fm);font-size:8px;color:var(--t3);margin-bottom:4px">CÓDIGO PROMOCIONAL</div>
+      <div id="adminPromoTexto" style="font-size:18px;font-weight:800;color:var(--b);letter-spacing:.1em;font-family:var(--fm);margin-bottom:6px;word-break:break-all"></div>
+      <div style="display:flex;gap:8px;justify-content:center">
+        <button class="btn B s" onclick="adminCopiarPromo()">📋 Copiar</button>
+        <button class="btn G s" onclick="adminWAPromo()">💬 WhatsApp</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Senha Gerada -->
   <div id="adminSenhaGerada" style="display:none;background:var(--sf3);border:.5px solid var(--eb);border-radius:var(--r);padding:16px;margin-bottom:20px;text-align:center">
@@ -135,6 +152,35 @@ function adminGerarSenha() {
 function adminCopiar() {
   navigator.clipboard?.writeText(_adminSenhaActual)
     .then(() => mostrarToast('✓ Senha copiada!'));
+}
+
+/* ── Gerar código promocional personalizado ── */
+let _adminPromoActual = '';
+function adminGerarPromo() {
+  const inp = document.getElementById('adminPromoPags');
+  const pags = parseInt(inp?.value);
+  if (!pags || pags < 1 || pags > 9999) { mostrarToast('Insere um número de páginas válido (1-9999).'); return; }
+  const senha = gerarSenhaPromo(pags);
+  if (!senha) { mostrarToast('Erro ao gerar código.'); return; }
+  _adminPromoActual = senha;
+  document.getElementById('adminPromoResult').style.display = 'block';
+  document.getElementById('adminPromoTexto').textContent = senha;
+  const hist = LS.get('senhas_geradas') || [];
+  hist.unshift({ senha, desc: `${pags} páginas bónus (promo)`, data: new Date().toLocaleDateString('pt-PT'), usada: false });
+  LS.set('senhas_geradas', hist.slice(0, 50));
+  mostrarToast(`✓ Código promocional de ${pags} páginas gerado!`);
+}
+function adminCopiarPromo() {
+  navigator.clipboard?.writeText(_adminPromoActual).then(() => mostrarToast('✓ Código copiado!'));
+}
+function adminWAPromo() {
+  const msg = encodeURIComponent(
+    `🎁 Olá! Aqui está o teu código promocional ACADEMY:\n\n*${_adminPromoActual}*\n\n` +
+    `✓ Adiciona páginas de crédito ao teu saldo!\n\n` +
+    `Como activar:\n1. Abre o ACADEMY\n2. Vai a Planos → "Activar com Senha"\n3. Insere o código\n\n` +
+    `Grupo AGEA Comercial`
+  );
+  window.open(`https://wa.me/?text=${msg}`, '_blank');
 }
 
 function adminWhatsApp() {

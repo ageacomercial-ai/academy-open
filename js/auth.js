@@ -103,6 +103,20 @@ function gerarSenha(tipo) {
   return `ACAD-${nonce}-${tipo}-${check}`;
 }
 
+/* Gera uma senha promocional personalizada */
+function gerarSenhaPromo(pags, desc) {
+  if (!pags || pags < 1) return null;
+  const tipo = 'P' + String(pags).padStart(4, '0');
+  const nonce = _nonce();
+  const check = _hash(_SK + nonce + tipo).slice(0, 4);
+  const senha = `ACAD-${nonce}-${tipo}-${check}`;
+  /* Guardar metadados da promo */
+  const promos = JSON.parse(localStorage.getItem('acy_promos') || '{}');
+  promos[senha] = { pags, desc: desc || `${pags} páginas bónus`, criado: Date.now() };
+  localStorage.setItem('acy_promos', JSON.stringify(promos));
+  return senha;
+}
+
 /* Valida uma senha digitada pelo utilizador */
 function validarSenha(senha) {
   try {
@@ -112,9 +126,18 @@ function validarSenha(senha) {
     const tipo  = partes.slice(2, -1).join('-');
     const check = partes[partes.length - 1];
     if (_hash(_SK + nonce + tipo).slice(0, 4) !== check) return null;
+    /* Tipos padrão */
     const def = SENHA_TIPOS[tipo];
-    if (!def) return null;
-    return { tipo, ...def };
+    if (def) return { tipo, _senha: senha, ...def };
+    /* Tipos promocionais P + 4 dígitos (páginas) */
+    const pm = tipo.match(/^P(\d{4})$/);
+    if (pm) {
+      const pags = parseInt(pm[1]);
+      const promos = JSON.parse(localStorage.getItem('acy_promos') || '{}');
+      const meta = promos[senha];
+      return { tipo, _senha: senha, _promo: true, pags, desc: meta?.desc || `${pags} páginas bónus`, valor: 0 };
+    }
+    return null;
   } catch { return null; }
 }
 
@@ -346,8 +369,8 @@ async function aplicarSenha(resultado, { redirect = true } = {}) {
     /* É um plano mensal */
     activarPlano(def.plano, def.meses, redirect);
     await sbGuardarPlano(def.plano, Date.now() + (def.meses || 1) * 30 * 24 * 3600 * 1000);
-  } else if (def.tipo === 'credito') {
-    /* É um pacote de créditos */
+  } else if (def.tipo === 'credito' || def._promo) {
+    /* É um pacote de créditos ou código promocional */
     activarCredito(def.pags, redirect);
   }
   return true;
