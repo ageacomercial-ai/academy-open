@@ -885,7 +885,8 @@ Português formal académico. Mínimo 3 parágrafos por secção.`;
 
 /* ---------------- REFERÊNCIAS (com peneira + retry) ---------------- */
 async function doReferencias(p) {
-  const tema  = (p.tema||'').substring(0,300);
+  const tema  = (p.tema||'').substring(0,300).trim();
+  if (!tema) throw new Error('tema obrigatório');
   const tipo  = (p.tipoTrabalho||'Trabalho Académico').substring(0,100);
   const nivel = (p.nivel||'').substring(0,80);
   const nivelKey = detectarNivel(nivel);

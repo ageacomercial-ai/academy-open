@@ -119,9 +119,15 @@ function docEstruturarSemanticoTexto(sec, txt, blocos) {
   const linhas = txt.split('\n');
   let primeiroPar = true;
 
+  const isLixoJSON = l => /^\s*[\{\[\}\]]\s*$/.test(l)
+    || /^\s*"[a-z_]+"\s*:/.test(l)
+    || /"(?:chapter_id|section_id|title|paragraphs|content|status|generated_at|generated_by|version|sections)"\s*:/.test(l)
+    || /^[\{\[].*[\}\]]$/.test(l);
+
   for (let i = 0; i < linhas.length; i++) {
     const linha = linhas[i].trim();
     if (!linha) continue;
+    if (isLixoJSON(linha)) continue;
 
     /* Detectar subtítulos numerados (ex: "1.1 Contextualização") */
     const isSubSecH2 = /^\d+\.\d+\s+[A-ZÁÉÍÓÚÀ]/.test(linha) && linha.length < 90;
@@ -361,7 +367,7 @@ function layoutGerarTOCReal(paginasDeBlocos) {
 ════════════════════════════════════════════════════════════ */
 function layoutRenderPagina(blocos, opts) {
   const { num, total, titulo, nomeCap, watermark } = opts;
-  const linhas = blocos.map(bloco => layoutHtmlBloco(bloco)).join('');
+  const linhas = blocosAgruparHeadings(blocos).map(bloco => layoutHtmlBloco(bloco)).join('');
 
   return `<div class="pg" data-pg="${num}">
   <div class="pg-head">
@@ -381,6 +387,8 @@ function layoutRenderPagina(blocos, opts) {
 function layoutHtmlBloco(bloco) {
   const t = (bloco.texto || bloco.titulo || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   switch (bloco.tipo) {
+    case 'heading_group':
+      return `<div class="heading-group">${layoutHtmlBloco(bloco.heading)}${layoutHtmlBloco(bloco.firstChild)}</div>`;
     case 'titulo_cap':
       return `<div class="cap-titulo"><span class="cap-num">${bloco.num || ''}</span>${bloco.titulo}</div>`;
     case 'h2':
@@ -396,6 +404,22 @@ function layoutHtmlBloco(bloco) {
     default:
       return `<p class="par">${t}</p>`;
   }
+}
+
+/* Agrupa cada subtítulo (h2/h3) com o primeiro parágrafo seguinte
+   num único bloco heading_group — evita título órfão no fundo da página */
+function blocosAgruparHeadings(blocos) {
+  const out = [];
+  for (let i = 0; i < blocos.length; i++) {
+    const b = blocos[i];
+    if ((b.tipo === 'h2' || b.tipo === 'h3') && blocos[i + 1]?.tipo === 'paragrafo') {
+      out.push({ tipo: 'heading_group', heading: b, firstChild: blocos[i + 1] });
+      i++;
+    } else {
+      out.push(b);
+    }
+  }
+  return out;
 }
 
 /* Versão para medição DOM (heurística idêntica ao HTML real) */
@@ -433,7 +457,8 @@ function htmlCapa(meta) {
   const usarCapa   = capaObj.usarCapa !== false;
   const logoInst   = capaObj.logoInst   || meta.logoInst   || null;
   const capaImg    = capaObj.imagem     || meta.capaImg    || null;
-  const autores    = (meta.autor || '').split('\n').filter(Boolean);
+  const autores    = (meta.autor || '').split('\n').filter(Boolean).map(capitalizarNome);
+  const profFmt    = meta.prof ? capitalizarNome(meta.prof) : '';
 
   return `
   <div style="position:relative;min-height:${PDF.ALTURA - PDF.MARGEM_V * 2}px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:0">
@@ -451,10 +476,22 @@ function htmlCapa(meta) {
     <div style="width:70mm;height:1px;background:#111;margin:0 auto 20px"></div>
 
     ${autores.map(a => `<div style="font-family:Georgia,serif;font-size:11pt;font-weight:700;color:#111;line-height:1.5;position:relative">${a}</div>`).join('')}
-    ${(meta.mbs || []).map(m => `<div style="font-family:Georgia,serif;font-size:10pt;color:#444;line-height:1.5;position:relative">${m.nome || 'Integrante'}</div>`).join('')}
-    ${meta.prof ? `<div style="font-family:Georgia,serif;font-size:9pt;font-style:italic;color:#555;margin-top:10px;position:relative">Orientador: ${meta.prof}</div>` : ''}
+    ${(meta.mbs || []).map(m => `<div style="font-family:Georgia,serif;font-size:10pt;color:#444;line-height:1.5;position:relative">${m.nome ? capitalizarNome(m.nome) : 'Integrante'}</div>`).join('')}
+    ${profFmt ? `<div style="font-family:Georgia,serif;font-size:9pt;font-style:italic;color:#555;margin-top:10px;position:relative">Orientador: ${profFmt}</div>` : ''}
     <div style="font-family:Georgia,serif;font-size:9pt;color:#777;margin-top:18px;position:relative">${meta.data || ''}</div>
   </div>`;
+}
+
+/* Capitaliza nomes próprios (primeira letra de cada palavra, 
+   excepto artigos/preposições). Não usa title case em palavras curtas. */
+function capitalizarNome(nome) {
+  if (!nome) return '';
+  const minusculas = new Set(['de','da','do','das','dos','e','em','na','no','nas','nos','a','o','as','os','para','por','com','sem']);
+  return nome.toLowerCase().split(/\s+/).filter(Boolean).map((palavra, i) => {
+    if (i > 0 && minusculas.has(palavra)) return palavra;
+    if (/^[a-zà-ÿ]/.test(palavra)) return palavra.charAt(0).toUpperCase() + palavra.slice(1);
+    return palavra;
+  }).join(' ');
 }
 
 function htmlTOC(mapa) {
@@ -503,22 +540,25 @@ function htmlPostextuais(cfg) {
   return itens.map(item => {
     switch (item.tipo) {
       case 'glossario':
+        if (!item.termo && !item.definicao) return '';
         return `<div style="padding:40px 0">
           <h3 style="font-family:'Cormorant Garamond',Georgia,serif;font-size:16pt;font-weight:700;border-bottom:1.5pt solid #111;padding-bottom:8px;margin-bottom:20px;text-transform:uppercase">Glossário</h3>
-          <div><strong style="font-family:Georgia,serif;font-size:11pt">${item.termo}</strong> — <span style="font-family:Georgia,serif;font-size:11pt;color:#333">${item.definicao || ''}</span></div>
+          <div><strong style="font-family:Georgia,serif;font-size:11pt">${item.termo || ''}</strong> — <span style="font-family:Georgia,serif;font-size:11pt;color:#333">${item.definicao || ''}</span></div>
         </div>`;
       case 'abreviatura':
+        if (!item.abrev && !item.significado) return '';
         return `<div style="padding:40px 0">
           <h3 style="font-family:'Cormorant Garamond',Georgia,serif;font-size:16pt;font-weight:700;border-bottom:1.5pt solid #111;padding-bottom:8px;margin-bottom:20px;text-transform:uppercase">Lista de Abreviaturas</h3>
-          <div style="display:flex;gap:16px;font-family:Georgia,serif;font-size:11pt"><strong>${item.abrev}</strong><span>—</span><span>${item.significado || ''}</span></div>
+          <div style="display:flex;gap:16px;font-family:Georgia,serif;font-size:11pt"><strong>${item.abrev || ''}</strong><span>—</span><span>${item.significado || ''}</span></div>
         </div>`;
       default:
+        if (!item.titulo && !item.conteudo) return '';
         return `<div style="padding:40px 0">
           <h3 style="font-family:'Cormorant Garamond',Georgia,serif;font-size:16pt;font-weight:700;border-bottom:1.5pt solid #111;padding-bottom:8px;margin-bottom:20px;text-transform:uppercase">${item.titulo || item.tipo}</h3>
           <p style="font-family:Georgia,serif;font-size:11pt;line-height:1.8;text-align:justify">${item.conteudo || ''}</p>
         </div>`;
     }
-  });
+  }).filter(html => html && html.length > 0);
 }
 
 function htmlContracapa(meta) {
@@ -719,6 +759,13 @@ body { background:#E8E8E8; font-family:Georgia,'Times New Roman',serif; }
   font-family:Georgia,serif; font-size:12pt; font-weight:600; font-style:italic;
   line-height:1.4; margin:14pt 0 6pt; color:#2A2A2A;
 }
+
+/* Heading group — título + primeiro parágrafo juntos (anti-órfão) */
+.heading-group {
+  break-inside: avoid-page;
+  page-break-inside: avoid;
+}
+.heading-group > .par:first-child { margin-top:0; }
 
 /* Parágrafos */
 .par {

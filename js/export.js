@@ -32,6 +32,20 @@ function sanitizarConteudo(txt) {
   t = t.replace(/^[ \t]+/gm,  '');
   t = t.replace(/[ \t]+$/gm,  '');
 
+  /* 5. Remover vestígios de JSON/AST que possam ter escapado da IA */
+  t = t.replace(/\{\s*"(?:chapter_id|section_id|title|paragraphs|content|status|generated_at|generated_by|version|sections|tipo|conteudo|num|titulo|c)"\s*:\s*"[^"]*"(?:\s*,\s*"[^"]+"\s*:\s*(?:"[^"]*"|[\d\.\-]+|true|false|null|\[[^\]]*\]))*\s*\}/g, '');
+  t = t.replace(/\{\s*"(?:chapter_id|section_id|title|paragraphs|content|status|sections)"\s*:/g, '');
+  t = t.replace(/^\s*"[a-z_]+"\s*:\s*"[^"]*"\s*,?\s*$/gm, '');
+  t = t.replace(/^\s*\{\s*$|^\s*\}\s*$|^\s*\[\s*$|^\s*\]\s*$/gm, '');
+  t = t.replace(/"paragraphs"\s*:\s*\[\s*"?/g, '');
+  t = t.replace(/"\s*}\s*,?\s*$/gm, '');
+  t = t.replace(/\\"/g, '"');
+  t = t.replace(/\\n/g, '\n');
+
+  /* 6. Remover linhas que ficaram vazias ou só com artefactos */
+  t = t.split('\n').filter(l => l.trim().length > 0).join('\n');
+  t = t.replace(/\n{3,}/g, '\n\n');
+
   return t.trim();
 }
 

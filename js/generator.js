@@ -73,13 +73,16 @@ async function callAcademyAPI(rawPayload) {
 /* ── Converter AST de capítulo em texto plano ── */
 function astParaTexto(ast) {
   if (!ast || !ast.sections) return '';
+  const isLixoAST = s => /^\s*[\{\[]/.test(s) || /"(?:chapter_id|section_id|title|paragraphs|content|status|generated_at|generated_by|version|sections)"\s*:/.test(s);
   return ast.sections.map(sec => {
     let txt = '';
-    if (sec.titulo || sec.title) txt += (sec.titulo || sec.title) + '\n\n';
+    const tituloSec = sec.titulo || sec.title || '';
+    if (tituloSec && !isLixoAST(tituloSec)) txt += tituloSec + '\n\n';
     const paras = sec.paragrafos || sec.paragraphs || [];
-    if (paras.length) txt += paras.join('\n\n');
+    const parasLimpos = paras.filter(p => p && typeof p === 'string' && !isLixoAST(p) && p.length > 5);
+    if (parasLimpos.length) txt += parasLimpos.join('\n\n');
     return txt;
-  }).join('\n\n');
+  }).filter(s => s && s.trim().length > 0).join('\n\n');
 }
 
 /* ── Render de erro de API no ecrã ── */
@@ -465,8 +468,19 @@ async function iniciarGer(retomar) {
         try {
           const parsed = JSON.parse(resultado);
           if (parsed?.sections) { astFinal = parsed; textoFinal = astParaTexto(parsed); }
-          else textoFinal = resultado;
-        } catch { textoFinal = resultado; }
+          else textoFinal = '[JSON devolvido sem estrutura válida. Toca em ↺.]';
+        } catch {
+          const m = resultado.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+          if (m) {
+            try {
+              const parsed = JSON.parse(m[1]);
+              if (parsed?.sections) { astFinal = parsed; textoFinal = astParaTexto(parsed); }
+              else textoFinal = '[JSON devolvido sem estrutura válida. Toca em ↺.]';
+            } catch { textoFinal = '[JSON malformado. Toca em ↺ para regenerar.]'; }
+          } else {
+            textoFinal = '[JSON malformado. Toca em ↺ para regenerar.]';
+          }
+        }
       } else if (typeof resultado === 'string') {
         textoFinal = resultado;
       }
