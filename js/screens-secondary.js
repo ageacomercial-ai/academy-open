@@ -569,10 +569,10 @@ function sPlanosPrecos(opts) {
       </button>
     </div>` : ''}
 
-    <!-- ═══ SENHA ═══ -->
-    <details style="margin-bottom:16px">
-      <summary style="font-family:var(--fm);font-size:9px;letter-spacing:.05em;color:var(--t3);cursor:pointer;padding:4px 0">🔑 Tens uma senha de activação?</summary>
-      <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:10px;padding:14px;margin-top:8px">
+    <!-- ═══ SENHA (sempre visível) ═══ -->
+    <div style="margin-bottom:16px">
+      <div style="font-family:var(--fm);font-size:9px;letter-spacing:.05em;color:var(--t3);padding:4px 0;margin-bottom:6px">🔑 Tens uma senha de activação?</div>
+      <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:10px;padding:14px">
         <div style="font-size:12px;color:var(--t2);margin-bottom:10px;line-height:1.5">Insere abaixo para activar créditos de imediato.</div>
         <div style="display:flex;gap:8px">
           <input class="inp" id="senhaInp" placeholder="ACAD-XXXX-XXX-XXXX" style="flex:1;text-transform:uppercase;letter-spacing:.05em;font-family:var(--fm);font-size:12px"
@@ -582,7 +582,7 @@ function sPlanosPrecos(opts) {
         </div>
         <div id="senhaMsg" style="margin-top:6px;font-family:var(--fm);font-size:11px"></div>
       </div>
-    </details>
+    </div>
 
     ${RODAPE_HTML}
   </div>`;
