@@ -221,7 +221,10 @@ function sInicio() {
 /* ════════════════════════════════════════════════════════════
    ECRÃ 2 — TIPO DE TRABALHO
 ════════════════════════════════════════════════════════════ */
+let _modoProfAberto = false;
+
 function sTipo() {
+  const selTipo = State.getCfg('tipo');
   return `
   <div style="padding-bottom:32px">
     <div style="font-family:var(--fm);font-size:8px;letter-spacing:.18em;color:var(--t3);margin-bottom:6px">PASSO 1 DE 4</div>
@@ -229,27 +232,65 @@ function sTipo() {
     <div style="font-size:13px;color:var(--t2);margin-bottom:22px;line-height:1.6">Selecciona o tipo de trabalho académico.</div>
 
     <div style="display:flex;flex-direction:column;gap:8px">
-      ${TIPOS.map(t => `
-      <div onclick="State.setCfg('tipo','${t.id}');irPara('tema_')"
-        style="background:var(--z2);border:.5px solid var(--e1);border-radius:var(--r2);padding:15px 16px;cursor:pointer;display:flex;align-items:center;gap:14px;transition:all .2s"
-        onmouseover="this.style.borderColor='var(--e2)';this.style.background='var(--z3)'"
-        onmouseout="this.style.borderColor='var(--e1)';this.style.background='var(--z2)'">
+      ${TIPOS.map(t => {
+        const selected = selTipo === t.id;
+        return `
+      <div onclick="State.setCfg('tipo','${t.id}');renderizar()"
+        style="background:${selected ? 'var(--sf3)' : 'var(--z2)'};border:.5px solid ${selected ? 'var(--eb)' : 'var(--e1)'};border-radius:var(--r2);padding:15px 16px;cursor:pointer;display:flex;align-items:center;gap:14px;transition:all .2s">
         <div style="font-size:24px;width:36px;text-align:center;flex-shrink:0">${t.i}</div>
         <div style="flex:1">
           <div style="font-size:14px;font-weight:600;color:var(--t1)">${t.n}</div>
           <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-top:2px;letter-spacing:.06em">${t.s}</div>
         </div>
-        <div style="color:var(--t4);font-size:18px">›</div>
-      </div>`).join('')}
+        <div style="font-size:12px;color:${selected ? 'var(--b)' : 'var(--t4)'}">${selected ? '✓' : '›'}</div>
+      </div>`;}).join('')}
     </div>
+
+    ${selTipo ? `
+    <!-- Pré-visualização da estrutura -->
+    <div style="margin-top:16px;background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r2);padding:14px 16px">
+      <div style="font-family:var(--fm);font-size:7px;letter-spacing:.14em;color:var(--b);text-transform:uppercase;margin-bottom:8px">ESTRUTURA — ${(TIPOS.find(t=>t.id===selTipo)?.s||'').toUpperCase()}</div>
+      <div style="font-size:12px;color:var(--t2);line-height:2">
+        ${(ESTRUTURAS_TIPO[selTipo] || ['Introdução','Desenvolvimento','Conclusão','Referências Bibliográficas']).map(e => `· ${e}`).join('<br/>')}
+      </div>
+    </div>
+
+    <!-- Modo Professor -->
+    <div style="margin-top:12px;background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r2);overflow:hidden">
+      <div onclick="_modoProfAberto=!_modoProfAberto;renderizar()"
+        style="padding:12px 14px;cursor:pointer;display:flex;align-items:center;gap:10px">
+        <span style="font-size:18px">🎓</span>
+        <span style="flex:1;font-size:13px;font-weight:600;color:var(--t1)">Modo Professor</span>
+        <span style="font-family:var(--fm);font-size:8px;background:rgba(251,191,36,.12);color:#FBBF24;padding:2px 6px;border-radius:6px;font-weight:600">NOVO</span>
+        <span style="color:var(--t3);font-size:14px">${_modoProfAberto ? '▲' : '▼'}</span>
+      </div>
+      <div style="display:${_modoProfAberto ? 'block' : 'none'};padding:0 14px 14px">
+        <div style="font-size:12px;color:var(--t2);line-height:1.6;margin-bottom:10px">O professor exige estrutura específica? No próximo passo, cola a estrutura que o professor pediu — a ACADEMY vai respeitar exactamente essa estrutura.</div>
+      </div>
+    </div>
+
+    <button class="btn B w" style="margin-top:16px" onclick="if(!State.getCfg('tipo')){mostrarToast('Selecciona um tipo de trabalho.','erro');return;}irPara('tema_')">Continuar →</button>
+    ` : ''}
   </div>`;
 }
 
 /* ════════════════════════════════════════════════════════════
    ECRÃ 3 — TEMA
 ════════════════════════════════════════════════════════════ */
+const _SUGESTOES_TEMA = [
+  'Impacto das TIC no rendimento académico em Angola',
+  'Empreendedorismo juvenil e redução do desemprego em Angola',
+  'Gestão de resíduos sólidos urbanos na cidade de Luanda',
+  'Qualidade do ensino superior em Angola: desafios e perspectivas',
+  'Saúde pública em Angola: acesso e qualidade dos serviços',
+  'Microcrédito e empoderamento feminino no meio rural angolano',
+  'Turismo como motor do desenvolvimento económico em Angola',
+  'Mudanças climáticas e impactos na agricultura familiar angolana',
+];
+
 function sTema() {
   const tp = tipoActual() || { n: 'Trabalho Académico' };
+  const temaAtual = State.getCfg('tema') || '';
   return `
   <div style="padding-bottom:32px">
     <div style="font-family:var(--fm);font-size:8px;letter-spacing:.18em;color:var(--t3);margin-bottom:6px">PASSO 2 DE 4</div>
@@ -259,7 +300,16 @@ function sTema() {
     <label class="lbl">Tema / Título do trabalho *</label>
     <textarea class="inp" id="temaInp" placeholder="Ex: O impacto das tecnologias de informação no sector bancário angolano"
       style="min-height:90px;resize:vertical;margin-bottom:16px"
-      oninput="State.setCfg('tema',this.value.trim())">${State.getCfg('tema') || ''}</textarea>
+      oninput="State.setCfg('tema',this.value.trim())">${temaAtual}</textarea>
+
+    <!-- Sugestões -->
+    <div style="font-family:var(--fm);font-size:8px;letter-spacing:.1em;color:var(--t3);margin-bottom:8px;text-transform:uppercase">💡 Sugestões de tema</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px">
+      ${_SUGESTOES_TEMA.map(s => `
+      <span onclick="document.getElementById('temaInp').value='${s.replace(/'/g, "\\'")}';State.setCfg('tema','${s.replace(/'/g, "\\'")}');renderizar()"
+        style="padding:6px 12px;border-radius:var(--r2);background:${s === temaAtual ? 'var(--eb)' : 'var(--z2)'};border:.5px solid ${s === temaAtual ? 'var(--eb)' : 'var(--e0)'};color:${s === temaAtual ? 'var(--b)' : 'var(--t2)'};font-size:11px;cursor:pointer;transition:all .15s">${s}</span>
+      `).join('')}
+    </div>
 
     <label class="lbl">Estrutura definida pelo professor <span style="color:var(--t4)">(opcional)</span></label>
     <textarea class="inp" id="estProfInp" placeholder="Cola aqui a estrutura que o professor pediu. A ACADEMY vai respeitar exactamente essa estrutura."
