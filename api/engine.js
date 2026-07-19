@@ -1,13 +1,32 @@
 /* =======================================================================
    ACADEMY ENGINE - SAAS BLINDADO (PRODUÇÃO)
-   v66: DOCUMENT AST — backend gera JSON estruturado
-    OpenRouter + Gemini
+   v75: Modular — prompts/schemas/engines importados de academic/
+   OpenRouter + Gemini
 ======================================================================= */
+
+import {
+  PERFIL_NIVEL, PERFIL_AREA,
+  detectarNivel, detectarArea, detectarContextoGeo,
+  montarPromptCapitulo, montarPromptAST, montarPromptRetry,
+  montarPromptReferencias, peneirarReferencias,
+  montarPromptPlano, montarPromptEstrutura,
+  montarPromptEdicaoSimples, montarPromptEdicaoDocumento,
+  montarPromptCoerencia, montarPromptChat,
+  parseReferencias, validarListaReferencias,
+  CONFIDENCE_LEVELS,
+  gerarDiagnostico, analisarInput,
+  extrairAfirmacoes, validarAfirmacoes,
+  analisarEstruturaArgumentativa, verificarCoerenciaArgumentativa,
+  gerarScorecard, simularProfessor,
+  gerarRelatorioIntegridade, determinarEstadoDocumento,
+  analisarCobertura,
+  verificarReferenciaOnline, verificarListaReferencias,
+  criarSnapshot, listarSnapshots, obterSnapshot, reverterPara,
+  guardarSnapshot, compararSnapshots,
+} from '../academic/index.js';
 
 const OR_SITE  = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://academy-open.vercel.app';
 const OR_TITLE = 'ACADEMY';
-
-
 
 /* ---------------- RATE LIMIT ---------------- */
 const RATE = new Map();
@@ -25,220 +44,6 @@ function setCORS(res) {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Content-Type', 'application/json');
-}
-
-/* ---------------- POOLS ANTI-IA ---------------- */
-const EXEMPLOS = [
-  'A investigação académica demonstra que',
-  'No contexto em análise,',
-  'Num cenário concreto verificável,',
-  'Os dados de campo indicam que',
-  'A evidência empírica revela que',
-  'Tomando como caso ilustrativo',
-  'A evidência empírica mostra que',
-  'Num contexto prático verificável,',
-  'A análise do caso em estudo revela',
-  'Os indicadores disponíveis mostram que',
-  'O tema em análise ilustra bem',
-  'Verificando os dados disponíveis,',
-];
-const HIPOTESES = [
-  'A tese central deste trabalho é que',
-  'A análise conduz à conclusão de que',
-  'Os dados permitem inferir que',
-  'A investigação aponta para o facto de que',
-  'O exame crítico da literatura revela que',
-  'A posição defendida neste estudo é que',
-  'A leitura dos factos sugere que',
-  'A evidência disponível indica que',
-];
-const CONCLUSOES = [
-  'A análise evidencia, portanto, que',
-  'Os dados apresentados confirmam que',
-  'O exame crítico demonstra que',
-  'A síntese dos argumentos aponta para',
-  'O quadro analítico traçado revela que',
-  'A investigação permite concluir que',
-  'Os elementos reunidos sustentam que',
-  'O percurso argumentativo culmina em',
-];
-const TRANSICOES = [
-  'Aprofundando esta perspectiva,',
-  'A análise revela ainda que',
-  'Numa leitura mais crítica,',
-  'Articulando com o argumento anterior,',
-  'A dimensão analítica exige reconhecer que',
-  'Complementando a perspectiva teórica,',
-  'O debate académico evidencia que',
-  'A revisão da literatura aponta que',
-];
-const CONECTORES_PROIBIDOS = [
-  'Cumpre referir que','Importa sublinhar que','Convém notar que',
-  'Vale a pena salientar que','É relevante destacar que',
-  'Neste sentido,','Neste quadro,','A este respeito,',
-  'Do exposto decorre que','Perante o analisado,',
-];
-
-function antiIA(capNum, totalCaps, geoInstrucao) {
-  const n = Math.max(0, (capNum||1) - 1);
-  const pick = (arr, s) => arr[(n*7 + s*3) % arr.length];
-  const fase = !totalCaps||totalCaps<=1 ? 'análise' :
-    (n/(totalCaps-1))<=0.1 ? 'introdução' :
-    (n/(totalCaps-1))<=0.35 ? 'fundamentação teórica' :
-    (n/(totalCaps-1))<=0.65 ? 'análise crítica' :
-    (n/(totalCaps-1))<=0.88 ? 'síntese' : 'conclusão';
-  const proibidos = CONECTORES_PROIBIDOS.slice(0,4).join('", "');
-  return `REGRAS DE ESTILO OBRIGATÓRIAS — APLICAR RIGOROSAMENTE:
-
-TOM E VOZ:
-1. Escreve com VOZ ANALÍTICA — não apenas descrever conceitos, mas comparar, questionar, posicionar
-2. Cada subtópico deve incluir: (a) posição teórica, (b) contraponto ou limitação, (c) aplicação ao contexto do tema
-3. PROIBIDO usar estes conectores mecânicos que revelam texto IA: "${proibidos}"
-4. PROIBIDO iniciar dois parágrafos consecutivos com a mesma palavra ou estrutura
-5. Para exemplos usa: "${pick(EXEMPLOS,1)}" — nunca a mesma expressão duas vezes no mesmo capítulo
-6. Para hipótese/posição usa: "${pick(HIPOTESES,2)}"
-7. Para concluir usa: "${pick(CONCLUSOES,3)}"
-8. Para transições usa: "${pick(TRANSICOES,4)}"
-
-CITAÇÕES — OBRIGATÓRIO:
-9. Cada dado estatístico DEVE ter citação inline: (Autor, Ano) ou (Instituição, Ano)
-10. Não escrever "segundo dados do INE" sem especificar o ano: "segundo INE (2023)"
-11. Mínimo 2 citações por parágrafo de desenvolvimento — integradas no argumento, não no fim
-
-CONTEXTO GEOGRÁFICO: ${geoInstrucao}
-
-POSIÇÃO NO DOCUMENTO: ${fase} — adequa profundidade analítica`;
-}
-
-/* ---------------- PERFIS POR NÍVEL ---------------- */
-const PERFIL_NIVEL = {
-  'ensino médio': {
-    profundidade: `Linguagem clara para estudantes 14-18 anos. Conceitos desde o básico. Para Ciências: fórmulas básicas com cada variável explicada. Exemplos reconhecíveis do contexto do tema. 3-4 parágrafos densos por subtópico.`,
-    citacoes: `2-3 citações por subtópico formato (Apelido, Ano). Exemplo: "Segundo Cardoso (2019),..." ou "...processo fundamental (Lima & Santos, 2020)." OBRIGATÓRIO: pelo menos 1 citação em CADA parágrafo principal.`,
-    refs_min: 8, refs_africanos: 2,
-  },
-  'licenciatura': {
-    profundidade: `Nível universitário 1º ciclo. Rigor conceptual. Análise crítica: comparar perspectivas de pelo menos 2 autores. Dados estatísticos e factos verificáveis com anos e instituições (contexto do tema). 4-5 parágrafos densos por subtópico.`,
-    citacoes: `2-3 citações por subtópico. Exemplos: "De acordo com Ferreira (2021),..." / "(Neto, 2019; Costa, 2022)." / "Silva (2020, p.45) argumenta que..." OBRIGATÓRIO: pelo menos 1 citação em CADA parágrafo principal, não apenas no fim.`,
-    refs_min: 10, refs_africanos: 3,
-  },
-  'mestrado': {
-    profundidade: `Pós-graduação. Confrontar teorias, identificar lacunas. Síntese original com voz argumentativa. OBRIGATÓRIO: pelo menos 1 tensão teórica por subtópico (Autor A defende X, Autor B argumenta Y). 5-7 parágrafos de alta densidade por subtópico.`,
-    citacoes: `3-4 citações por subtópico, directas e indirectas alternadas. Citação directa: Segundo Lopes (2018, p.112), "a gestão estratégica implica..." Citação indirecta: (Banda, 2020; Kiala & Mabiala, 2021). OBRIGATÓRIO: 1 tensão teórica por subtópico.`,
-    refs_min: 12, refs_africanos: 4,
-  },
-  'doutoramento': {
-    profundidade: `Investigação original. Mapear estado da arte, propor contribuição nova. Posicionamento epistemológico. Obras seminais + investigação recente (últimos 5 anos). OBRIGATÓRIO: identificar lacuna na literatura por subtópico. 6-8 parágrafos de alta densidade.`,
-    citacoes: `4-6 citações por subtópico. Obras fundacionais E investigação recente. Exemplo: "A teoria de Bourdieu (1980) foi revisitada por Mabiala (2019), que argumenta..." OBRIGATÓRIO: lacuna na literatura por subtópico.`,
-    refs_min: 15, refs_africanos: 5,
-  },
-};
-
-/* ---------------- PERFIS POR ÁREA ---------------- */
-const PERFIL_AREA = {
-  ciencias: {
-    label: 'Ciências Naturais/Exactas',
-    instrucoes: `ÁREA Ciências (Física, Química, Biologia, Matemática, Geologia):
-- OBRIGATÓRIO para subtópicos quantitativos: fórmulas com notação correcta e variáveis explicadas
-- Unidades de medida SI sempre que relevante
-- Fenómenos observáveis relevantes ao tema
-- Referências: Nature, Science, African Journal of Science
-- PROIBIDO: referências de ciências sociais ou gestão sem nexo científico`,
-  },
-  humanidades: {
-    label: 'Humanidades e Ciências Sociais',
-    instrucoes: `ÁREA Humanidades (História, Filosofia, Literatura, Sociologia, Comunicação):
-- Perspectiva histórica com datas e actores concretos do contexto
-- Factos históricos verificáveis com anos e fontes
-- Teorias sociais aplicadas ao contexto do tema
-- Referências: revistas de ciências sociais, história africana, estudos lusófonos
-- PROIBIDO: referências de engenharia ou saúde clínica`,
-  },
-  gestao: {
-    label: 'Gestão e Economia',
-    instrucoes: `ÁREA Gestão, Economia, Administração, Finanças, Marketing:
-- Indicadores económicos verificáveis com anos e fontes
-- Dados quantitativos com fontes e anos verificáveis
-- Modelos de gestão: SWOT, Porter, Balanced Scorecard quando pertinente
-- Exemplos de empresas e sectores relevantes ao tema
-- Referências de revistas académicas reconhecidas na área
-- PROIBIDO: referências de saúde, ciências naturais ou direito sem nexo`,
-  },
-  direito: {
-    label: 'Direito e Ciências Jurídicas',
-    instrucoes: `ÁREA Direito (Constitucional, Penal, Civil, Comercial, Administrativo):
-- Citar artigos de lei relevantes com número e ano
-- Legislação relevante ao tema
-- Jurisprudência aplicável ao tema
-- Referências jurídicas académicas reconhecidas
-- PROIBIDO: referências de gestão, saúde ou engenharia sem nexo jurídico`,
-  },
-  saude: {
-    label: 'Saúde e Ciências da Vida',
-    instrucoes: `ÁREA Saúde (Medicina, Enfermagem, Farmácia, Saúde Pública, Nutrição):
-- Dados epidemiológicos relevantes ao tema com fontes (OMS, estudos peer-reviewed)
-- Dados MINSA/OMS com anos e províncias: "Segundo MINSA (2022), a mortalidade infantil..."
-- Protocolos clínicos ou guidelines OMS quando pertinente
-- Nomenclatura médica correcta com equivalente comum na primeira ocorrência
-- Referências: Lancet, NEJM, revistas africanas de saúde, publicações MINSA/OMS
-- PROIBIDO: referências de gestão empresarial ou direito sem nexo clínico`,
-  },
-  engenharia: {
-    label: 'Engenharia e Tecnologia',
-    instrucoes: `ÁREA Engenharia (Civil, Informática, Eléctrica, Mecânica, Petrolífera, TIC):
-- OBRIGATÓRIO: especificações numéricas, normas técnicas (ISO, IEEE), unidades
-- Dados técnicos e infra-estruturas relevantes ao tema
-- Exemplos de empresas e sectores relevantes ao tema
-- IEEE, ASME, revistas de engenharia internacionais reconhecidas
-- PROIBIDO: referências de humanidades ou direito sem nexo tecnológico`,
-  },
-};
-
-/* ---------------- ABORDAGENS ESTRUTURAIS (rotação) ---------------- */
-const ABORDAGENS = [
-  `Abordagem histórico-evolutiva: começa pela origem/evolução do conceito, analisa o estado actual com datas e factos concretos do contexto do tema.`,
-  `Abordagem analítico-crítica: apresenta o conceito, confronta perspectivas divergentes de 2+ autores, conclui com posição fundamentada.`,
-  `Abordagem empírico-descritiva: apresenta dados quantitativos verificáveis (percentagens, anos, instituições), interpreta as implicações.`,
-  `Abordagem comparativa: compara o contexto do tema com outros contextos relevantes, identifica semelhanças e especificidades locais.`,
-  `Abordagem prospectiva: analisa o estado actual, identifica desafios estruturais, propõe recomendações concretas.`,
-];
-
-/* ---------------- DETECÇÃO AUTOMÁTICA ---------------- */
-function detectarNivel(n) {
-  const s = (n||'').toLowerCase();
-  if (/médio|secundário|12\.º|11\.º|10\.º|\b12\b|\b11\b|\b10\b/.test(s)) return 'ensino médio';
-  if (/mestrado|2\.º ciclo|pós.grad/.test(s)) return 'mestrado';
-  if (/doutoramento|doutorado|phd|3\.º ciclo/.test(s)) return 'doutoramento';
-  return 'licenciatura';
-}
-
-function detectarArea(tema, areaParam) {
-  if (areaParam && PERFIL_AREA[areaParam.toLowerCase()]) return areaParam.toLowerCase();
-  const t = (tema||'').toLowerCase();
-  if (/física|química|biologia|matemática|geologia|ecologia|botânica|astronomia/.test(t)) return 'ciencias';
-  if (/direito|lei\b|jurídic|constitucional|penal|civil|comercial|legisl|tribunal/.test(t)) return 'direito';
-  if (/saúde|médic|enfermagem|farmáci|hospital|doença|paludismo|nutrição|clínic/.test(t)) return 'saude';
-  if (/gestão|economia|finanças|marketing|contabilidade|administração|empresa|negócio/.test(t)) return 'gestao';
-  if (/engenharia|informática|software|hardware|eléctric|mecânic|construção|telecomunic|tic\b/.test(t)) return 'engenharia';
-  return 'humanidades';
-}
-
-function detectarContextoGeo(tema, pais) {
-  const t = (tema||'').toLowerCase();
-  const p = (pais||'').toLowerCase();
-  if (/angola|luanda|benguela|huambo|cabinda|namibe|malanje/.test(t)) return 'angola';
-  if (/cabo.?verde|mindelo|praia|fogo|sal\b|barlavento/.test(t)) return 'cabo_verde';
-  if (/moçambique|mozambique|maputo|beira\b|nampula/.test(t)) return 'mocambique';
-  if (/brasil|são paulo|rio de janeiro|brasília|nordeste/.test(t)) return 'brasil';
-  if (/portugal|lisboa|porto\b|coimbra|algarve/.test(t)) return 'portugal';
-  if (/africa do sul|joanesburgo|cape town|pretória/.test(t)) return 'africa_sul';
-  if (/estados unidos|eua|usa|new york|washington|california/.test(t)) return 'eua';
-  if (/europa|ue\b|união europeia|berlim|paris|madrid|roma\b/.test(t)) return 'europa';
-  if (/china|beijing|xangai|asia\b|japão|índia/.test(t)) return 'asia';
-  if (/africa\b|africano|subsaariana|continente africano/.test(t)) return 'africa_geral';
-  if (p && p !== 'angola') return p;
-  if (p === 'angola') return 'angola';
-  return 'global';
 }
 
 /* ---------------- TRUNCAR ---------------- */
@@ -624,6 +429,18 @@ export default async function handler(req, res) {
         return res.json(ok(action, await doEditar(payload)));
       case 'verificar_coerencia':
         return res.json(ok(action, await doCoerencia(payload)));
+      case 'diagnostico_academico':
+        return res.json(ok(action, doDiagnostico(payload)));
+      case 'extract_evidencias':
+        return res.json(ok(action, doExtractEvidencias(payload)));
+      case 'verificar_argumentacao':
+        return res.json(ok(action, doVerificarArgumentacao(payload)));
+      case 'gerar_scorecard':
+        return res.json(ok(action, doGerarScorecard(payload)));
+      case 'analisar_documento':
+        return res.json(ok(action, doAnalisarDocumento(payload)));
+      case 'verificar_referencias':
+        return res.json(ok(action, await doVerificarReferencias(payload)));
       case 'gerar_capa':
         return res.json(ok(action, { resposta: JSON.stringify({ capa:{ titulo:payload.tema||'', tipo:payload.tipoTrabalho||'' } }) }));
       case 'verificar_admin':
@@ -637,6 +454,14 @@ export default async function handler(req, res) {
         return res.json(ok(action, await doSaveHistory(payload)));
       case 'get_history':
         return res.json(ok(action, await doGetHistory(payload)));
+      case 'criar_versao':
+        return res.json(ok(action, doCriarVersao(payload)));
+      case 'listar_versoes':
+        return res.json(ok(action, doListarVersoes(payload)));
+      case 'reverter_versao':
+        return res.json(ok(action, doReverterVersao(payload)));
+      case 'comparar_versoes':
+        return res.json(ok(action, doCompararVersoes(payload)));
       case 'get_stock':
         return res.json(ok(action, { items:[] }));
       case 'setup_tables':
@@ -688,11 +513,12 @@ async function doChat(p) {
     .map(m => ({ role:m.role==='assistant'?'assistant':'user', content:String(m.content||'').substring(0,800) }));
   const engineUsed = globalThis.__ac_engine || 'openrouter';
   const modelUsed  = globalThis.__ac_model  || 'google/gemini-2.5-flash-lite';
+  const conf = montarPromptChat(null, hist, pedido, p.tema, p.tipoTrabalho);
   const resposta = await callAI([
-    { role:'system', content:`Assistente académico ACADEMY. Português formal. Contexto: "${p.tema||''}" (${p.tipoTrabalho||''}). Máx 200 palavras.` },
+    { role:'system', content: conf.system },
     ...hist,
     { role:'user', content:pedido },
-  ], { max_tokens:800 });
+  ], { max_tokens: conf.maxTokens });
   console.log(`[CHAT] engine=${engineUsed} model=${modelUsed}`);
   return { resposta, _engine: engineUsed, _model: modelUsed };
 }
@@ -726,82 +552,20 @@ async function doCapitulo(p) {
   const pNivel    = PERFIL_NIVEL[nivelKey];
   const pArea     = PERFIL_AREA[areaKey];
   const geoCtx    = detectarContextoGeo(tema, p.pais);
-  const isAngola  = geoCtx === 'angola';
-  const isCabVerde= geoCtx === 'cabo_verde';
-
-  const subs = capSubs.map((s,i) => `${capNum}.${i+1} ${s}`).join('\n') ||
-    `${capNum}.1 Contextualização\n${capNum}.2 Desenvolvimento\n${capNum}.3 Análise crítica`;
 
   const maxTok = Math.min(Math.max(Math.round(palavras*1.8), 600), 12000);
 
-  let geoInstrucao;
-  if(isAngola){
-    geoInstrucao = 'O tema refere-se especificamente a Angola. Quando relevante, usa dados angolanos com fonte e ano.';
-  } else if(isCabVerde){
-    geoInstrucao = 'O tema refere-se a Cabo Verde. Usa referências cabo-verdianas quando relevante.';
-  } else {
-    geoInstrucao = 'Trata o tema de forma universal e académica. NÃO faças referência a Angola, Brasil, Portugal ou qualquer país específico a não ser que o tema o exija explicitamente. Usa fontes académicas internacionais.';
-  }
+  const prompt = montarPromptCapitulo({
+    tema, tipo, nivel, inst, prof, area,
+    capNum, capTit, totalCaps, totalPags, capSubs,
+    nivelKey, areaKey, pNivel, pArea,
+    geoCtx: detectarContextoGeo(tema, p.pais),
+    palavras, subs: capSubs.map((s,i) => `${capNum}.${i+1} ${s}`).join('\n') ||
+      `${capNum}.1 Contextualização\n${capNum}.2 Desenvolvimento\n${capNum}.3 Análise crítica`,
+    maxTok, instrucaoSubtitulos: p.instrucaoSubtitulos,
+  });
 
-  const abordagemAnalitica = [
-    `Abordagem histórico-crítica: traça a evolução do conceito com datas concretas, questiona a narrativa dominante, propõe leitura alternativa fundamentada.`,
-    `Abordagem teórico-comparativa: confronta pelo menos 2 perspectivas teóricas divergentes, posiciona o argumento, aplica ao contexto do tema com dados específicos.`,
-    `Abordagem empírico-analítica: parte de dados quantitativos verificáveis, analisa causas e efeitos, não se limita a descrever — interpreta e questiona.`,
-    `Abordagem crítico-reflexiva: identifica contradições ou tensões no tema, examina limitações das abordagens existentes, propõe síntese fundamentada.`,
-    `Abordagem prospectiva-propositiva: analisa o estado actual com rigor, identifica lacunas e desafios estruturais, formula recomendações concretas.`,
-  ][(capNum-1) % 5];
-
-  const prompt = `És um professor universitário especialista em ${pArea.label} a escrever o Capítulo ${capNum} de um ${tipo} de nível ${nivel} sobre "${tema}".
-${inst ? `\nInstituição: ${inst}` : ''}${prof ? `\nOrientador: ${prof}` : ''}${area ? `\nÁrea do curso: ${area}` : ''}
-
-CAPÍTULO: ${capNum}. ${capTit}
-
-SUBTÓPICOS OBRIGATÓRIOS (usa esta numeração exacta, cada um em linha própria):
-${subs}
-
-ABORDAGEM ANALÍTICA OBRIGATÓRIA:
-${abordagemAnalitica}
-
-ESTRUTURA DE CADA SUBTÓPICO (nesta ordem exacta, com RÓTULOS VISÍVEIS):
-1. 「Contextualização」— contextualização teórica com pelo menos 1 citação (Autor, Ano)
-2. 「Desenvolvimento」— desenvolvimento analítico, confrontar perspectivas, não apenas descrever
-3. 「Dados e Análise」— dado quantitativo verificável com fonte e ano (ex: "Segundo [Fonte], em [Ano], X registou Y")
-4. 「Análise Crítica」— análise crítica do dado — o que significa para o tema?
-5. 「Síntese」— síntese argumentativa — qual é a posição do autor?
-
-⚠ IMPORTANTE: Cada bloco DEVE começar com o seu rótulo visível (ex: **Contextualização:**, **Desenvolvimento:**, **Dados e Análise:**, **Análise Crítica:**, **Síntese:**) a negrito, como mini-cabeçalho dentro do parágrafo, para que um leitor consiga identificar rapidamente a estrutura.
-
-NÍVEL ACADÉMICO — ${nivelKey.toUpperCase()}:
-${pNivel.profundidade}
-
-CITAÇÕES OBRIGATÓRIAS:
-${pNivel.citacoes}
-
-REGRAS DE CITAÇÃO — SEGUE EXACTAMENTE ESTE EXEMPLO:
-Cada parágrafo DEVE conter pelo menos 1 citação explícita no formato (Autor, Ano) ou "Autor (Ano) afirma que...".
-Exemplo correcto: "Segundo Santos (2020), o turismo em Angola cresceu 15% entre 2018 e 2023, contribuindo com 3.2% para o PIB nacional (INE, 2024)."
-Exemplo INCORRECTO: "Estudos indicam que o turismo é importante para a economia." (genérico, sem citação)
-As citações no corpo DEVEM corresponder a autores que constam das referências finais.
-NUNCA uses "estudos indicam", "investigações mostram", "pesquisas revelam" ou expressões genéricas — diz sempre QUAL estudo/Autor.
-Cada parágrafo: 3-5 frases, com dados concretos (percentagens, anos, instituições).
-
-${pArea.instrucoes}
-
-FORMATAÇÃO OBRIGATÓRIA:
-- Português formal académico, SEM aspas a envolver parágrafos inteiros
-- Cada parágrafo: 3-5 frases completas, sem bullets
-- NÃO uses markdown (***, **, *, acentos graves) dentro dos parágrafos
-${p.instrucaoSubtitulos ? '\n' + p.instrucaoSubtitulos : ''}
-${antiIA(capNum, totalCaps, geoInstrucao)}`;
-
-  const promptAST = prompt + `
-
-FORMA DE SAÍDA — JSON:
-Não escrevas texto. Gera APENAS o JSON abaixo (sem \`\`\`, sem markdown, sem texto adicional):
-{"chapter_id":"${capNum}","title":"${capTit}","sections":[{"section_id":"${capNum}.1","title":"Primeiro subtópico","paragraphs":["Parágrafo 1.","Parágrafo 2.","Parágrafo 3."]}],"total_paragraphs":${palavras}}
-⚠ LIMITE: ~${palavras} palavras no total, divididas pelos parágrafos.
-Cada parágrafo é uma string completa de texto corrido, sem formatação.
-Mínimo 3 parágrafos por secção.`;
+  const promptAST = prompt + montarPromptAST(capNum, capTit, palavras);
 
   let r1 = await callAI([{ role:'user', content:promptAST }], { max_tokens:maxTok, temperature:0.65 });
   let astRaw = null;
@@ -811,12 +575,7 @@ Mínimo 3 parágrafos por secção.`;
   if (!validarAST(astRaw)) {
     console.warn(`[AST v73] T1 falhou — retry simplificado — cap ${capNum}`);
     retryCount++;
-    const promptSimples = `Gera APENAS JSON para o capítulo ${capNum} "${capTit}" sobre "${tema}".
-Subtópicos: ${capSubs.join('; ')}
-JSON (sem markdown, sem texto):
-{"chapter_id":"${capNum}","title":"${capTit}","sections":[{"section_id":"${capNum}.1","title":"${capSubs[0]||'Introdução'}","paragraphs":["Parágrafo 1.","Parágrafo 2.","Parágrafo 3."]}]}
-Português formal académico, SEM aspas a envolver parágrafos inteiros.
-CADA parágrafo DEVE conter 1 citação explícita (Autor, Ano). Mínimo 3 parágrafos por secção.`;
+    const promptSimples = montarPromptRetry(capNum, capTit, tema, capSubs);
     const r2 = await callAI([{ role:'user', content:promptSimples }], { max_tokens:maxTok, temperature:0.5 });
     rawFallback = r2;
     try { astRaw = extrairJSON(r2); } catch (_) {}
@@ -895,72 +654,160 @@ CADA parágrafo DEVE conter 1 citação explícita (Autor, Ano). Mínimo 3 pará
   };
 }
 
-/* ---------------- REFERÊNCIAS (com peneira + retry) ---------------- */
+/* ---------------- REFERÊNCIAS (v2 — estruturadas com confiança) ---------------- */
 async function doReferencias(p) {
   const tema  = (p.tema||'').substring(0,300).trim();
   if (!tema) throw new Error('tema obrigatório');
   const tipo  = (p.tipoTrabalho||'Trabalho Académico').substring(0,100);
   const nivel = (p.nivel||'').substring(0,80);
-  const nivelKey = detectarNivel(nivel);
-  const areaKey  = detectarArea(tema, p.area);
-  const pNivel   = PERFIL_NIVEL[nivelKey];
-  const pArea    = PERFIL_AREA[areaKey];
-  const geoCtxR  = detectarContextoGeo(tema, p.pais);
-  const geoRefsInstrucao = geoCtxR === 'angola'
-    ? `O tema é sobre Angola. Inclui fontes relevantes combinadas com literatura internacional.`
-    : `As referências devem ser de revistas académicas internacionais. Evita fontes específicas de qualquer país a menos que o tema o exija.`;
   const totalPags = parseInt(p.totalPags) || 15;
-  const numRefs   = Math.min(18, Math.max(10, Math.round(totalPags * 0.6)));
-  const MIN_VALIDAS = Math.max(6, Math.round(numRefs * 0.6));
 
-  const montarPrompt = (reforcar) => `És um bibliotecário académico especialista em ${pArea.label}, a preparar a lista de referências bibliográficas de um ${tipo} de nível ${nivel} sobre "${tema}".
+  const promptRef = montarPromptReferencias({
+    tema, tipo, nivel, area: p.area, pais: p.pais, totalPags,
+  });
 
-TAREFA: gera exactamente ${numRefs} referências bibliográficas reais e plausíveis, em formato APA.
-
-${geoRefsInstrucao}
-${pNivel.citacoes}
-
-FORMATO OBRIGATÓRIO — uma referência por bloco, cada bloco separado por LINHA EM BRANCO:
-Apelido, I. (Ano). Título da obra. Editora ou Revista, volume(número), páginas.
-
-REGRAS RÍGIDAS:
-- CADA entrada TEM de conter o padrão "(Ano)." logo a seguir ao(s) autor(es)
-- Ano entre 1950 e ${new Date().getFullYear()}
-- NUNCA repitas o mesmo autor+título
-- Mistura livros, artigos de revista e fontes institucionais se fizer sentido
-- Sem bullets, sem numeração, sem markdown — só texto
-- Português formal, normas APA
-${reforcar ? '\nATENÇÃO: a tentativa anterior teve referências inválidas. Confirma que TODAS têm autor, ano entre parêntesis, título e editora.' : ''}
-
-Escreve as ${numRefs} referências agora.`;
+  const montarPrompt = (reforcar) => promptRef.promptPadrao(reforcar);
 
   let bruta = await callAI([{ role:'user', content: montarPrompt(false) }], { max_tokens:2500, temperature:0.4 });
   let peneira = peneirarReferencias(bruta);
 
-  if (peneira.validas.length < MIN_VALIDAS) {
-    console.warn(`[Referências] ${peneira.validas.length}/${numRefs} válidas — retry reforçado`);
+  if (peneira.validas.length < promptRef.MIN_VALIDAS) {
+    console.warn(`[Referências] ${peneira.validas.length}/${promptRef.numRefs} válidas — retry reforçado`);
     const bruta2 = await callAI([{ role:'user', content: montarPrompt(true) }], { max_tokens:2500, temperature:0.35 });
     const peneira2 = peneirarReferencias(bruta2);
     if (peneira2.validas.length > peneira.validas.length) peneira = peneira2;
   }
 
+  const parseResult = parseReferencias(peneira.texto);
+  const validacao = validarListaReferencias(parseResult.validas);
+
+  /* Estruturar cada referência com confiança */
+  const refsEstruturadas = validacao.resultados.map(r => ({
+    raw:       r.estruturada.raw,
+    author:    r.estruturada.author,
+    year:      r.estruturada.year,
+    confidence: r.valida
+      ? CONFIDENCE_LEVELS.PARTIALLY_VERIFIED
+      : CONFIDENCE_LEVELS.UNVERIFIED,
+    issues:    r.issues,
+  }));
+
   return {
-    resposta: peneira.texto || 'Nenhuma referência válida gerada.',
+    resposta:          peneira.texto || 'Nenhuma referência válida gerada.',
     referencias_validas: peneira.validas.length,
-    referencias_pedidas: numRefs,
+    referencias_pedidas: promptRef.numRefs,
     referencias_rejeitadas: peneira.invalidas,
+    referencias_estruturadas: refsEstruturadas,
+    taxa_validade:     validacao.taxaValidade,
   };
+}
+
+/* ---------------- VERIFICAR REFERÊNCIAS (online) ---------------- */
+async function doVerificarReferencias(p) {
+  const referencias = Array.isArray(p.referencias) ? p.referencias : [];
+
+  if (referencias.length === 0) {
+    return { verificadas: [], total: 0, taxaVerificacao: 0, aviso: 'Nenhuma referência fornecida.' };
+  }
+
+  const estruturadas = referencias.map(r => {
+    const raw = r.raw || r;
+    const anoMatch = raw.match(/\((\d{4})\)/);
+    const year = anoMatch ? parseInt(anoMatch[1]) : null;
+    const autorMatch = raw.match(/^([A-ZÀ-Ü][^,]+,\s*[A-Z\.]+\s*(?:&amp;\s*[A-ZÀ-Ü][^,]+,\s*[A-Z\.]+\s*)*)/);
+    const author = autorMatch ? autorMatch[1].trim() : null;
+    const title = r.title || extrairTituloRef(raw);
+    const doi = r.doi || extrairDoiRef(raw);
+    const isbn = r.isbn || extrairIsbnRef(raw);
+    return { raw, author, year, title, doi, isbn };
+  });
+
+  const resultado = await verificarListaReferencias(estruturadas);
+
+  return {
+    verificadas: resultado.resultados,
+    total: resultado.total,
+    verified: resultado.verified,
+    partiallyVerified: resultado.partiallyVerified,
+    needsReview: resultado.needsReview,
+    unverified: resultado.unverified,
+    taxaVerificacao: Math.round(resultado.taxaVerificacao * 100),
+  };
+}
+
+/* Helpers locais para extrair dados de referências (sem depender de schemas) */
+function extrairTituloRef(raw) {
+  const limpo = raw.replace(/^[A-ZÀ-Ü][^,]+,\s*[A-Z\.]+\s*/g, '');
+  const match = limpo.match(/\(\d{4}\)\.\s*(.+?)(?:\.\s+(?:Editora|Universidade|Tese|Dissertação|Relatório|Working Paper)|\.\s*$|$)/);
+  return match ? match[1].trim() : '';
+}
+
+function extrairDoiRef(raw) {
+  const match = raw.match(/(?:doi|DOI)[:\s]*([^.\s]+)/);
+  if (match) return match[1].trim();
+  const urlMatch = raw.match(/doi\.org\/([^\s.]+)/);
+  return urlMatch ? urlMatch[1].trim() : null;
+}
+
+function extrairIsbnRef(raw) {
+  const cleaned = raw.replace(/[-\s]/g, '');
+  const match = cleaned.match(/(?:ISBN|isbn)[:\s]*((?:97[89])?\d{9}[\dX])/);
+  return match ? match[1] : null;
+}
+
+/* ---------------- VERSÕES DE DOCUMENTO (imutável) ---------------- */
+function doCriarVersao(p) {
+  const state = {
+    secs: p.secs || [],
+    cfg: p.cfg || {},
+    diagnostic: p.diagnostic || null,
+    refs: p.refs || [],
+    qual: p.qual || null,
+    plano: p.plano || null,
+    est: p.est || null,
+    academicAnalysis: p.academicAnalysis || null,
+    refVerification: p.refVerification || null,
+  };
+  const snapshot = criarSnapshot(state, {
+    source: p.source || 'manual_save',
+    reason: p.reason || '',
+    docId: p.docId || null,
+    parentVersion: p.parentVersion || null,
+  });
+  return { versao: snapshot, aviso: `Versão ${snapshot.id} criada.` };
+}
+
+function doListarVersoes(p) {
+  const storage = { versoes: Array.isArray(p.versoes) ? p.versoes : [] };
+  const list = listarSnapshots(p.docId || null, storage);
+  return { versoes: list };
+}
+
+function doReverterVersao(p) {
+  const storage = { versoes: Array.isArray(p.versoes) ? p.versoes : [] };
+  const snapshot = obterSnapshot(p.versionId, storage);
+  if (!snapshot) return { error: 'Versão não encontrada.', ok: false };
+  const data = reverterPara(snapshot);
+  return { ok: true, estado: data, versao: snapshot.id };
+}
+
+function doCompararVersoes(p) {
+  const storage = { versoes: Array.isArray(p.versoes) ? p.versoes : [] };
+  const snapA = obterSnapshot(p.versionA, storage);
+  const snapB = obterSnapshot(p.versionB, storage);
+  if (!snapA || !snapB) {
+    return { error: 'Uma ou ambas as versões não encontradas.', ok: false };
+  }
+  const diff = compararSnapshots(snapA, snapB);
+  return { ok: true, diff, de: p.versionA, para: p.versionB };
 }
 
 /* ---------------- PLANO ACADÉMICO ---------------- */
 async function doPlano(p) {
   const tema = (p.tema||'').substring(0,300);
   if (!tema) throw new Error('tema obrigatório');
-  const r = await callAI([{ role:'user', content:
-    `Cria um plano académico para um ${p.tipoTrabalho||'TFC'} de nível "${p.nivel||''}" sobre "${tema}".
-Responde APENAS com JSON válido, sem markdown:
-{"objetivo":"...","hipotese":"...","problema":"...","metodologia":"..."}`
-  }], { max_tokens:600, temperature:0.4 });
+  const r = await callAI([{ role:'user', content: montarPromptPlano(tema, p.tipoTrabalho, p.nivel) }],
+    { max_tokens:600, temperature:0.4 });
   return { resposta: extrairJSON(r) };
 }
 
@@ -969,13 +816,8 @@ async function doEstrutura(p) {
   const tema = (p.tema||'').substring(0,300);
   if (!tema) throw new Error('tema obrigatório');
   const pags = Math.min(Math.max(parseInt(p.totalPags)||15, 5), 100);
-  const r = await callAI([{ role:'user', content:
-    `Estrutura capítulos para um ${p.tipoTrabalho||'TFC'} de nível "${p.nivel||''}" sobre "${tema}". ${pags} páginas.
-${p.objetivo ? 'Objectivo: '+p.objetivo : ''}
-Responde APENAS com array JSON, sem markdown:
-[{"num":1,"titulo":"...","subs":["Subtópico 1.1","Subtópico 1.2","Subtópico 1.3"]},...]
-Regras: 3-6 capítulos, 2-4 subtópicos cada, último capítulo "Referências Bibliográficas" sem subs.`
-  }], { max_tokens:1000, temperature:0.4 });
+  const r = await callAI([{ role:'user', content: montarPromptEstrutura(tema, p.tipoTrabalho, p.nivel, pags, p.objetivo) }],
+    { max_tokens:1000, temperature:0.4 });
   return { resposta: extrairJSON(r) };
 }
 
@@ -985,31 +827,10 @@ async function doEditar(p) {
   const subacao = p.subacao||p.acao||'melhorar';
   if (!texto) throw new Error('texto obrigatório');
 
-  /* Edição completa do documento — IA retorna JSON estruturado */
   if (subacao === 'editar_documento_completo') {
-    const prompt = [
-      `És um orientador académico. O documento abaixo mostra blocos de conteúdo.`,
-      `\n\nPedido do utilizador: "${(p.pedido||'').substring(0,500)}"`,
-      `\n\nDocumento actual (blocos separados por ---):`,
-      `\n${texto}`,
-      `\n\nResponde APENAS com JSON no formato:`,
-      `{"operacoes":[`,
-      `  {"accao":"editar","chapterIdx":0,"blockId":"...","conteudo":"novo texto"},`,
-      `  {"accao":"inserir","chapterIdx":0,"afterBlockId":"...","conteudo":"novo parágrafo","type":"paragraph"},`,
-      `  {"accao":"remover","chapterIdx":0,"blockId":"..."}`,
-      `]}`,
-      `\nRegras:`,
-      `- Mantém tom académico formal português`,
-      `- Preserva conteúdo não mencionado no pedido`,
-      `- Usa os mesmos blockId existentes para editar`,
-      `- Para inserir, usa afterBlockId do bloco anterior (ou null para fim)`,
-      `- Remove apenas se o pedido explicitamente pedir`,
-      `- Devolve array vazio se não houver alterações: {"operacoes":[]}`,
-      `- APENAS JSON, sem markdown, sem explicações`,
-    ].join('\n');
+    const prompt = montarPromptEdicaoDocumento(p.pedido, texto);
     const r = await callAI([{ role:'user', content: prompt }],
       { max_tokens:4000, temperature:0.3 });
-    /* Tentar extrair JSON */
     let json;
     try {
       const m = r.match(/```json\n?([\s\S]*?)\n?```/);
@@ -1018,13 +839,7 @@ async function doEditar(p) {
     return json;
   }
 
-  const instrucoes = {
-    melhorar:   'Melhora o estilo académico mantendo o conteúdo. Português formal académico.',
-    expandir:   'Expande com mais detalhe académico (+30%). Português formal académico.',
-    resumir:    'Resume mantendo as ideias principais (-40%). Português formal académico.',
-    formalizar: 'Formaliza a linguagem para nível universitário.',
-  };
-  const r = await callAI([{ role:'user', content:`${instrucoes[subacao]||instrucoes.melhorar}\n\nTexto:\n${texto}\n\nDevolve apenas o texto editado.` }],
+  const r = await callAI([{ role:'user', content: montarPromptEdicaoSimples(subacao, texto) }],
     { max_tokens:4000, temperature:0.5 });
   return { resposta: r };
 }
@@ -1034,14 +849,172 @@ async function doCoerencia(p) {
   const a = (p.introTexto||p.textoA||'').substring(0,2000);
   const b = (p.concTexto||p.textoB||'').substring(0,2000);
   if (!a||!b) throw new Error('textos obrigatórios');
-  const r = await callAI([{ role:'user', content:
-    `Analisa a coerência entre introdução e conclusão de um trabalho académico.
-Responde APENAS com JSON:
-{"coerente":true/false,"problemas":["..."],"sugestoes":["..."]}
-Introdução: ${a}
-Conclusão: ${b}`
-  }], { max_tokens:600, temperature:0.3 });
+  const r = await callAI([{ role:'user', content: montarPromptCoerencia(a, b) }],
+    { max_tokens:600, temperature:0.3 });
   return { resposta: extrairJSON(r) };
+}
+
+/* ---------------- DIAGNÓSTICO ACADÉMICO ---------------- */
+function doDiagnostico(p) {
+  const diagnostico = gerarDiagnostico(p);
+  return { resposta: diagnostico };
+}
+
+/* ---------------- EXTRAIR EVIDÊNCIAS ---------------- */
+function doExtractEvidencias(p) {
+  const capitulos = Array.isArray(p.capitulos) ? p.capitulos : [];
+  const allClaims = capitulos.map((cap, idx) => {
+    const texto = typeof cap === 'string' ? cap : (cap.conteudo || cap.texto || '');
+    return extrairAfirmacoes(texto, idx);
+  }).flat();
+
+  const validated = validarAfirmacoes(allClaims);
+  return {
+    resposta: validated,
+    total: validated.length,
+    validos: validated.filter(v => v.validation?.valido).length,
+  };
+}
+
+/* ---------------- VERIFICAR ARGUMENTAÇÃO ---------------- */
+function doVerificarArgumentacao(p) {
+  const capitulos = Array.isArray(p.capitulos) ? p.capitulos : [];
+  const estrutura = analisarEstruturaArgumentativa(capitulos);
+  const analise = verificarCoerenciaArgumentativa(estrutura);
+  return {
+    resposta: {
+      estrutura,
+      analise,
+    },
+  };
+}
+
+/* ---------------- SCORECARD DE QUALIDADE ---------------- */
+function doGerarScorecard(p) {
+  const scorecard = gerarScorecard(p);
+  const simulacao = simularProfessor({ metadata: { topic: p.topic }, _scoreData: p });
+  return {
+    resposta: {
+      scorecard,
+      simulacao,
+    },
+  };
+}
+
+/* ---------------- ANALISAR DOCUMENTO (orquestrador) ---------------- */
+function doAnalisarDocumento(p) {
+  const capitulos = Array.isArray(p.capitulos) ? p.capitulos : [];
+  const diagnostic = p.diagnostic || null;
+
+  /* Normalizar capítulos para o formato estruturado que os engines esperam */
+  const normalizedChapters = capitulos.map((cap) => {
+    if (cap.sections) return cap; /* já está no formato estruturado */
+    const text = cap.c || cap.conteudo || cap.texto || '';
+    return {
+      title: cap.titulo || cap.title || 'Capítulo',
+      sections: text ? [{ title: 'Conteúdo', paragraphs: text.split('\n\n').filter(Boolean) }] : [],
+    };
+  });
+
+  /* 1. Extrair afirmações de todos os capítulos */
+  const allText = capitulos.map((cap, idx) => {
+    const texto = typeof cap === 'string' ? cap : (cap.c || cap.conteudo || cap.texto || '');
+    return { chapterIdx: idx, text: texto };
+  });
+
+  const allClaims = allText.flatMap(({ chapterIdx, text }) =>
+    extrairAfirmacoes(text, chapterIdx)
+  );
+  const validatedClaims = validarAfirmacoes(allClaims);
+
+  /* 2. Integridade — política de confiança */
+  const integrityReport = gerarRelatorioIntegridade(validatedClaims);
+  const integrityState = determinarEstadoDocumento(validatedClaims);
+
+  /* 3. Argumentação */
+  const argStructure = analisarEstruturaArgumentativa(normalizedChapters);
+  const argAnalysis = verificarCoerenciaArgumentativa(argStructure);
+
+  /* 4. Cobertura objectivos ↔ capítulos */
+  const docStub = {
+    diagnostic: diagnostic ? {
+      specificObjectives: diagnostic.specificObjectives || [],
+    } : { specificObjectives: [] },
+    chapters: normalizedChapters,
+  };
+  const coverage = analisarCobertura(docStub);
+
+  /* 5. Referências */
+  const refs = Array.isArray(p.references) ? p.references : [];
+
+  /* 6. Scorecard */
+  const scorecard = gerarScorecard({
+    argumentationIssues: argAnalysis.issues,
+    argumentationStructure: argStructure,
+    references: refs,
+    integrityReport: integrityReport,
+    integrityState: integrityState.state,
+    coverageAnalysis: coverage,
+    coverageState: coverage.estado,
+    topic: p.tema,
+  });
+
+  /* 7. Simulação do professor */
+  const professorSim = simularProfessor({
+    metadata: { topic: p.tema || '' },
+    _scoreData: {
+      integrityState: integrityState.state,
+      coverageState: coverage.estado,
+      integrityReport,
+      coverageAnalysis: coverage,
+    },
+  });
+
+  return {
+    claims: validatedClaims.map(c => ({
+      statement: c.statement.substring(0, 150),
+      type: c.classifiedAs,
+      confidence: c.confidence,
+      chapterIdx: c.chapterIdx,
+      validation: c.validation,
+    })),
+    integrity: {
+      state: integrityState.state,
+      label: integrityState.label,
+      reason: integrityState.reason,
+      report: {
+        total: integrityReport.total,
+        alerts: integrityReport.alerts,
+        blocked: integrityReport.blocked,
+        reviewRequired: integrityReport.reviewRequired,
+        highCritical: integrityReport.highCritical,
+        integro: integrityReport.integro,
+      },
+    },
+    argumentation: {
+      issues: argAnalysis.issues,
+      coerente: argAnalysis.coerente,
+      totalIssues: argAnalysis.totalIssues,
+    },
+    coverage: {
+      estado: coverage.estado,
+      totalObjectives: coverage.totalObjectives,
+      orfaos: (coverage.orfaos || []).map(o => o.objective?.substring(0, 100)),
+      naoRespondidos: (coverage.naoRespondidos || []).map(n => n.objective?.substring(0, 100)),
+      orfaosCapitulos: (coverage.orfaosCapitulos || []).map(c => c.title?.substring(0, 60)),
+      relatorio: coverage.relatorio,
+    },
+    scorecard: {
+      overall: scorecard.overall,
+      grade: scorecard.grade,
+      criteria: scorecard.criteria,
+    },
+    professor: {
+      comentario: professorSim.comentarioGeral,
+      recomendacoes: professorSim.recomendacoes,
+      nota: professorSim.nota,
+    },
+  };
 }
 
 /* ---------------- MEA ---------------- */
@@ -1231,32 +1204,6 @@ async function callAI(messages, opts={}) {
     if (!text || text.length<=10) throw new Error('resposta vazia ou muito curta');
     return text;
   } catch(e) { throw new Error('OpenRouter: '+e.message); }
-}
-
-/* ---------------- PENEIRA DE REFERÊNCIAS ---------------- */
-function peneirarReferencias(texto) {
-  if (!texto) return { validas: [], invalidas: 0, texto: '' };
-  const anoAtual = new Date().getFullYear();
-  const blocos = texto.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
-  const padraoRef = /^[A-ZÀ-Ü][\wçãáéíóúâêôõüÇÃÁÉÍÓÚÂÊÔÕÜ.,&\s]{2,80}\(\d{4}\)\.\s*.{10,}/;
-  const vistos = new Set();
-  const validas = [];
-  let invalidas = 0;
-  for (const bloco of blocos) {
-    const b = bloco.replace(/\s+/g, ' ').trim();
-    const matchAno = b.match(/\((\d{4})\)/);
-    const ano = matchAno ? parseInt(matchAno[1]) : null;
-    const formaOk  = padraoRef.test(b);
-    const anoOk    = ano && ano >= 1950 && ano <= anoAtual;
-    const tamanhoOk = b.length >= 40 && b.length <= 400;
-    if (!formaOk || !anoOk || !tamanhoOk) { invalidas++; continue; }
-    const aposAno = b.split(/\(\d{4}\)\.\s*/)[1] || b;
-    const chave = aposAno.toLowerCase().replace(/[^\wà-ü]/g, '').substring(0, 60);
-    if (vistos.has(chave)) { invalidas++; continue; }
-    vistos.add(chave);
-    validas.push(b);
-  }
-  return { validas, invalidas, texto: validas.join('\n\n') };
 }
 
 /* ---------------- JSON EXTRACTOR ---------------- */

@@ -179,45 +179,10 @@ async function gerarEst() {
 
 /* ═══════════════════════════════════════════════════════════
    SISTEMA ANTI-DETECÇÃO IA
-   Pools de variação linguística — cada capítulo
-   recebe um conjunto diferente de instruções.
+   Centralizado em academic/prompts/system.js (backend).
+   O backend (montarPromptCapitulo) já injecta as instruções
+   anti-IA. Esta função frontend está obsoleta.
 ═══════════════════════════════════════════════════════════ */
-
-const EXEMPLO_PREFIXOS = [
-  'A título de exemplo,', 'Por exemplo,', 'Como caso concreto,',
-  'Ilustrando este ponto,', 'Num cenário prático,', 'Observa-se, por exemplo,',
-  'Em contexto angolano,', 'Tomando como referência,', 'De forma ilustrativa,',
-  'Como se verifica na prática,',
-];
-
-const HIPOTESE_VARIACOES = [
-  'A hipótese central deste estudo sustenta que', 'Parte-se do pressuposto de que',
-  'Este trabalho assume como ponto de partida que', 'A investigação sugere que',
-  'Admite-se, neste contexto, que', 'O presente trabalho defende que',
-  'A análise desenvolvida indica que', 'Considera-se relevante sublinhar que',
-];
-
-const CONCLUSAO_CONECTORES  = ['Em síntese,', 'Em suma,', 'Em conclusão,', 'Concluindo,', 'Desta forma,', 'Face ao exposto,', 'Perante o analisado,', 'Assim sendo,'];
-const INTRODUCAO_CONECTORES = ['Neste sentido,', 'Com efeito,', 'Importa referir que', 'Cumpre salientar que', 'De facto,', 'Convém destacar que', 'Saliente-se que', 'Há que considerar que'];
-
-function _INSTRUCAO_ANTI_IA(capNum, numSubs) {
-  const idx  = (capNum || 0) % EXEMPLO_PREFIXOS.length;
-  const idxH = (capNum || 0) % HIPOTESE_VARIACOES.length;
-  const idxC = ((capNum || 0) + 2) % CONCLUSAO_CONECTORES.length;
-  const idxI = ((capNum || 0) + 1) % INTRODUCAO_CONECTORES.length;
-
-  return `REGRAS OBRIGATÓRIAS DE ESTILO ACADÉMICO — APLICAR RIGOROSAMENTE:
-1. PROIBIDO usar "A título de exemplo:" — usa EXCLUSIVAMENTE: "${EXEMPLO_PREFIXOS[idx]}"
-2. PROIBIDO usar "A hipótese deste trabalho sugere que" — usa: "${HIPOTESE_VARIACOES[idxH]}"
-3. PROIBIDO repetir a mesma expressão de exemplo em subtópicos diferentes do mesmo capítulo
-4. Para concluir parágrafos usa: "${CONCLUSAO_CONECTORES[idxC]}" ou variantes naturais
-5. Para introduzir parágrafos usa: "${INTRODUCAO_CONECTORES[idxI]}" ou variantes naturais
-6. PROIBIDO usar bullet points ou listas — apenas prosa académica fluida
-7. PROIBIDO repetir a mesma estrutura sintáctica em parágrafos consecutivos
-8. Cada parágrafo deve começar com palavra diferente do anterior
-9. Varia os conectores: não uses "Além disso" mais de uma vez por subtópico
-10. O texto deve soar como escrito por um académico angolano experiente, não por IA`;
-}
 
 /* ═══════════════════════════════════════════════════════════
    DOCUMENT MEMORY ENGINE
@@ -418,7 +383,6 @@ async function iniciarGer(retomar) {
             prof:                State.getCfg('prof'),
             area:                State.getCfg('area'),
             instrucaoSubtitulos: `Cada subtópico em capSubs DEVE aparecer como subtítulo numerado em linha própria.`,
-            instrucaoVariacao:   _INSTRUCAO_ANTI_IA(cap.num, cap.subs?.length || 0),
             memoriaDocumento:    DOC_MEMORY.gerarInstrucao(),
           });
 
@@ -537,6 +501,7 @@ async function iniciarGer(retomar) {
   _desbloquearBtnGerar();
   addDoc({ tipo: tp.s || tp.n, tema: State.getCfg('tema'), pags: nPags(), qual: State.get('qual')?.total });
   autoGuardar();
+  if (typeof autoAnalisarAposGeracao === 'function') autoAnalisarAposGeracao();
 
   /* Notificação PWA */
   pwaNotificarConclusaoCapitulo(secs.length);

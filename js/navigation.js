@@ -204,8 +204,9 @@ function renderizar() {
     ecraEl.innerHTML = novoConteudo;
   }
 
-/* Post-render: carregar dados admin */
+/* Post-render */
 if (ecra === 'admin') { loadAdminPendentes(); carregarMonitorIA(); carregarDashboard(); carregarInstituicoesAdmin(); carregarParceirosAdmin(); carregarComissoesAdmin(); }
+if (ecra === 'editor' && typeof injectAcademicUI === 'function') { setTimeout(() => injectAcademicUI(), 100); }
 }
 
 /* ── Helpers de início rápido ── */

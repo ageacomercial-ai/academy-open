@@ -50,30 +50,23 @@ function sEditor(secsArg, cfgArg, qualArg, isEx) {
     <div style="font-size:16px">📚</div>
   </div>
 
-  <!-- MÉTRICAS DE QUALIDADE -->
-  <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:16px">
-    <div class="anel">
-      <svg width="80" height="80" viewBox="0 0 80 80" style="transform:rotate(-90deg)">
-        <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(30,146,255,.08)" stroke-width="5"/>
-        <circle cx="40" cy="40" r="34" fill="none" stroke="#1E92FF" stroke-width="5" stroke-linecap="round"
-          stroke-dasharray="${Math.min(pg / 40, 1) * 2 * Math.PI * 34} ${2 * Math.PI * 34}"
-          style="filter:drop-shadow(0 0 5px #1E92FF)"/>
-      </svg>
-      <div class="anel-c"><div class="anel-n">${pg}</div><div class="anel-l">PÁG</div></div>
+  <!-- ACADEMIC INTELLIGENCE SCORECARD (preenchido por injectAcademicUI) -->
+  <div id="academicScorecardContainer" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div class="anel">
+        <svg width="80" height="80" viewBox="0 0 80 80" style="transform:rotate(-90deg)">
+          <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(30,146,255,.08)" stroke-width="5"/>
+          <circle cx="40" cy="40" r="34" fill="none" stroke="#1E92FF" stroke-width="5" stroke-linecap="round"
+            stroke-dasharray="${Math.min(pg / 40, 1) * 2 * Math.PI * 34} ${2 * Math.PI * 34}"
+            style="filter:drop-shadow(0 0 5px #1E92FF)"/>
+        </svg>
+        <div class="anel-c"><div class="anel-n">${pg}</div><div class="anel-l">PÁG</div></div>
+      </div>
+      <div style="flex:1;text-align:center">
+        <div style="font-size:10px;color:var(--t3);line-height:1.7">A analisar documento com Academic Intelligence...</div>
+        <div style="font-size:8px;color:var(--t3);margin-top:4px">Integridade · Cobertura · Argumentação · Scorecard</div>
+      </div>
     </div>
-    ${q ? `
-    <div style="flex:1">
-      <div style="font-family:var(--fm);font-size:8.5px;color:var(--t3);letter-spacing:.12em;margin-bottom:10px">QUALIDADE ACADÉMICA</div>
-      ${q.itens.map(([n, v]) => `
-      <div class="qi">
-        <div class="qi-l">${n}</div>
-        <div class="qi-b"><div class="qi-f" style="width:${Math.min(100, v)}%;background:linear-gradient(90deg,var(--bd),var(--b));box-shadow:0 0 8px rgba(30,146,255,.4)"></div></div>
-        <div class="qi-v">${Math.min(100, v)}%</div>
-      </div>`).join('')}
-    </div>` : `
-    <div style="flex:1;display:flex;align-items:center">
-      <div style="font-family:var(--fm);font-size:10px;color:var(--t3);line-height:1.7">As métricas de qualidade são calculadas após a geração do documento.</div>
-    </div>`}
   </div>
 
   <!-- ESTATÍSTICAS -->
