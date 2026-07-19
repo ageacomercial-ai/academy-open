@@ -218,5 +218,5 @@ const getEstruturaTipo = (tipoId) => ESTRUTURAS_TIPO[tipoId] || ESTRUTURAS_TIPO[
 const nPags = () => {
   const secs = State.get('secs');
   if (!secs.length) return State.getCfg('pags') || 15;
-  return Math.max(1, Math.ceil(secs.reduce((s, x) => s + (x.c?.split(' ').length || 0), 0) / 370));
+  return Math.max(1, Math.ceil(secs.reduce((s, x) => s + (x.c?.split(' ').length || 0), 0) / 320));
 };

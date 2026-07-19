@@ -75,7 +75,7 @@ const LINE_MODEL = {
     paragrafo:  null, /* calculado dinamicamente */
     espaco:     0.8,
   },
-  MIN_LINHAS_SECAO: 6, /* mínimo após subtítulo */
+  MIN_LINHAS_SECAO: 8, /* mínimo após subtítulo */
 };
 
 function linhasBloco(bloco) {
@@ -244,12 +244,18 @@ function preRenderConstraintEngine(grupos) {
       if (gL <= AREA_CAP_L) {
         grupo.blocos.forEach(b => { paginaActual.push(b); linhasUsadas += linhasBloco(b); });
       } else {
-        grupo.blocos.forEach(b => {
-          const l = linhasBloco(b);
+        for (let bi = 0; bi < grupo.blocos.length; bi++) {
+          const b  = grupo.blocos[bi];
+          const l  = linhasBloco(b);
           if (linhasUsadas + l > AREA_CAP_L && paginaActual.length > 0) novaPageBreak();
+          if (b.tipo === 'titulo_cap' && bi + 1 < grupo.blocos.length) {
+            const proxL = linhasBloco(grupo.blocos[bi + 1]);
+            if (linhasUsadas + l + Math.min(proxL, 4) > AREA_CAP_L && paginaActual.length > 0)
+              novaPageBreak();
+          }
           paginaActual.push(b);
           linhasUsadas += l;
-        });
+        }
       }
       continue;
     }
@@ -259,12 +265,18 @@ function preRenderConstraintEngine(grupos) {
       const lCont  = grupo.linhasConteudo || 0;
       const guarda = lSub + Math.min(lCont, MIN_SEC_L);
       if (linhasUsadas + guarda > AREA_L && paginaActual.length > 0) novaPageBreak();
-      grupo.blocos.forEach(b => {
+      for (let bi = 0; bi < grupo.blocos.length; bi++) {
+        const b = grupo.blocos[bi];
         const l = linhasBloco(b);
         if (linhasUsadas + l > AREA_L && paginaActual.length > 0) novaPageBreak();
+        if ((b.tipo === 'h2' || b.tipo === 'h3') && bi + 1 < grupo.blocos.length) {
+          const proxL = linhasBloco(grupo.blocos[bi + 1]);
+          if (linhasUsadas + l + Math.min(proxL, 4) > AREA_L && paginaActual.length > 0)
+            novaPageBreak();
+        }
         paginaActual.push(b);
         linhasUsadas += l;
-      });
+      }
       continue;
     }
 

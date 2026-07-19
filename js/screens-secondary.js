@@ -231,7 +231,7 @@ function sConfig() {
         <option value="openrouter/google/gemini-2.5-flash-lite" ${_enginePref()==='openrouter/google/gemini-2.5-flash-lite'?'selected':''}>💰 OpenRouter · Gemini 2.5 Flash Lite (mais barato)</option>
         <option value="openrouter/meta-llama/llama-3.1-8b-instruct" ${_enginePref()==='openrouter/meta-llama/llama-3.1-8b-instruct'?'selected':''}>OpenRouter · LLaMA 3.1 8B</option>
         <option value="openrouter/mistralai/mistral-nemo" ${_enginePref()==='openrouter/mistralai/mistral-nemo'?'selected':''}>OpenRouter · Mistral Nemo</option>
-        <option value="groq/llama-3.1-8b-instant" ${_enginePref()==='groq/llama-3.1-8b-instant'?'selected':''}>Groq · LLaMA 3.1 8B (só se OR falhar)</option>
+
       </select>
     </div>
     <button class="btn G w" onclick="testarAPI()" style="margin-top:12px;font-size:13px">⚡ Testar ligação ao servidor</button>
@@ -256,7 +256,7 @@ function _enginePref() {
 }
 function _engineAtual() {
   const p = _enginePref().split('/');
-  const e = p[0] === 'openrouter' ? 'OpenRouter' : 'Groq';
+  const e = 'OpenRouter';
   const m = p.slice(1).join('/').split('-').slice(0, 3).join(' ');
   return `${e} · ${m}`;
 }

@@ -1,18 +1,13 @@
 /* =======================================================================
    ACADEMY ENGINE - SAAS BLINDADO (PRODUÇÃO)
    v66: DOCUMENT AST — backend gera JSON estruturado
-   Adaptado para Groq API (inferência rápida grátis)
+    OpenRouter + Gemini
 ======================================================================= */
 
-const OR_URL   = 'https://api.groq.com/openai/v1/chat/completions';
 const OR_SITE  = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://academy-open.vercel.app';
 const OR_TITLE = 'ACADEMY';
 
-const MODELS = [
-  'llama-3.3-70b-versatile',
-  'llama-3.1-8b-instant',
-  'mixtral-8x7b-32768',
-];
+
 
 /* ---------------- RATE LIMIT ---------------- */
 const RATE = new Map();
@@ -535,7 +530,7 @@ function calcularCompleteness(ast, palavrasAlvo, totalCaps, nivelKey) {
     label        : score >= 85 ? 'Completo' : score >= 65 ? 'Parcial' : 'Superficial',
     dimensoes,
     palavras     : _totalWords(ast),
-    paginas_est  : Math.round(_totalWords(ast) / 370 * 10) / 10,
+    paginas_est  : Math.round(_totalWords(ast) / 320 * 10) / 10,
   };
 }
 
@@ -581,15 +576,15 @@ export default async function handler(req, res) {
   const action    = body?.action || '';
   const payload   = body?.payload || {};
   /* Engine opts — propagado globalmente para todas as calls a callAI */
-  const ac_engine = payload.ac_engine || 'groq';
-  const ac_model  = payload.ac_model  || 'llama-3.3-70b-versatile';
+  const ac_engine = payload.ac_engine || 'openrouter';
+  const ac_model  = payload.ac_model  || 'google/gemini-2.5-flash-lite';
   globalThis.__ac_engine = ac_engine;
   globalThis.__ac_model  = ac_model;
 
   try {
     switch (action) {
       case 'ping':
-        return res.json({ ok:true, action:'ping', data:{ resposta:'pong', pong:true, ts:Date.now(), site:OR_SITE, groq:!!process.env.GROQ_API_KEY, openrouter:!!process.env.OPENROUTER_API_KEY } });
+        return res.json({ ok:true, action:'ping', data:{ resposta:'pong', pong:true, ts:Date.now(), site:OR_SITE, openrouter:!!process.env.OPENROUTER_API_KEY } });
       case 'chat':
         return res.json(ok('chat', await doChat(payload)));
       case 'generate_lesson':
@@ -629,10 +624,7 @@ export default async function handler(req, res) {
         return res.json(ok('__health', await doHealthCheck()));
       case '__diagnose':
         return res.json({ ok:true, action:'__diagnose', data:{
-          hasGroqKey:!!process.env.GROQ_API_KEY,
           hasOpenRouterKey:!!process.env.OPENROUTER_API_KEY,
-          keyLen: (process.env.GROQ_API_KEY||'').length,
-          keyPrefix: (process.env.GROQ_API_KEY||'').substring(0,7),
           hasSupabaseUrl:!!process.env.SUPABASE_URL,
           hasSupabaseKey:!!process.env.SUPABASE_SERVICE_KEY,
           supabaseUrl: (process.env.SUPABASE_URL||'').substring(0,30),
@@ -673,8 +665,8 @@ async function doChat(p) {
   if (!pedido) throw new Error('pedido obrigatório');
   const hist = (Array.isArray(p.historico)?p.historico:[]).slice(-8)
     .map(m => ({ role:m.role==='assistant'?'assistant':'user', content:String(m.content||'').substring(0,800) }));
-  const engineUsed = globalThis.__ac_engine || 'groq';
-  const modelUsed  = globalThis.__ac_model  || 'llama-3.3-70b-versatile';
+  const engineUsed = globalThis.__ac_engine || 'openrouter';
+  const modelUsed  = globalThis.__ac_model  || 'google/gemini-2.5-flash-lite';
   const resposta = await callAI([
     { role:'system', content:`Assistente académico ACADEMY. Português formal. Contexto: "${p.tema||''}" (${p.tipoTrabalho||''}). Máx 200 palavras.` },
     ...hist,
@@ -703,7 +695,7 @@ async function doCapitulo(p) {
   let retryCount = 0;
 
   const PAGINAS_FIXAS = 3;
-  const PALAVRAS_POR_PAGINA = 370;
+  const PALAVRAS_POR_PAGINA = 320;
   const paginasConteudo = Math.max(totalPags - PAGINAS_FIXAS, 1);
   const palavrasCalc = Math.round((paginasConteudo * PALAVRAS_POR_PAGINA) / totalCaps);
   const palavras = Math.min(Math.max(parseInt(p.palavrasPorCap)||palavrasCalc, 200), 4000);
@@ -851,7 +843,7 @@ Português formal. Mínimo 3 parágrafos/secção.`;
     generation_time_ms : Date.now() - _startTime,
     pages_requested    : totalPags,
     word_count         : totalWords,
-    model_used         : 'groq/auto',
+    model_used         : 'openrouter/google/gemini-2.5-flash-lite',
   });
 
   const completeness = calcularCompleteness(
@@ -875,7 +867,7 @@ Português formal. Mínimo 3 parágrafos/secção.`;
     generation_time_ms : Date.now() - _startTime,
     pages_requested    : totalPags,
     word_count         : completeness.palavras,
-    model_used         : 'groq/auto',
+    model_used         : 'openrouter/google/gemini-2.5-flash-lite',
   });
 
   return {
@@ -1173,7 +1165,6 @@ ON CONFLICT (nome) DO NOTHING;
 async function doHealthCheck() {
   const checks = {};
   /* 1. Variáveis de ambiente */
-  checks.groq = !!process.env.GROQ_API_KEY;
   checks.openrouter = !!process.env.OPENROUTER_API_KEY;
   checks.supabase_url = !!process.env.SUPABASE_URL;
   checks.supabase_key = !!process.env.SUPABASE_SERVICE_KEY;
@@ -1189,88 +1180,42 @@ async function doHealthCheck() {
       } catch { checks[`table_${table}`] = false; }
     }
   }
-  /* 3. Engines IA */
-  try {
-    const r = await fetch(GROQ_URL, {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+process.env.GROQ_API_KEY },
-      body:JSON.stringify({ model:'llama-3.1-8b-instant', messages:[{ role:'user', content:'Say OK' }], max_tokens:10 }),
-      signal: AbortSignal.timeout(10000),
-    });
-    checks.groq_api = r.ok;
-  } catch { checks.groq_api = false; }
+
   const totalOk = Object.values(checks).filter(v => v === true).length;
   const totalChecks = Object.values(checks).filter(v => v !== undefined).length;
   return { checks, total_ok: totalOk, total_checks: totalChecks, healthy: totalOk === totalChecks };
 }
 
-/* ---------------- ENGINES IA (Groq + OpenRouter) ---------------- */
-const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
+/* ---------------- ENGINE IA (OpenRouter) ---------------- */
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 async function callAI(messages, opts={}) {
-  const ac_engine = opts.ac_engine || globalThis.__ac_engine || 'groq';
-  const ac_model  = opts.ac_model  || globalThis.__ac_model || 'llama-3.3-70b-versatile';
-  const groqKey   = process.env.GROQ_API_KEY;
-  const orKey     = process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_KEY;
+  const model  = opts.model  || 'google/gemini-2.5-flash-lite';
+  const orKey  = process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_KEY;
+  if (!orKey) throw new Error('OPENROUTER_API_KEY não configurada');
 
-  /* Tenta engine principal primeiro, depois fallback */
-  const engines = [];
-  if (ac_engine === 'openrouter' && orKey) {
-    engines.push({ url: OPENROUTER_URL, key: orKey, model: ac_model, label: 'OpenRouter' });
-  }
-  if (groqKey) {
-    /* Groq: mapear modelo curto para nome completo */
-    const groqModels = {
-      'llama-3.3-70b-versatile': 'llama-3.3-70b-versatile',
-      'llama-3.1-8b-instant':    'llama-3.1-8b-instant',
-      'mixtral-8x7b-32768':      'mixtral-8x7b-32768',
-    };
-    const gm = groqModels[ac_model] || 'llama-3.3-70b-versatile';
-    engines.push({ url: GROQ_URL, key: groqKey, model: gm, label: 'Groq' });
-  }
-  /* Fallback: se engine OpenRouter mas sem chave, tentar Groq */
-  if (ac_engine === 'openrouter' && !orKey && groqKey) {
-    const groqModels = {
-      'llama-3.3-70b-versatile': 'llama-3.3-70b-versatile',
-      'llama-3.1-8b-instant':    'llama-3.1-8b-instant',
-      'mixtral-8x7b-32768':      'mixtral-8x7b-32768',
-    };
-    const gm = groqModels['llama-3.3-70b-versatile'] || 'llama-3.3-70b-versatile';
-    engines.push({ url: GROQ_URL, key: groqKey, model: gm, label: 'Groq (fallback)' });
-  }
-
-  if (!engines.length) throw new Error('Nenhuma engine configurada — define GROQ_API_KEY ou OPENROUTER_API_KEY');
-
-  let lastErr = '';
-  for (const engine of engines) {
-    const models = engine.label === 'Groq' ? MODELS : [engine.model];
-    for (const model of models) {
-      try {
-        const ctrl = new AbortController();
-        const t = setTimeout(()=>ctrl.abort(), 30000);
-        let resp;
-        try {
-          resp = await fetch(engine.url, {
-            method:'POST', signal:ctrl.signal,
-            headers:{
-              'Content-Type':'application/json',
-              'Authorization':'Bearer '+engine.key,
-              ...(engine.label==='OpenRouter' ? { 'HTTP-Referer':'https://academy-open.vercel.app', 'X-Title':'ACADEMY' } : {}),
-            },
-            body:JSON.stringify({ model, messages, temperature:opts.temperature??0.7, max_tokens:opts.max_tokens??800, stream:false }),
-          });
-        } finally { clearTimeout(t); }
-        if (resp.status===429||resp.status===503) { lastErr=String(resp.status); continue; }
-        if (!resp.ok) { lastErr=await resp.text().catch(()=>String(resp.status)); continue; }
-        const data = await resp.json();
-        const text = data?.choices?.[0]?.message?.content?.trim();
-        if (text && text.length>10) return text;
-        lastErr='empty response';
-      } catch(e) { lastErr=e.message; }
-    }
-  }
-  throw new Error('Todas as engines falharam: '+lastErr);
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(()=>ctrl.abort(), 30000);
+    let resp;
+    try {
+      resp = await fetch(OPENROUTER_URL, {
+        method:'POST', signal:ctrl.signal,
+        headers:{
+          'Content-Type':'application/json',
+          'Authorization':'Bearer '+orKey,
+          'HTTP-Referer':'https://academy-open.vercel.app',
+          'X-Title':'ACADEMY',
+        },
+        body:JSON.stringify({ model, messages, temperature:opts.temperature??0.7, max_tokens:opts.max_tokens??800, stream:false }),
+      });
+    } finally { clearTimeout(t); }
+    if (!resp.ok) { const err=await resp.text().catch(()=>String(resp.status)); throw new Error('OpenRouter '+resp.status+': '+err); }
+    const data = await resp.json();
+    const text = data?.choices?.[0]?.message?.content?.trim();
+    if (!text || text.length<=10) throw new Error('resposta vazia ou muito curta');
+    return text;
+  } catch(e) { throw new Error('OpenRouter: '+e.message); }
 }
 
 /* ---------------- PENEIRA DE REFERÊNCIAS ---------------- */
@@ -1311,5 +1256,5 @@ function extrairJSON(texto) {
 
 /* ---------------- HELPER ---------------- */
 function ok(action, data) {
-  return { ok:true, action, data, meta:{ ts:Date.now(), provider:globalThis.__ac_engine||'groq', model:globalThis.__ac_model||'llama-3.3-70b-versatile' } };
+  return { ok:true, action, data, meta:{ ts:Date.now(), provider:'openrouter', model:'google/gemini-2.5-flash-lite' } };
 }

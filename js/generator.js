@@ -27,8 +27,8 @@ async function callAcademyAPI(rawPayload) {
   let ep = LS.get('engine_pref') || '';
   if (!ep || ep === 'openrouter/google/gemini-2.0-flash-001') { LS.set('engine_pref', 'openrouter/google/gemini-2.5-flash-lite'); ep = 'openrouter/google/gemini-2.5-flash-lite'; }
   const engine = (ep || '').split('/');
-  const ac_model = engine[0] === 'openrouter' ? engine.slice(1).join('/') : (engine[1] || 'llama-3.3-70b-versatile');
-  const ac_engine = engine[0] || 'groq';
+  const ac_model = engine[0] === 'openrouter' ? engine.slice(1).join('/') : 'google/gemini-2.5-flash-lite';
+  const ac_engine = engine[0] || 'openrouter';
 
   const ctrl = new AbortController();
   const tid  = setTimeout(() => ctrl.abort(), 60000);
@@ -540,7 +540,7 @@ function calcStats(secs) {
   const txt      = secs.map(s => s.c || s.conteudo || '').join(' ');
   const palavras = txt.split(/\s+/).filter(Boolean).length;
   const chars    = txt.replace(/\s/g, '').length;
-  const pags     = Math.max(1, Math.ceil(palavras / 370));
+  const pags     = Math.max(1, Math.ceil(palavras / 320));
   const refs     = secs.filter(s => (s.titulo || '').toLowerCase().includes('referência')).length;
   const tempoLeit = Math.max(1, Math.ceil(palavras / 200));
   return { palavras, chars, pags, refs, tempoLeit };
