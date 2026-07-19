@@ -790,7 +790,7 @@ ${pArea.instrucoes}
 FORMATAÇÃO OBRIGATÓRIA:
 - Português formal académico, SEM aspas a envolver parágrafos inteiros
 - Cada parágrafo: 3-5 frases completas, sem bullets
-- NÃO uses markdown (***, **, *, `) dentro dos parágrafos
+- NÃO uses markdown (***, **, *, acentos graves) dentro dos parágrafos
 ${p.instrucaoSubtitulos ? '\n' + p.instrucaoSubtitulos : ''}
 ${antiIA(capNum, totalCaps, geoInstrucao)}`;
 
