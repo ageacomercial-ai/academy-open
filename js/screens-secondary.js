@@ -526,23 +526,105 @@ async function _iniciarPagamentoAvulso(numPags, valor) {
   }
 }
 
+const _BANCOS_PAGAMENTO = [
+  { id:'bfa', nome:'BFA', iban:'AO06 0040 0000 8864 9766 3011 4', titular:'Adelino Graça Daniel João', instant:false },
+  { id:'bai', nome:'BAI', iban:'AO06 0040 0000 2479 2016 1017 5', titular:'Adelino Graça Daniel João', instant:false },
+  { id:'bic', nome:'BIC', iban:'AO06 0051 0000 2320 4454 1011 3', titular:'Adelino Graça Daniel João', instant:false },
+  { id:'multicaixa', nome:'Multicaixa Express', iban:'937 876 711', titular:'Adelino Graça Daniel João', instant:true },
+];
+const _WHATSAPP_NUM = '244937876711';
+const _WHATSAPP_NUM2 = '244958614517';
+
 function _mostrarInstrucoesPagamento(ref, valor, numPags) {
+  const _bancoAberto = { id: null };
+  const _msgWhatsApp = () => {
+    const txt = `ACADEMY · Pagamento\n\nValor: ${valor.toLocaleString()} Kz\nPáginas: ${numPags}\nRef: ${ref}\n\nSegue o comprovativo em anexo.`;
+    return encodeURIComponent(txt);
+  };
+
+  const _renderBancos = () => _BANCOS_PAGAMENTO.map(b => {
+    const aberto = _bancoAberto.id === b.id;
+    return `
+    <div style="border-bottom:.5px solid var(--e0)">
+      <div onclick="(function(){
+        const target = document.querySelector('[data-banco=\\'${b.id}\\']');
+        const isOpen = target && target.style.display !== 'none';
+        document.querySelectorAll('[data-banco]').forEach(el => el.style.display = 'none');
+        document.querySelectorAll('[data-banco-btn]').forEach(el => el.style.borderColor = 'var(--e0)');
+        if (!isOpen) {
+          if (target) target.style.display = 'block';
+          const btn = document.querySelector('[data-banco-btn=\\'${b.id}\\']');
+          if (btn) btn.style.borderColor = 'var(--b)';
+          _bancoAberto.id = '${b.id}';
+        } else { _bancoAberto.id = null; }
+      })()"
+        data-banco-btn="${b.id}"
+        style="display:flex;align-items:center;gap:12px;padding:14px 12px;cursor:pointer;border-left:3px solid ${aberto ? 'var(--b)' : 'transparent'};background:${aberto ? 'var(--sf3)' : 'transparent'};transition:all .15s">
+        <div style="width:36px;height:36px;border-radius:50%;background:var(--z3);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:var(--b);flex-shrink:0">${b.nome[0]}</div>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600;color:var(--t1)">${b.nome}</div>
+          <div style="font-family:var(--fm);font-size:8px;color:var(--t3);margin-top:1px">${b.instant ? '⚡ Activação imediata' : b.id === 'multicaixa' ? 'Número Express' : 'IBAN'}</div>
+        </div>
+        ${b.instant ? '<span style="font-family:var(--fm);font-size:7px;background:#3FE8A7;color:#050D1A;padding:2px 6px;border-radius:8px;font-weight:700">⚡ IMEDIATO</span>' : '<span style="color:var(--t3);font-size:16px;transition:transform .2s">' + (aberto ? '▲' : '▼') + '</span>'}
+      </div>
+      <div data-banco="${b.id}" style="display:${aberto ? 'block' : 'none'};padding:4px 12px 16px">
+        <div style="font-family:var(--fm);font-size:8px;color:var(--t3);margin-bottom:4px;letter-spacing:.05em">${b.id === 'multicaixa' ? 'NÚMERO EXPRESS' : 'IBAN'}</div>
+        <div style="background:var(--z3);border-radius:var(--r2);padding:10px 12px;font-family:var(--fm);font-size:14px;font-weight:700;color:var(--t1);letter-spacing:.08em;word-break:break-all">${b.iban}</div>
+        <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-top:6px">Titular: <strong style="color:var(--t1)">${b.titular}</strong></div>
+        <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-top:2px">Valor: <strong style="color:var(--b)">${valor.toLocaleString()} Kz</strong></div>
+        <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-top:2px">Referência: <strong style="color:var(--t1)">${ref}</strong></div>
+        <button onclick="navigator.clipboard.writeText('${b.iban}').then(()=>mostrarToast('✓ IBAN copiado'))"
+          style="margin-top:10px;padding:7px 14px;border-radius:var(--r2);border:.5px solid var(--eb);background:var(--z2);color:var(--t1);font-size:11px;cursor:pointer;width:100%">📋 Copiar ${b.id === 'multicaixa' ? 'número' : 'IBAN'}</button>
+      </div>
+    </div>`;
+  }).join('');
+
   const div = document.createElement('div');
   div.style.cssText = 'position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.8);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;padding:24px';
   div.innerHTML = `
-    <div style="background:var(--z1);border:.5px solid var(--e1);border-radius:16px;padding:24px;max-width:360px;width:100%">
-      <div style="font-family:var(--fm);font-size:8px;letter-spacing:.18em;color:var(--b);margin-bottom:12px">INSTRUÇÕES DE PAGAMENTO</div>
-      <div style="font-size:15px;font-weight:700;color:var(--t1);margin-bottom:16px">${numPags} páginas · ${valor.toLocaleString()} Kz</div>
-      <div style="background:var(--z3);border-radius:var(--r2);padding:14px;margin-bottom:16px;font-size:12px;color:var(--t2);line-height:1.8">
-        1. Abre o teu app de banking ou Multicaixa Express<br/>
-        2. Transfere <strong style="color:var(--t1)">${valor.toLocaleString()} Kz</strong> para o número do ACADEMY<br/>
-        3. Na descrição/referência coloca: <strong style="color:var(--b);font-family:var(--fm)">${ref}</strong><br/>
-        4. Aguarda confirmação — activação automática em minutos
+    <div style="background:var(--z1);border:.5px solid var(--e1);border-radius:16px;padding:20px;max-width:380px;width:100%;max-height:90vh;overflow-y:auto">
+      <!-- Header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div>
+          <div style="font-family:var(--fm);font-size:7px;letter-spacing:.18em;color:var(--b);text-transform:uppercase">PAGAMENTO ACADEMY</div>
+          <div style="font-size:18px;font-weight:700;color:var(--t1);margin-top:2px">${valor.toLocaleString()} Kz</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <span style="font-family:var(--fm);font-size:7px;background:var(--z3);padding:3px 8px;border-radius:8px;color:var(--t2)">${numPags}p</span>
+          <button onclick="this.closest('div[style]').remove()" style="background:none;border:none;color:var(--t3);font-size:18px;cursor:pointer;padding:4px">✕</button>
+        </div>
       </div>
-      <div style="font-family:var(--fm);font-size:10px;color:var(--t3);margin-bottom:16px;text-align:center">
-        Referência do pedido: <strong style="color:var(--t1)">${ref}</strong>
+
+      <!-- Escolher banco -->
+      <div style="margin-bottom:12px">
+        <div style="font-size:12px;color:var(--t2);margin-bottom:8px;line-height:1.5">Qual é o teu banco?<br/><span style="font-family:var(--fm);font-size:9px;color:var(--t3)">Escolhe o teu banco para saber o IBAN correcto. Se usares o mesmo banco que o destinatário, a activação é imediata.</span></div>
+        <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r2);overflow:hidden">
+          ${_renderBancos()}
+        </div>
       </div>
-      <button onclick="this.closest('div[style]').remove()" class="btn B w">OK, vou pagar →</button>
+
+      <!-- Instruções + WhatsApp -->
+      <div style="background:var(--z3);border-radius:var(--r2);padding:12px;margin-bottom:12px;font-size:11px;color:var(--t2);line-height:1.8">
+        1. Faz a transferência para o IBAN acima<br/>
+        2. Tira um screenshot ou foto do comprovativo<br/>
+        3. Clica no botão abaixo para enviar
+      </div>
+
+      <a href="https://wa.me/${_WHATSAPP_NUM}?text=${_msgWhatsApp()}" target="_blank"
+        style="display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:var(--r2);background:#25D366;color:#fff;text-decoration:none;font-size:13px;font-weight:600;margin-bottom:6px">
+        💬 Enviar comprovativo no WhatsApp
+      </a>
+      <div style="font-family:var(--fm);font-size:8px;color:var(--t3);text-align:center;margin-bottom:14px">A mensagem com o teu plano e referência já vai preenchida</div>
+
+      <!-- Referência -->
+      <div style="font-family:var(--fm);font-size:9px;color:var(--t3);text-align:center;padding:8px;background:var(--z2);border-radius:var(--r2)">
+        Referência: <strong style="color:var(--t1);letter-spacing:.04em">${ref}</strong>
+      </div>
+
+      <!-- Suporte -->
+      <div style="font-family:var(--fm);font-size:8px;color:var(--t4);text-align:center;margin-top:10px">
+        Suporte: 📞 <a href="https://wa.me/${_WHATSAPP_NUM}" style="color:var(--b);text-decoration:none">937 876 711</a> · <a href="https://wa.me/${_WHATSAPP_NUM2}" style="color:var(--b);text-decoration:none">958 614 517</a>
+      </div>
     </div>`;
   document.body.appendChild(div);
 }
