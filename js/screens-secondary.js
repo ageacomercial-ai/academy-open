@@ -391,174 +391,196 @@ function sSobre() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   PLANOS & PREÇOS — passo a passo
+   PLANOS & PREÇOS — passo a passo progressivo
 ════════════════════════════════════════════════════════════ */
-function _stepDot(ativo, concluido) {
-  const bg = concluido ? 'var(--b)' : ativo ? 'var(--b)' : 'var(--e0)';
-  return `<span style="width:8px;height:8px;border-radius:50%;background:${bg};transition:background .3s"></span>`;
+let _planoPagamento = null; /* { ref, valor, numPags } após compra */
+
+async function _comprarPacote(pags, preco) {
+  const ref = 'ACY-' + Date.now().toString(36).toUpperCase();
+  const ok  = await sbInsertPagamento({
+    ref, uid: sbUserId(), utilizador_id: sbUserId(),
+    nome: State.get('u')?.nome || 'Desconhecido',
+    whatsapp: State.get('u')?.whatsapp || null,
+    tipo: 'avulso', num_pags: pags, valor: preco,
+    estado: 'pendente', criado_em: new Date().toISOString(),
+  });
+  if (ok) {
+    _planoPagamento = { ref, valor: preco, numPags: pags };
+    mostrarToast(`✓ Pedido registado! Ref: ${ref}`);
+    renderizar();
+    setTimeout(() => {
+      const el = document.getElementById('pagamento-secao');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  } else {
+    mostrarToast('Erro ao registar pedido. Tenta novamente.', 'erro');
+  }
+}
+
+function _cancelarPagamento() {
+  _planoPagamento = null;
+  renderizar();
 }
 
 function sPlanosPrecos(opts) {
-  const creditos   = getCreditos();
-  const temCred    = temCreditoActivo();
+  const creditos    = getCreditos();
+  const temCred     = temCreditoActivo();
   const creditoPags = getCreditosPags();
-  const diasRest   = getDiasRestantes();
-  const expCor     = diasRest === null ? '' : diasRest <= 3 ? '#f87171' : diasRest <= 7 ? '#FBBF24' : 'var(--t3)';
-  const numPagsCfg = (opts && opts.numPags) || State.getCfg('pags') || 15;
+  const diasRest    = getDiasRestantes();
+  const numPagsCfg  = (opts && opts.numPags) || State.getCfg('pags') || 15;
   const pacSugerido = calcPacote(numPagsCfg);
+  const pag         = _planoPagamento;
 
   return `
   <div style="padding-bottom:32px">
     <div class="fase"><div class="fase-p b"></div>PLANOS</div>
     <div class="T1">Adquirir<br/><strong>páginas</strong></div>
-    <div class="desc" style="margin-bottom:20px">Escolhe um pacote, paga por transferência e recebe activação imediata.</div>
+    <div class="desc" style="margin-bottom:18px">Escolhe um pacote, transfere e recebe activação imediata.</div>
 
-    <!-- Passos: indicador visual -->
-    <div style="display:flex;gap:6px;margin-bottom:22px;align-items:center">
-      ${_stepDot(true, false)}
-      <span style="height:1px;flex:1;max-width:32px;background:var(--e0)"></span>
-      ${_stepDot(false, false)}
-      <span style="height:1px;flex:1;max-width:32px;background:var(--e0)"></span>
-      ${_stepDot(false, false)}
-    </div>
-
-    <!-- ═══ PASSO 1: TEU SALDO ═══ -->
-    <div style="margin-bottom:20px">
-      <div style="font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:var(--b);text-transform:uppercase;margin-bottom:8px">Passo 1 · Teu saldo</div>
-      <div style="background:var(--z2);border:.5px solid var(--e1);border-radius:14px;padding:16px;display:flex;align-items:center;gap:14px">
-        <div style="width:40px;height:40px;border-radius:12px;background:var(--sf3);border:.5px solid var(--eb);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🎁</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-family:var(--fm);font-size:8px;color:var(--t3);letter-spacing:.1em;margin-bottom:3px">SALDO ACTUAL</div>
-          <div style="font-size:16px;font-weight:700;color:var(--t1)">
-            ${temCred ? `${creditoPags} páginas` : (creditos.gen_usada ? '0 páginas' : '1 geração gratuita')}
-          </div>
-          <div style="font-size:12px;color:var(--t3);margin-top:2px">
-            ${temCred
-              ? `${creditoPags} páginas disponíveis`
-              : (creditos.gen_usada
-                  ? 'Geração gratuita utilizada'
-                  : 'Disponível · Cria o teu primeiro trabalho')}
-          </div>
-          ${diasRest !== null ? `
-          <div style="font-family:var(--fm);font-size:9px;color:${expCor};margin-top:4px">
-            ${diasRest <= 0 ? '⚠️ Crédito expirado' : `⏳ Expira em ${diasRest} dia(s) · ${getSaldoExpiracao()}`}
-          </div>` : ''}
-          ${diasRest !== null && diasRest <= 3 && diasRest > 0 ? `
-          <div style="font-family:var(--fm);font-size:9px;color:#FBBF24;margin-top:2px">⚠️ O teu crédito expira em breve.</div>` : ''}
-        </div>
+    <!-- ═══ SALDO (compacto) ═══ -->
+    <div style="background:var(--z2);border:.5px solid var(--e1);border-radius:12px;padding:12px 14px;margin-bottom:18px;display:flex;align-items:center;gap:10px">
+      <div style="font-size:20px;flex-shrink:0">🎁</div>
+      <div style="flex:1;min-width:0;font-size:13px;color:var(--t2)">
+        <span style="font-weight:600;color:var(--t1)">
+          ${temCred ? `${creditoPags} páginas` : (creditos.gen_usada ? '0 páginas' : '1 geração gratuita')}
+        </span>
+        ${temCred && diasRest !== null ? ` · expira em ${diasRest} dia(s)` : ''}
       </div>
+      ${!pag ? `<div style="font-size:11px;color:var(--t3)">❶ Escolher →</div>` : ''}
     </div>
 
-    <!-- ═══ PASSO 2: ESCOLHER PACOTE ═══ -->
-    <div style="margin-bottom:20px">
-      <div style="font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:var(--b);text-transform:uppercase;margin-bottom:8px">Passo 2 · Escolher pacote</div>
+    <!-- ═══ PACOTES (grid 2 colunas) ═══ -->
+    <div style="margin-bottom:${pag ? '18px' : '0'}">
+      <div style="font-family:var(--fm);font-size:9px;letter-spacing:.1em;color:var(--t3);text-transform:uppercase;margin-bottom:10px">❷ Escolher pacote</div>
 
       ${opts && opts.numPags ? `
-      <div style="background:var(--sf3);border:.5px solid var(--eb);border-radius:12px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
-        <div style="font-size:16px">📄</div>
-        <div style="font-size:12px;color:var(--t2);flex:1">O teu trabalho precisa de <strong style="color:var(--t1)">${opts.numPags} páginas</strong></div>
-        <div style="font-family:var(--fm);font-size:9px;color:var(--b)">Pacote recomendado: ${pacSugerido.label}</div>
+      <div style="background:var(--sf3);border:.5px solid var(--eb);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--t2);display:flex;align-items:center;gap:8px">
+        <span>📄</span>
+        <span>Precisas de <strong style="color:var(--t1)">${opts.numPags}p</strong> · Recomendado: <strong style="color:var(--b)">${pacSugerido.label}</strong></span>
       </div>` : ''}
 
-      <!-- Créditos utilizador -->
-      <div style="font-family:var(--fm);font-size:7px;letter-spacing:.14em;color:var(--t3);text-transform:uppercase;margin-bottom:8px">Créditos (páginas) · válido 30 dias</div>
-      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
         ${getPrecosCache().map((f) => {
           const pags = f.faixa_fim;
           const preco = _aplDesc(f.preco);
           const popular = f.faixa_inicio <= 0 && f.faixa_fim >= 15;
           const sugerido = opts && opts.numPags && pacSugerido.pags === pags;
           return `
-          <div style="background:${sugerido ? 'var(--sf3)' : 'var(--z2)'};border:.5px solid ${sugerido ? 'var(--eb)' : 'var(--e0)'};border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;${sugerido ? 'box-shadow:0 0 0 1px rgba(67,232,167,.15);' : ''}">
-            <div style="flex:1;min-width:0">
-              <div style="font-size:14px;font-weight:600;color:var(--t1)">${f.label || `${f.faixa_inicio}-${f.faixa_fim} págs`}
-                ${popular ? `<span style="font-family:var(--fm);font-size:7px;background:var(--b);color:var(--t-inv);padding:2px 6px;border-radius:8px;margin-left:6px;font-weight:700">POPULAR</span>` : ''}
-                ${sugerido ? `<span style="font-family:var(--fm);font-size:7px;background:var(--o);color:var(--t-inv);padding:2px 6px;border-radius:8px;margin-left:4px;font-weight:700">RECOMENDADO</span>` : ''}
-              </div>
-              <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-top:2px">até ${pags} páginas</div>
-            </div>
-            <div style="text-align:right;flex-shrink:0">
-              <div style="font-size:16px;font-weight:700;color:var(--b)">${preco.toLocaleString()} Kz</div>
-              <button class="btn B s" onclick="_iniciarPagamentoAvulso(${pags},${preco})" style="margin-top:4px;font-size:10px;padding:6px 12px">Comprar →</button>
-            </div>
+          <div style="background:${sugerido || popular ? 'var(--sf3)' : 'var(--z2)'};border:.5px solid ${sugerido ? 'var(--eb)' : popular ? 'var(--eb)' : 'var(--e0)'};border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:4px;position:relative;${sugerido || popular ? 'box-shadow:0 0 0 1px rgba(67,232,167,.12);' : ''}">
+            ${popular ? '<div style="position:absolute;top:-1px;right:8px;font-family:var(--fm);font-size:7px;background:var(--b);color:var(--t-inv);padding:1px 7px;border-radius:0 0 6px 6px;font-weight:700">POPULAR</div>' : ''}
+            ${sugerido ? '<div style="position:absolute;top:-1px;right:8px;font-family:var(--fm);font-size:7px;background:var(--o);color:var(--t-inv);padding:1px 7px;border-radius:0 0 6px 6px;font-weight:700">RECOMENDADO</div>' : ''}
+            <div style="font-size:11px;color:var(--t3)">${f.label || `${f.faixa_inicio}-${f.faixa_fim} págs`}</div>
+            <div style="font-size:18px;font-weight:800;color:var(--b)">${preco.toLocaleString()} <span style="font-size:10px;font-weight:400;color:var(--t3)">Kz</span></div>
+            <button onclick="_comprarPacote(${pags},${preco})" style="margin-top:4px;padding:7px;border-radius:8px;background:linear-gradient(135deg,var(--b),var(--bd));border:none;color:var(--t-inv);font-size:11px;font-weight:700;cursor:pointer;width:100%">
+              ${pag ? '✔ Seleccionar' : 'Comprar →'}
+            </button>
           </div>`;
         }).join('')}
       </div>
 
-      <!-- Planos Gráfica -->
-      <div style="font-family:var(--fm);font-size:7px;letter-spacing:.14em;color:var(--t3);text-transform:uppercase;margin-bottom:8px">Planos Gráfica / Cyber</div>
-      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:4px">
-        ${getPlanosGraficaCache().map((p) => `
-        <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px">
-          <div style="flex:1;min-width:0">
-            <div style="font-size:14px;font-weight:600;color:var(--t1)">${p.nome}</div>
-            <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-top:2px">${p.paginas} páginas</div>
-          </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div style="font-size:16px;font-weight:700;color:var(--o)">${p.preco.toLocaleString()} Kz</div>
-            <button class="btn O s" onclick="_iniciarPagamentoAvulso(${p.paginas},${p.preco})" style="margin-top:4px;font-size:10px;padding:6px 12px">Comprar →</button>
-          </div>
-        </div>`).join('')}
-      </div>
+      <!-- Gráfica (collapsible) -->
+      <details style="margin-bottom:4px">
+        <summary style="font-family:var(--fm);font-size:9px;color:var(--t3);cursor:pointer;padding:4px 0;letter-spacing:.05em">+ Planos Gráfica / Cyber</summary>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+          ${getPlanosGraficaCache().map((p) => `
+          <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:4px">
+            <div style="font-size:11px;color:var(--t3)">${p.nome}</div>
+            <div style="font-size:18px;font-weight:800;color:var(--o)">${p.preco.toLocaleString()} <span style="font-size:10px;font-weight:400;color:var(--t3)">Kz</span></div>
+            <div style="font-family:var(--fm);font-size:9px;color:var(--t3)">${p.paginas} páginas</div>
+            <button onclick="_comprarPacote(${p.paginas},${p.preco})" style="margin-top:4px;padding:7px;border-radius:8px;background:linear-gradient(135deg,var(--o),var(--od));border:none;color:var(--t-inv);font-size:11px;font-weight:700;cursor:pointer;width:100%">
+              ${pag ? '✔ Seleccionar' : 'Comprar →'}
+            </button>
+          </div>`).join('')}
+        </div>
+      </details>
     </div>
 
-    <!-- ═══ PASSO 3: PAGAMENTO ═══ -->
-    <div style="margin-bottom:20px">
-      <div style="font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:var(--b);text-transform:uppercase;margin-bottom:8px">Passo 3 · Pagamento</div>
-      <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:14px;padding:18px;margin-bottom:12px">
-        <div style="font-size:13px;font-weight:600;color:var(--t1);margin-bottom:4px">Como pagar</div>
-        <div style="font-size:12px;color:var(--t2);line-height:1.7;margin-bottom:14px">
-          1. Escolhe o teu banco abaixo<br/>
-          2. Faz a transferência para o IBAN indicado<br/>
-          3. Envia o comprovativo pelo WhatsApp
+    ${pag ? `
+    <!-- ═══ PAGAMENTO (só depois de escolher pacote) ═══ -->
+    <div id="pagamento-secao" style="margin-bottom:18px;animation:aparecer .25s">
+      <div style="font-family:var(--fm);font-size:9px;letter-spacing:.1em;color:var(--b);text-transform:uppercase;margin-bottom:10px">❸ Pagamento</div>
+
+      <div style="background:var(--z2);border:.5px solid var(--e1);border-radius:12px;padding:16px;margin-bottom:12px">
+        <!-- Resumo -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:12px;border-bottom:.5px solid var(--e0)">
+          <div>
+            <div style="font-size:12px;color:var(--t2)">Pacote escolhido</div>
+            <div style="font-size:15px;font-weight:700;color:var(--t1);margin-top:2px">${pag.numPags} páginas</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:12px;color:var(--t2)">Valor</div>
+            <div style="font-size:18px;font-weight:800;color:var(--b)">${pag.valor.toLocaleString()} Kz</div>
+          </div>
         </div>
 
-        <div style="background:var(--sf3);border:.5px solid var(--eb);border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
-          <div style="font-size:18px">⚡</div>
-          <div style="font-size:11px;color:var(--t2);line-height:1.5">Se usares o mesmo banco que o destinatário, a activação é <strong style="color:var(--b)">imediata</strong>.</div>
+        <!-- Passos didáticos -->
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+          <div style="display:flex;align-items:center;gap:10px;background:var(--z3);border-radius:8px;padding:10px 12px">
+            <span style="width:22px;height:22px;border-radius:50%;background:var(--b);color:var(--t-inv);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">1</span>
+            <span style="font-size:12px;color:var(--t2);flex:1">Escolhe o teu banco e copia o <strong style="color:var(--t1)">IBAN</strong> abaixo</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;background:var(--z3);border-radius:8px;padding:10px 12px">
+            <span style="width:22px;height:22px;border-radius:50%;background:var(--z4);color:var(--t2);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">2</span>
+            <span style="font-size:12px;color:var(--t2);flex:1">Faz a transferência no valor de <strong style="color:var(--b)">${pag.valor.toLocaleString()} Kz</strong></span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;background:var(--z3);border-radius:8px;padding:10px 12px">
+            <span style="width:22px;height:22px;border-radius:50%;background:var(--z4);color:var(--t2);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">3</span>
+            <span style="font-size:12px;color:var(--t2);flex:1">Envia o comprovativo no <strong style="color:#25D366">WhatsApp</strong> — activação imediata</span>
+          </div>
+        </div>
+
+        <!-- Bancos -->
+        <div style="background:var(--sf3);border:.5px solid var(--eb);border-radius:8px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+          <span style="font-size:14px">⚡</span>
+          <span style="font-size:11px;color:var(--t2)">Mesmo banco = <strong style="color:var(--b)">activação imediata</strong></span>
         </div>
 
         ${_BANCOS_PAGAMENTO.map(b => `
-        <div style="border-bottom:.5px solid var(--e0);margin-bottom:0">
+        <div style="border:.5px solid var(--e0);border-radius:8px;margin-bottom:6px;overflow:hidden">
           <div onclick="toggleBanco('${b.id}')" id="bbtn-${b.id}"
-            style="display:flex;align-items:center;gap:12px;padding:12px;cursor:pointer;border-left:3px solid transparent;transition:all .15s;border-radius:8px">
-            <div style="width:34px;height:34px;border-radius:50%;background:var(--z3);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:var(--b);flex-shrink:0">${b.nome[0]}</div>
+            style="display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;border-left:3px solid transparent;transition:all .15s">
+            <div style="width:32px;height:32px;border-radius:50%;background:var(--z3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--b);flex-shrink:0">${b.nome[0]}</div>
             <div style="flex:1;min-width:0">
               <div style="font-size:13px;font-weight:600;color:var(--t1)">${b.nome}</div>
               <div style="font-family:var(--fm);font-size:8px;color:var(--t3);margin-top:1px">${b.instant ? '⚡ Activação imediata' : b.id === 'multicaixa' ? 'Número Express' : 'IBAN'}</div>
             </div>
             ${b.instant
-              ? '<span style="font-family:var(--fm);font-size:7px;background:#3FE8A7;color:#050D1A;padding:2px 6px;border-radius:8px;font-weight:700;flex-shrink:0">⚡ IMEDIATO</span>'
-              : '<span id="bset-'+b.id+'" style="color:var(--t3);font-size:16px;flex-shrink:0">▼</span>'}
+              ? '<span style="font-family:var(--fm);font-size:7px;background:#3FE8A7;color:#050D1A;padding:1px 6px;border-radius:6px;font-weight:700;flex-shrink:0">⚡ IMEDIATO</span>'
+              : '<span id="bset-'+b.id+'" style="color:var(--t3);font-size:14px;flex-shrink:0">▼</span>'}
           </div>
-          <div id="bbody-${b.id}" style="display:none;padding:0 12px 14px">
-            <div style="font-family:var(--fm);font-size:7px;color:var(--t3);margin-bottom:4px;letter-spacing:.06em">${b.id === 'multicaixa' ? 'NÚMERO EXPRESS — Titular: ' + b.titular : 'IBAN — Titular: ' + b.titular}</div>
-            <div style="background:var(--z3);border-radius:8px;padding:10px 12px;font-family:var(--fm);font-size:14px;font-weight:700;color:var(--t1);letter-spacing:.08em;word-break:break-all">${b.iban}</div>
+          <div id="bbody-${b.id}" style="display:none;padding:0 12px 12px">
+            <div style="font-family:var(--fm);font-size:7px;color:var(--t3);margin-bottom:3px;letter-spacing:.05em">${b.id === 'multicaixa' ? 'NÚMERO EXPRESS — Titular: ' + b.titular : 'IBAN — Titular: ' + b.titular}</div>
+            <div style="background:var(--z3);border-radius:6px;padding:9px 11px;font-family:var(--fm);font-size:13px;font-weight:700;color:var(--t1);letter-spacing:.06em;word-break:break-all">${b.iban}</div>
             <button onclick="navigator.clipboard.writeText('${b.iban}');mostrarToast('✓ Copiado')"
-              style="margin-top:8px;padding:7px 14px;border-radius:8px;border:.5px solid var(--eb);background:var(--z2);color:var(--t1);font-size:11px;cursor:pointer;width:100%">📋 Copiar ${b.id === 'multicaixa' ? 'número' : 'IBAN'}</button>
+              style="margin-top:6px;padding:6px 12px;border-radius:6px;border:.5px solid var(--eb);background:var(--z2);color:var(--t1);font-size:11px;cursor:pointer;width:100%">📋 Copiar ${b.id === 'multicaixa' ? 'número' : 'IBAN'}</button>
           </div>
         </div>`).join('')}
       </div>
 
-      <a href="https://wa.me/${_WHATSAPP_NUM}?text=${encodeURIComponent('ACADEMY · Pagamento\n\nQuero adquirir páginas. Segue o comprovativo em anexo.')}" target="_blank"
-        style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;border-radius:12px;background:#25D366;color:#fff;text-decoration:none;font-size:13px;font-weight:600">
-        💬 Enviar comprovativo no WhatsApp
+      <!-- WhatsApp + Ref -->
+      <a href="https://wa.me/${_WHATSAPP_NUM}?text=${encodeURIComponent('ACADEMY · Pagamento\n\nValor: ' + pag.valor.toLocaleString() + ' Kz\nPáginas: ' + pag.numPags + '\nRef: ' + pag.ref + '\n\nSegue o comprovativo em anexo.')}" target="_blank"
+        style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;border-radius:10px;background:#25D366;color:#fff;text-decoration:none;font-size:14px;font-weight:600;margin-bottom:8px">
+        💬 Enviar comprovativo
       </a>
-      <div style="font-family:var(--fm);font-size:8px;color:var(--t3);text-align:center;margin-top:6px">Suporte: <a href="https://wa.me/${_WHATSAPP_NUM}" style="color:var(--b);text-decoration:none">937 876 711</a></div>
-    </div>
+      <div style="font-family:var(--fm);font-size:9px;color:var(--t3);text-align:center;margin-bottom:10px">Ref: <strong style="color:var(--t1)">${pag.ref}</strong></div>
 
-    <!-- ═══ EXTRA: ACTIVAR COM SENHA ═══ -->
+      <button onclick="_cancelarPagamento()" style="width:100%;padding:8px;border-radius:8px;background:transparent;border:.5px solid var(--e0);color:var(--t3);font-size:12px;cursor:pointer;margin-bottom:10px">
+        ← Escolher outro pacote
+      </button>
+    </div>` : ''}
+
+    <!-- ═══ SENHA ═══ -->
     <details style="margin-bottom:16px">
-      <summary style="font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:var(--t3);cursor:pointer;padding:6px 0;text-transform:uppercase">⤵ Tens uma senha de activação?</summary>
-      <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:12px;padding:16px;margin-top:8px">
-        <div style="font-size:13px;color:var(--t2);margin-bottom:12px;line-height:1.6">Insere a tua senha para activar o plano ou créditos de imediato.</div>
+      <summary style="font-family:var(--fm);font-size:9px;letter-spacing:.05em;color:var(--t3);cursor:pointer;padding:4px 0">🔑 Tens uma senha de activação?</summary>
+      <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:10px;padding:14px;margin-top:8px">
+        <div style="font-size:12px;color:var(--t2);margin-bottom:10px;line-height:1.5">Insere abaixo para activar créditos de imediato.</div>
         <div style="display:flex;gap:8px">
-          <input class="inp" id="senhaInp" placeholder="ACAD-XXXX-XXX-XXXX" style="flex:1;text-transform:uppercase;letter-spacing:.05em;font-family:var(--fm)"
+          <input class="inp" id="senhaInp" placeholder="ACAD-XXXX-XXX-XXXX" style="flex:1;text-transform:uppercase;letter-spacing:.05em;font-family:var(--fm);font-size:12px"
             oninput="this.value=this.value.toUpperCase()"
             onkeydown="if(event.key==='Enter')activarSenhaUI()"/>
-          <button class="btn B" onclick="activarSenhaUI()">Activar</button>
+          <button class="btn B" onclick="activarSenhaUI()" style="font-size:12px;padding:9px 14px">Activar</button>
         </div>
-        <div id="senhaMsg" style="margin-top:8px;font-family:var(--fm);font-size:11px"></div>
+        <div id="senhaMsg" style="margin-top:6px;font-family:var(--fm);font-size:11px"></div>
       </div>
     </details>
 
