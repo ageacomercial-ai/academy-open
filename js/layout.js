@@ -401,6 +401,8 @@ function layoutRenderPagina(blocos, opts) {
 function layoutHtmlBloco(bloco) {
   const t = (bloco.texto || bloco.titulo || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   switch (bloco.tipo) {
+    case 'localizador':
+      return bloco.html || '';
     case 'heading_group':
       return `<div class="heading-group">${layoutHtmlBloco(bloco.heading)}${layoutHtmlBloco(bloco.firstChild)}</div>`;
     case 'titulo_cap':
@@ -522,26 +524,33 @@ function htmlTOC(mapa) {
   </div>`;
 }
 
-function htmlEstrutura(est) {
+function htmlLocalizador(est, capActual) {
   if (!Array.isArray(est) || !est.length) return '';
   const numCap = est.length;
-  const numSub = est.reduce((a, c) => a + (c.subs?.length || 0), 0);
-  const linhas = est.map(c => `
-    <div style="margin-bottom:14px">
-      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">
-        <span style="font-family:Georgia,serif;font-size:11pt;font-weight:700;color:#111;min-width:28px">${c.num || ''}.</span>
-        <span style="font-family:Georgia,serif;font-size:11pt;font-weight:700;color:#111;flex:1">${c.titulo || ''}</span>
+  const linhas = est.map(c => {
+    const isActual = c.num === capActual;
+    const cor      = isActual ? '#3FE8A7' : '#DDD';
+    const texto    = isActual ? '#111' : '#888';
+    const fundo    = isActual ? '#F0FDF9' : 'transparent';
+    const subsHTML = (c.subs || []).map(s => {
+      const subActual = isActual && s.toLowerCase().includes(String(capActual) + '.');
+      return `<div style="font-family:Georgia,serif;font-size:8pt;line-height:1.4;color:${subActual ? '#111' : '#777'};padding:1px 0;${subActual ? 'font-weight:600' : ''}">· ${s}</div>`;
+    }).join('');
+    return `<div style="margin-bottom:${isActual ? '6px' : '2px'};padding:4px 6px;background:${fundo};border-left:2pt solid ${cor};${isActual ? 'border-radius:0 4px 4px 0' : ''}">
+      <div style="display:flex;align-items:baseline;gap:6px">
+        <span style="font-family:Georgia,serif;font-size:9pt;font-weight:${isActual ? '700' : '600'};color:${texto}">${c.num}.</span>
+        <span style="font-family:Georgia,serif;font-size:${isActual ? '9.5pt' : '9pt'};font-weight:${isActual ? '700' : '500'};color:${texto};flex:1;${isActual ? '' : 'opacity:0.7'}">${c.titulo || ''}</span>
       </div>
-      ${(c.subs || []).length > 0 ? `
-      <div style="padding-left:36px;margin-top:4px">
-        ${c.subs.map(sub => `<div style="font-family:Georgia,serif;font-size:10pt;color:#444;line-height:1.7;padding:2px 0;border-left:2pt solid #DDD;padding-left:10px;margin-bottom:3px">${sub}</div>`).join('')}
-      </div>` : ''}
-    </div>`).join('');
+      ${isActual ? `<div style="padding-left:18px;margin-top:3px">${subsHTML}</div>` : ''}
+    </div>`;
+  }).join('');
 
-  return `<div style="padding:40px 0">
-    <h2 style="font-family:'Cormorant Garamond',Georgia,serif;font-size:18pt;font-weight:700;text-transform:uppercase;border-bottom:1.5pt solid #111;padding-bottom:10px;margin-bottom:8px;letter-spacing:.04em">Estrutura do Trabalho</h2>
-    <div style="font-family:Georgia,serif;font-size:10pt;color:#666;margin-bottom:20px;font-style:italic">${numCap} capítulo${numCap !== 1 ? 's' : ''} · ${numSub} subtópico${numSub !== 1 ? 's' : ''}</div>
-    ${linhas}
+  return `<div style="background:#FAFAFA;border:.5pt solid #E5E5E5;border-radius:6px;padding:8px 10px;margin-bottom:14pt;font-family:Georgia,serif">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;border-bottom:.5pt solid #DDD;padding-bottom:4px">
+      <span style="font-family:Georgia,serif;font-size:8pt;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#666">📍 Localizador</span>
+      <span style="font-family:Georgia,serif;font-size:8pt;color:#888">${capActual} / ${numCap}</span>
+    </div>
+    <div>${linhas}</div>
   </div>`;
 }
 
@@ -659,12 +668,10 @@ function montarDocumentoPDF(secs, meta) {
   const paginasDeBlocos = preRenderPipeline(blocos);
   layoutValidarDocumento(paginasDeBlocos, blocos);
 
-  /* 3. Calcular estrutura, pré-textuais e offset ANTES do TOC */
-  const estruturaHtml = htmlEstrutura(State.get('est'));
-  const pretexts      = htmlPretextuais(meta.cfg || State.get('cfg') || {});
-  const temEstrutura  = !!estruturaHtml;
-  const numExtra      = pretexts.length + (temEstrutura ? 1 : 0);
-  const offsetTOC     = 1 + numExtra; /* capa (1) + estrutura? (1) + pré-textuais (N) = TOC vem depois */
+  /* 3. Calcular pré-textuais e offset ANTES do TOC */
+  const est          = State.get('est') || [];
+  const pretexts     = htmlPretextuais(meta.cfg || State.get('cfg') || {});
+  const offsetTOC    = 1 + pretexts.length; /* capa (1) + pré-textuais (N) = TOC vem depois */
 
   /* 4. TOC real — offset calculado dinamicamente */
   const mapaCapTOC = layoutGerarTOCReal(paginasDeBlocos, offsetTOC + 1);
@@ -675,20 +682,15 @@ function montarDocumentoPDF(secs, meta) {
   /* Capa */
   paginas.push(renderPagina(htmlCapa(metaC), { num: 1, total: totalPgs, titulo: metaC.titulo, isCapa: true, watermark: wm }));
 
-  /* Estrutura do trabalho (perto da capa, conforme pedido) */
-  if (estruturaHtml) {
-    paginas.push(renderPagina(estruturaHtml, { num: 2, total: totalPgs, titulo: metaC.titulo, isCapa: false, watermark: wm }));
-  }
-
   /* Pré-textuais */
   pretexts.forEach((html, pi) => {
-    paginas.push(renderPagina(html, { num: 2 + pi + (temEstrutura ? 1 : 0), total: totalPgs, titulo: metaC.titulo, isCapa: false, watermark: wm }));
+    paginas.push(renderPagina(html, { num: 2 + pi, total: totalPgs, titulo: metaC.titulo, isCapa: false, watermark: wm }));
   });
 
   /* TOC */
   paginas.push(renderPagina(htmlTOC(mapaCapTOC), { num: offsetTOC + 1, total: totalPgs, titulo: metaC.titulo, isTOC: true, watermark: wm }));
 
-  /* Conteúdo */
+  /* Conteúdo — injecta localizador no início de cada capítulo */
   const pgsValidas = paginasDeBlocos.filter(pg =>
     pg && pg.some(b => ['titulo_cap','h2','h3','paragrafo','ref_item'].includes(b.tipo))
   );
@@ -696,7 +698,10 @@ function montarDocumentoPDF(secs, meta) {
   pgsValidas.forEach((pg, pi) => {
     const tc = pg.find(b => b.tipo === 'titulo_cap');
     if (tc) nomeCap = tc.titulo;
-    paginas.push(layoutRenderPagina(pg, {
+    const pgComLoc = (tc && est.length > 0)
+      ? [{ tipo: 'localizador', html: htmlLocalizador(est, tc.num) }, ...pg]
+      : pg;
+    paginas.push(layoutRenderPagina(pgComLoc, {
       num: offsetTOC + 1 + 1 + pi, total: totalPgs,
       titulo: metaC.titulo, nomeCap: tc ? '' : nomeCap, watermark: wm,
     }));
