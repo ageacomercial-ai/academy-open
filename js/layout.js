@@ -118,16 +118,28 @@ function docEstruturarSemantico(secs) {
 function docEstruturarSemanticoTexto(sec, txt, blocos) {
   const linhas = txt.split('\n');
   let primeiroPar = true;
+  const tituloCap = (sec.titulo || '').toLowerCase().replace(/^\d+\.?\s*/, '').trim();
 
   const isLixoJSON = l => /^\s*[\{\[\}\]]\s*$/.test(l)
     || /^\s*"[a-z_]+"\s*:/.test(l)
     || /"(?:chapter_id|section_id|title|paragraphs|content|status|generated_at|generated_by|version|sections)"\s*:/.test(l)
     || /^[\{\[].*[\}\]]$/.test(l);
 
+  const isDuplicadoTitulo = l => {
+    if (!tituloCap || tituloCap.length < 4) return false;
+    const linhaNorm = l.toLowerCase().replace(/^\d+\.?\d*\.?\s*/, '').trim();
+    if (linhaNorm === tituloCap) return true;
+    if (tituloNorm.includes(linhaNorm) && linhaNorm.length > 4) return true;
+    if (linhaNorm.length > 4 && linhaNorm.includes(tituloCap.split(' ')[0]) && linhaNorm.split(' ').length <= 3) return true;
+    return false;
+  };
+  const tituloNorm = tituloCap;
+
   for (let i = 0; i < linhas.length; i++) {
     const linha = linhas[i].trim();
     if (!linha) continue;
     if (isLixoJSON(linha)) continue;
+    if (isDuplicadoTitulo(linha)) continue;
 
     /* Detectar subtítulos numerados (ex: "1.1 Contextualização") */
     const isSubSecH2 = /^\d+\.\d+\s+[A-ZÁÉÍÓÚÀ]/.test(linha) && linha.length < 90;
@@ -352,11 +364,12 @@ function layoutValidarDocumento(paginasDeBlocos, blocos) {
    Percorre as páginas distribuídas e extrai a página real
    de cada título de capítulo.
 ════════════════════════════════════════════════════════════ */
-function layoutGerarTOCReal(paginasDeBlocos) {
+function layoutGerarTOCReal(paginasDeBlocos, offsetBase) {
+  const base = offsetBase || 2; /* fallback para retrocompatibilidade */
   const mapa = [];
   for (let pi = 0; pi < paginasDeBlocos.length; pi++) {
     const tc = paginasDeBlocos[pi].find(b => b.tipo === 'titulo_cap');
-    if (tc) mapa.push({ num: tc.num, titulo: tc.titulo, pgInicio: pi + 3 }); /* +3: capa + pré-textuais + TOC */
+    if (tc) mapa.push({ num: tc.num, titulo: tc.titulo, pgInicio: pi + base });
   }
   return mapa;
 }
@@ -645,10 +658,16 @@ function montarDocumentoPDF(secs, meta) {
   const paginasDeBlocos = preRenderPipeline(blocos);
   layoutValidarDocumento(paginasDeBlocos, blocos);
 
-  /* 3. TOC real */
-  const mapaCapTOC = layoutGerarTOCReal(paginasDeBlocos);
-  const temEstrutura = Array.isArray(State.get('est')) && State.get('est').length > 0;
-  const totalPgs   = 2 + (temEstrutura ? 1 : 0) + paginasDeBlocos.length;
+  /* 3. Calcular estrutura, pré-textuais e offset ANTES do TOC */
+  const estruturaHtml = htmlEstrutura(State.get('est'));
+  const pretexts      = htmlPretextuais(meta.cfg || State.get('cfg') || {});
+  const temEstrutura  = !!estruturaHtml;
+  const numExtra      = pretexts.length + (temEstrutura ? 1 : 0);
+  const offsetTOC     = 1 + numExtra; /* capa (1) + estrutura? (1) + pré-textuais (N) = TOC vem depois */
+
+  /* 4. TOC real — offset calculado dinamicamente */
+  const mapaCapTOC = layoutGerarTOCReal(paginasDeBlocos, offsetTOC + 1);
+  const totalPgs   = offsetTOC + 1 + paginasDeBlocos.length; /* +1 para a própria TOC */
 
   const paginas = [];
 
@@ -656,20 +675,17 @@ function montarDocumentoPDF(secs, meta) {
   paginas.push(renderPagina(htmlCapa(metaC), { num: 1, total: totalPgs, titulo: metaC.titulo, isCapa: true, watermark: wm }));
 
   /* Estrutura do trabalho (perto da capa, conforme pedido) */
-  const estruturaHtml = htmlEstrutura(State.get('est'));
   if (estruturaHtml) {
     paginas.push(renderPagina(estruturaHtml, { num: 2, total: totalPgs, titulo: metaC.titulo, isCapa: false, watermark: wm }));
   }
 
   /* Pré-textuais */
-  const pretexts = htmlPretextuais(meta.cfg || State.get('cfg') || {});
   pretexts.forEach((html, pi) => {
-    paginas.push(renderPagina(html, { num: 2 + pi + (estruturaHtml ? 1 : 0), total: totalPgs, titulo: metaC.titulo, isCapa: false, watermark: wm }));
+    paginas.push(renderPagina(html, { num: 2 + pi + (temEstrutura ? 1 : 0), total: totalPgs, titulo: metaC.titulo, isCapa: false, watermark: wm }));
   });
-  const offsetTOC = 1 + pretexts.length + (estruturaHtml ? 1 : 0);
 
   /* TOC */
-  paginas.push(renderPagina(htmlTOC(mapaCapTOC), { num: 1 + offsetTOC, total: totalPgs, titulo: metaC.titulo, isTOC: true, watermark: wm }));
+  paginas.push(renderPagina(htmlTOC(mapaCapTOC), { num: offsetTOC + 1, total: totalPgs, titulo: metaC.titulo, isTOC: true, watermark: wm }));
 
   /* Conteúdo */
   const pgsValidas = paginasDeBlocos.filter(pg =>
@@ -680,7 +696,7 @@ function montarDocumentoPDF(secs, meta) {
     const tc = pg.find(b => b.tipo === 'titulo_cap');
     if (tc) nomeCap = tc.titulo;
     paginas.push(layoutRenderPagina(pg, {
-      num: 2 + offsetTOC + pi, total: totalPgs,
+      num: offsetTOC + 1 + 1 + pi, total: totalPgs,
       titulo: metaC.titulo, nomeCap: tc ? '' : nomeCap, watermark: wm,
     }));
   });
