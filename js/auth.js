@@ -7,19 +7,8 @@
 /* ── Chave de validação offline (nunca partilhar o código-fonte) ── */
 const _SK = (()=>{ const p = ['AGEA','26','SCOS','_ADL']; return p.join(''); })();
 
-/* Tipos de senha e o que desbloqueiam */
-const SENHA_TIPOS = {
-  /* Planos Pro mensais */
-  'EST':  { plano: 'estudante', meses: 1, desc: 'Estudante 1 mês — 70 págs',       preco: 5400  },
-  'GRF':  { plano: 'grafica',   meses: 1, desc: 'Gráfica 1 mês — 200 págs',        preco: 15000 },
-  'PREM': { plano: 'premium',   meses: 1, desc: 'Premium 1 mês — 1.000 págs',      preco: 30000 },
-  /* Pacotes de crédito (páginas) */
-  'C15':  { tipo: 'credito', pags: 15,   valor: 950,   desc: 'Créditos 15 páginas — 950 Kz'        },
-  'C30':  { tipo: 'credito', pags: 30,   valor: 1650,  desc: 'Créditos 30 páginas — 1.650 Kz'      },
-  'C200': { tipo: 'credito', pags: 200,  valor: 12000, desc: 'Créditos 200 páginas — 12.000 Kz'    },
-  'C500': { tipo: 'credito', pags: 500,  valor: 29500, desc: 'Créditos 500 páginas — 29.500 Kz'    },
-  'C1K':  { tipo: 'credito', pags: 1000, valor: 60000, desc: 'Créditos 1.000 páginas — 60.000 Kz'  },
-};
+/* Tipos de senha — apenas promoções personalizadas (P####) */
+const SENHA_TIPOS = {};
 
 /* ── Cache dinâmico de preços (carregado do Supabase) ── */
 let _precosCache = null;
@@ -28,14 +17,14 @@ let _planosGraficaCache = null;
 /* Preços padrão (fallback se Supabase offline) */
 const _PRECOS_DEFAULT = [
   { faixa_inicio: 0,  faixa_fim: 15, preco: 1850, label: '0-15 páginas' },
-  { faixa_inicio: 16, faixa_fim: 20, preco: 3500, label: '16-20 páginas' },
+  { faixa_inicio: 16, faixa_fim: 20, preco: 2250, label: '16-20 páginas' },
   { faixa_inicio: 21, faixa_fim: 30, preco: 5500, label: '21-30 páginas' },
   { faixa_inicio: 31, faixa_fim: 50, preco: 8500, label: '31-50 páginas' },
 ];
 const _PLANOS_GRAFICA_DEFAULT = [
-  { nome: 'Gráfica Base',     paginas: 150, preco: 25000 },
-  { nome: 'Gráfica Plus',     paginas: 300, preco: 45000 },
-  { nome: 'Gráfica Premium',  paginas: 500, preco: 65000 },
+  { nome: 'Gráfica 150',     paginas: 150, preco: 15000 },
+  { nome: 'Gráfica 300',     paginas: 300, preco: 25000 },
+  { nome: 'Gráfica 500',     paginas: 500, preco: 40000 },
 ];
 
 async function carregarPrecos() {
@@ -230,26 +219,23 @@ function getSaldoDisponivel() {
   const plano = planoActivo();
   if (plano === 'gratuito') return c.gen_usada >= 1 ? 0 : 9999;
   if (temCreditoActivo()) return getCreditosPags();
-  const def = PLANOS_DEF[plano] || PLANOS_DEF.gratuito;
-  return Math.max(0, def.pags_mes - (c.pags || 0));
+  return 0;
 }
 
 function getSaldoExpiracao() {
   const c = getCreditos();
   if (temCreditoActivo() && c.credito_expiry) return new Date(c.credito_expiry).toLocaleDateString();
-  if (c.plano_expiry) return new Date(c.plano_expiry).toLocaleDateString();
   return null;
 }
 
 function getDiasRestantes() {
   const c = getCreditos();
-  let ms = null;
-  if (temCreditoActivo() && c.credito_expiry) ms = c.credito_expiry;
-  else if (c.plano_expiry) ms = c.plano_expiry;
-  if (!ms) return null;
-  const diff = ms - Date.now();
-  if (diff <= 0) return 0;
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  if (temCreditoActivo() && c.credito_expiry) {
+    const diff = c.credito_expiry - Date.now();
+    if (diff <= 0) return 0;
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  }
+  return null;
 }
 
 function temCreditoActivo() {
@@ -268,16 +254,14 @@ function planoActivo() {
   if (c.plano && c.plano !== 'gratuito' && c.plano_expiry && Date.now() > c.plano_expiry) {
     c.plano = 'gratuito'; c.plano_expiry = null; setCreditos(c);
   }
-  /* Normalizar planos antigos */
-  const validos = ['gratuito', 'estudante', 'grafica', 'premium'];
-  if (!validos.includes(c.plano)) c.plano = 'gratuito';
+  /* Normalizar — só gratuito ou crédito */
+  if (c.plano !== 'gratuito' && !temCreditoActivo()) c.plano = 'gratuito';
   return c.plano || 'gratuito';
 }
 
 /* ── Verificar se pode exportar ── */
 function verificarExportacao(numPags) {
   const plano = planoActivo();
-  const def   = PLANOS_DEF[plano] || PLANOS_DEF.gratuito;
   const c     = getCreditos();
 
   /* 1. Crédito avulso activo */
@@ -286,27 +270,22 @@ function verificarExportacao(numPags) {
     return { ok: true, wm: false };
   }
 
-  /* 2. Plano Pro mensal */
-  if (plano !== 'gratuito') {
-    if (c.pags + numPags > def.pags_mes) return { ok: false, motivo: 'limite_mes', plano, c, numPags };
-    return { ok: true, wm: false };
+  /* 2. Gratuito — 1 geração real por utilizador (vitalício) */
+  if (plano === 'gratuito') {
+    if (c.gen_usada >= 1) return { ok: false, motivo: 'gratuito_esgotado', plano, c, numPags };
+    return { ok: true, wm: true };
   }
 
-  /* 3. Gratuito — 1 geração real por utilizador (vitalício) */
-  if (c.gen_usada >= 1) return { ok: false, motivo: 'gratuito_esgotado', plano, c, numPags };
-  return { ok: true, wm: true };
+  return { ok: false, motivo: 'sem_credito', plano, c, numPags };
 }
 
 /* ── Registar exportação (descontar créditos) ── */
 function registarExportacao(numPags, pago) {
   const c     = getCreditos();
-  const plano = planoActivo();
   if (temCreditoActivo()) {
     c.credito_pags = Math.max(0, (c.credito_pags || 0) - numPags);
-  } else if (plano === 'gratuito') {
-    c.gen_usada = 1;
   } else {
-    c.pags = (c.pags || 0) + numPags;
+    c.gen_usada = 1;
   }
   if (pago) c.pagos.push({ data: new Date().toISOString(), pags: numPags, valor: pago });
   setCreditos(c);
@@ -364,14 +343,13 @@ async function sbRestaurarPlano() {
     const row = rows[0];
     if (!row.plano || row.plano === 'gratuito') return;
     const expiry = row.expiry ? new Date(row.expiry).getTime() : null;
-    if (expiry && Date.now() > expiry) return; /* expirou */
+    if (expiry && Date.now() > expiry) return;
     const c = getCreditos();
-    if (c.plano !== 'gratuito') return; /* já tem plano local */
+    if (c.plano !== 'gratuito') return;
     c.plano        = row.plano;
     c.plano_expiry = expiry;
     c.pags         = 0;
     setCreditos(c);
-    mostrarToast(`✓ Plano ${PLANOS_DEF[row.plano]?.n || row.plano} restaurado!`);
   } catch (e) { console.warn('[AUTH] restaurarPlano:', e); }
 }
 

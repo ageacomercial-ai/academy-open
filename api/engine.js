@@ -596,6 +596,7 @@ export default async function handler(req, res) {
       case 'gerar_capitulo':
         return res.json(ok(action, await doCapitulo(payload)));
       case 'gerar_capitulo_referencias':
+      case 'gerar_referencias':
         return res.json(ok(action, await doReferencias(payload)));
       case 'regenerar_capitulo':
         return res.json(ok(action, await doCapitulo({ ...payload, regenerar:true })));
@@ -688,6 +689,9 @@ async function doCapitulo(p) {
   const tema      = (p.tema||'').substring(0,300);
   const tipo      = (p.tipoTrabalho||'Trabalho Académico').substring(0,100);
   const nivel     = (p.nivel||'').substring(0,80);
+  const inst      = (p.inst||'').substring(0,100);
+  const prof      = (p.prof||'').substring(0,100);
+  const area      = (p.area||'').substring(0,100);
   const capNum    = parseInt(p.capNum)||1;
   const capTit    = (p.capTitulo||'').substring(0,200);
   const totalCaps = parseInt(p.totalCaps)||parseInt(p.totalPags)||4;
@@ -735,6 +739,7 @@ async function doCapitulo(p) {
   ][(capNum-1) % 5];
 
   const prompt = `És um professor universitário especialista em ${pArea.label} a escrever o Capítulo ${capNum} de um ${tipo} de nível ${nivel} sobre "${tema}".
+${inst ? `\nInstituição: ${inst}` : ''}${prof ? `\nOrientador: ${prof}` : ''}${area ? `\nÁrea do curso: ${area}` : ''}
 
 CAPÍTULO: ${capNum}. ${capTit}
 
@@ -884,7 +889,7 @@ Português formal. Mínimo 3 parágrafos/secção.`;
   };
 }
 
-/* ---------------- REFERÊNCIAS ---------------- */
+/* ---------------- REFERÊNCIAS (com peneira + retry) ---------------- */
 async function doReferencias(p) {
   const tema  = (p.tema||'').substring(0,300);
   const tipo  = (p.tipoTrabalho||'Trabalho Académico').substring(0,100);
@@ -897,11 +902,47 @@ async function doReferencias(p) {
   const geoRefsInstrucao = geoCtxR === 'angola'
     ? `O tema é sobre Angola. Inclui fontes relevantes combinadas com literatura internacional.`
     : `As referências devem ser de revistas académicas internacionais. Evita fontes específicas de qualquer país a menos que o tema o exija.`;
-  const prompt = `Gera ${pNivel.refs_min} referências bibliográficas formato APA 7ª ed para um ${tipo} nível ${nivel} sobre "${tema}". Área: ${pArea.label}. ${geoRefsInstrucao}
-Responde APENAS array JSON, sem markdown:
-[{"autores":"...","ano":2024,"titulo":"...","editora":"..."}]
-${pNivel.refs_africanos} devem ser de autores africanos.`;
-  return { resposta: await callAI([{ role:'user', content:prompt }], { max_tokens:2500, temperature:0.4 }) };
+  const totalPags = parseInt(p.totalPags) || 15;
+  const numRefs   = Math.min(18, Math.max(10, Math.round(totalPags * 0.6)));
+  const MIN_VALIDAS = Math.max(6, Math.round(numRefs * 0.6));
+
+  const montarPrompt = (reforcar) => `És um bibliotecário académico especialista em ${pArea.label}, a preparar a lista de referências bibliográficas de um ${tipo} de nível ${nivel} sobre "${tema}".
+
+TAREFA: gera exactamente ${numRefs} referências bibliográficas reais e plausíveis, em formato APA.
+
+${geoRefsInstrucao}
+${pNivel.citacoes}
+
+FORMATO OBRIGATÓRIO — uma referência por bloco, cada bloco separado por LINHA EM BRANCO:
+Apelido, I. (Ano). Título da obra. Editora ou Revista, volume(número), páginas.
+
+REGRAS RÍGIDAS:
+- CADA entrada TEM de conter o padrão "(Ano)." logo a seguir ao(s) autor(es)
+- Ano entre 1950 e ${new Date().getFullYear()}
+- NUNCA repitas o mesmo autor+título
+- Mistura livros, artigos de revista e fontes institucionais se fizer sentido
+- Sem bullets, sem numeração, sem markdown — só texto
+- Português formal, normas APA
+${reforcar ? '\nATENÇÃO: a tentativa anterior teve referências inválidas. Confirma que TODAS têm autor, ano entre parêntesis, título e editora.' : ''}
+
+Escreve as ${numRefs} referências agora.`;
+
+  let bruta = await callAI([{ role:'user', content: montarPrompt(false) }], { max_tokens:2500, temperature:0.4 });
+  let peneira = peneirarReferencias(bruta);
+
+  if (peneira.validas.length < MIN_VALIDAS) {
+    console.warn(`[Referências] ${peneira.validas.length}/${numRefs} válidas — retry reforçado`);
+    const bruta2 = await callAI([{ role:'user', content: montarPrompt(true) }], { max_tokens:2500, temperature:0.35 });
+    const peneira2 = peneirarReferencias(bruta2);
+    if (peneira2.validas.length > peneira.validas.length) peneira = peneira2;
+  }
+
+  return {
+    resposta: peneira.texto || 'Nenhuma referência válida gerada.',
+    referencias_validas: peneira.validas.length,
+    referencias_pedidas: numRefs,
+    referencias_rejeitadas: peneira.invalidas,
+  };
 }
 
 /* ---------------- PLANO ACADÉMICO ---------------- */
@@ -1092,6 +1133,17 @@ CREATE TABLE IF NOT EXISTS parceiros (
   activo BOOLEAN DEFAULT true,
   criado_em TIMESTAMPTZ DEFAULT NOW()
 );
+INSERT INTO precos (faixa_inicio, faixa_fim, preco, label, ativo) VALUES
+  (0, 15, 1850, '0-15 páginas', true),
+  (16, 20, 2250, '16-20 páginas', true),
+  (21, 30, 5500, '21-30 páginas', true),
+  (31, 50, 8500, '31-50 páginas', true)
+ON CONFLICT (faixa_inicio, faixa_fim) DO NOTHING;
+INSERT INTO planos_grafica (nome, paginas, preco, ativo) VALUES
+  ('Gráfica 150', 150, 15000, true),
+  ('Gráfica 300', 300, 25000, true),
+  ('Gráfica 500', 500, 40000, true)
+ON CONFLICT (nome) DO NOTHING;
   `;
   try {
     const r = await fetch(`${url}/rest/v1/rpc/`, {
@@ -1219,6 +1271,32 @@ async function callAI(messages, opts={}) {
     }
   }
   throw new Error('Todas as engines falharam: '+lastErr);
+}
+
+/* ---------------- PENEIRA DE REFERÊNCIAS ---------------- */
+function peneirarReferencias(texto) {
+  if (!texto) return { validas: [], invalidas: 0, texto: '' };
+  const anoAtual = new Date().getFullYear();
+  const blocos = texto.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+  const padraoRef = /^[A-ZÀ-Ü][\wçãáéíóúâêôõüÇÃÁÉÍÓÚÂÊÔÕÜ.,&\s]{2,80}\(\d{4}\)\.\s*.{10,}/;
+  const vistos = new Set();
+  const validas = [];
+  let invalidas = 0;
+  for (const bloco of blocos) {
+    const b = bloco.replace(/\s+/g, ' ').trim();
+    const matchAno = b.match(/\((\d{4})\)/);
+    const ano = matchAno ? parseInt(matchAno[1]) : null;
+    const formaOk  = padraoRef.test(b);
+    const anoOk    = ano && ano >= 1950 && ano <= anoAtual;
+    const tamanhoOk = b.length >= 40 && b.length <= 400;
+    if (!formaOk || !anoOk || !tamanhoOk) { invalidas++; continue; }
+    const aposAno = b.split(/\(\d{4}\)\.\s*/)[1] || b;
+    const chave = aposAno.toLowerCase().replace(/[^\wà-ü]/g, '').substring(0, 60);
+    if (vistos.has(chave)) { invalidas++; continue; }
+    vistos.add(chave);
+    validas.push(b);
+  }
+  return { validas, invalidas, texto: validas.join('\n\n') };
 }
 
 /* ---------------- JSON EXTRACTOR ---------------- */

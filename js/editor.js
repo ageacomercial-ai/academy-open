@@ -32,7 +32,7 @@ function sEditor(secsArg, cfgArg, qualArg, isEx) {
     <div class="ed-titulo">${tema}</div>
     <div class="ed-linha"></div>
     <div class="ed-meta">
-      ${mbs.length ? mbs.join('<br/>') : u?.nome || isEx?.autor || 'Autor'}
+      ${mbs.length ? mbs.join('<br/>') : isEx?.autor || cfg.autor || 'Autor'}
       ${prof  ? `<br/>Orientador: ${prof}` : ''}
       ${inst  ? `<br/>${inst}`             : ''}
       ${nivel ? `<br/>${nivel}`            : ''}
@@ -782,7 +782,7 @@ function abrirML() {
   const tp  = tipoActual() || { n: 'Trabalho Académico' };
   abrirModoLeitura(secs, {
     titulo: cfg.tema, tipo: tp.n, inst: cfg.inst, prof: cfg.prof,
-    nivel: cfg.nivel, autor: cfg.mbs.length ? cfg.mbs.join(', ') : State.get('u')?.nome || '',
+    nivel: cfg.nivel, autor: cfg.mbs.length ? cfg.mbs.join(', ') : cfg.autor || '',
   });
 }
 

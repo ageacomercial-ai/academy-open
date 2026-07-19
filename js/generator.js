@@ -411,6 +411,9 @@ async function iniciarGer(retomar) {
             objetivo:            (plano.objetivo || '').substring(0, 120),
             hipotese:            (plano.hipotese || '').substring(0, 100),
             metodologia:         (plano.metodologia || '').substring(0, 100),
+            inst:                State.getCfg('inst'),
+            prof:                State.getCfg('prof'),
+            area:                State.getCfg('area'),
             instrucaoSubtitulos: `Cada subtópico em capSubs DEVE aparecer como subtítulo numerado em linha própria.`,
             instrucaoVariacao:   _INSTRUCAO_ANTI_IA(cap.num, cap.subs?.length || 0),
             memoriaDocumento:    DOC_MEMORY.gerarInstrucao(),
@@ -537,7 +540,7 @@ function calcStats(secs) {
   const txt      = secs.map(s => s.c || s.conteudo || '').join(' ');
   const palavras = txt.split(/\s+/).filter(Boolean).length;
   const chars    = txt.replace(/\s/g, '').length;
-  const pags     = Math.max(1, Math.ceil(palavras / 280));
+  const pags     = Math.max(1, Math.ceil(palavras / 370));
   const refs     = secs.filter(s => (s.titulo || '').toLowerCase().includes('referência')).length;
   const tempoLeit = Math.max(1, Math.ceil(palavras / 200));
   return { palavras, chars, pags, refs, tempoLeit };

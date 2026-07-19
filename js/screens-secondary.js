@@ -394,7 +394,7 @@ function sSobre() {
    PLANOS & PREÇOS
 ════════════════════════════════════════════════════════════ */
 function sPlanosPrecos(opts) {
-  const planoAtual = planoActivo();
+  const planoAtual = 'gratuito';
   const creditos   = getCreditos();
   const temCred    = temCreditoActivo();
   const creditoPags = getCreditosPags();
@@ -411,37 +411,50 @@ function sPlanosPrecos(opts) {
     <div style="background:var(--z2);border:.5px solid var(--e1);border-radius:var(--r2);padding:14px 16px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
       <div style="font-size:22px">${PLANOS_DEF[planoAtual]?.ic || '🎁'}</div>
       <div style="flex:1">
-        <div style="font-family:var(--fm);font-size:8px;color:var(--t3);letter-spacing:.1em;margin-bottom:3px">PLANO ACTUAL</div>
-        <div style="font-size:14px;font-weight:700;color:var(--t1)">${PLANOS_DEF[planoAtual]?.n || 'Gratuito'}</div>
+        <div style="font-family:var(--fm);font-size:8px;color:var(--t3);letter-spacing:.1em;margin-bottom:3px">SALDO ACTUAL</div>
+        <div style="font-size:14px;font-weight:700;color:var(--t1)">${temCred ? `${creditoPags} páginas` : 'Nenhum crédito'}</div>
         <div style="font-size:12px;color:var(--t3);margin-top:2px">
-          ${planoAtual === 'gratuito'
-            ? (creditos.gen_usada ? 'Geração gratuita já utilizada' : '1 geração gratuita disponível')
-            : `${creditos.pags || 0} / ${PLANOS_DEF[planoAtual]?.pags_mes} páginas usadas · ${getSaldoDisponivel()} restantes`}
-          ${temCred ? ` · 📄 ${creditoPags} págs crédito` : ''}
+          ${temCred ? `${creditoPags} páginas disponíveis` : (creditos.gen_usada ? 'Geração gratuita já utilizada' : '1 geração gratuita disponível')}
         </div>
-        ${diasRest !== null ? `<div style="font-family:var(--fm);font-size:9px;color:${expCor};margin-top:4px">${diasRest <= 0 ? '⚠️ Plano expirado — renova para continuar' : `⏳ Expira em ${diasRest} dia(s) · ${getSaldoExpiracao()}`}</div>` : ''}
-        ${diasRest !== null && diasRest <= 3 && diasRest > 0 ? `<div style="font-family:var(--fm);font-size:9px;color:#FBBF24;margin-top:2px">⚠️ O teu plano expira em breve. Renova para não perderes o acesso.</div>` : ''}
+        ${diasRest !== null ? `<div style="font-family:var(--fm);font-size:9px;color:${expCor};margin-top:4px">${diasRest <= 0 ? '⚠️ Crédito expirado' : `⏳ Expira em ${diasRest} dia(s) · ${getSaldoExpiracao()}`}</div>` : ''}
+        ${diasRest !== null && diasRest <= 3 && diasRest > 0 ? `<div style="font-family:var(--fm);font-size:9px;color:#FBBF24;margin-top:2px">⚠️ O teu crédito expira em breve. Renova para não perderes o saldo.</div>` : ''}
       </div>
     </div>
 
-    <!-- Pacotes de crédito -->
-    <div style="font-family:var(--fm);font-size:8px;letter-spacing:.14em;color:var(--b);margin-bottom:10px;text-transform:uppercase">● Pacotes de Crédito (páginas)</div>
+    <!-- Pacotes de crédito — utilizador comum -->
+    <div style="font-family:var(--fm);font-size:8px;letter-spacing:.14em;color:var(--b);margin-bottom:10px;text-transform:uppercase">● Créditos (páginas) — Utilizador</div>
     <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r2);overflow:hidden;margin-bottom:20px">
-      ${[
-        { pags: 15,   preco: 950,   desc: 'Pacote Base',         popular: false },
-        { pags: 30,   preco: 1650,  desc: 'Pacote Essencial',    popular: true  },
-        { pags: 200,  preco: 12000, desc: 'Pacote Avançado',     popular: false },
-        { pags: 500,  preco: 29500, desc: 'Pacote Profissional', popular: false },
-        { pags: 1000, preco: 60000, desc: 'Pacote Premium',      popular: false },
-      ].map((p, i, arr) => `
-      <div style="padding:12px 16px;${i < arr.length - 1 ? 'border-bottom:.5px solid var(--e0);' : ''}display:flex;align-items:center;gap:12px;${p.popular ? 'background:var(--sf3);' : ''}">
+      ${getPrecosCache().map((f, i, arr) => {
+        const pags = f.faixa_fim;
+        const preco = calcPreco(pags);
+        const label = `${f.faixa_inicio}-${f.faixa_fim} páginas`;
+        const popular = f.faixa_inicio <= 0 && f.faixa_fim >= 15;
+        return `
+        <div style="padding:12px 16px;${i < arr.length - 1 ? 'border-bottom:.5px solid var(--e0);' : ''}display:flex;align-items:center;gap:12px;${popular ? 'background:var(--sf3);' : ''}">
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600;color:var(--t1)">${label} ${popular ? '<span style="font-family:var(--fm);font-size:8px;background:var(--b);color:var(--t-inv);padding:2px 6px;border-radius:8px;margin-left:4px">MAIS VENDIDO</span>' : ''}</div>
+            <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-top:2px">até ${pags} páginas · válido 30 dias</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:14px;font-weight:700;color:var(--b)">${preco.toLocaleString()} Kz</div>
+            <button class="btn B s" onclick="_iniciarPagamentoAvulso(${pags},${preco})" style="margin-top:4px;font-size:10px;padding:5px 10px">Comprar →</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+
+    <!-- Planos Gráfica -->
+    <div style="font-family:var(--fm);font-size:8px;letter-spacing:.14em;color:var(--o);margin-bottom:10px;text-transform:uppercase">● Planos Gráfica / Cyber</div>
+    <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r2);overflow:hidden;margin-bottom:20px">
+      ${getPlanosGraficaCache().map((p, i, arr) => `
+      <div style="padding:12px 16px;${i < arr.length - 1 ? 'border-bottom:.5px solid var(--e0);' : ''}display:flex;align-items:center;gap:12px;">
         <div style="flex:1">
-          <div style="font-size:13px;font-weight:600;color:var(--t1)">${p.desc} ${p.popular ? '<span style="font-family:var(--fm);font-size:8px;background:var(--b);color:var(--t-inv);padding:2px 6px;border-radius:8px;margin-left:4px">POPULAR</span>' : ''}</div>
-          <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-top:2px">${p.pags} páginas · válido 30 dias</div>
+          <div style="font-size:13px;font-weight:600;color:var(--t1)">${p.nome}</div>
+          <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-top:2px">${p.paginas} páginas · válido 30 dias</div>
         </div>
         <div style="text-align:right">
-          <div style="font-size:14px;font-weight:700;color:var(--b)">${p.preco.toLocaleString()} Kz</div>
-          <button class="btn B s" onclick="_iniciarPagamentoAvulso(${p.pags},${p.preco})" style="margin-top:4px;font-size:10px;padding:5px 10px">Comprar →</button>
+          <div style="font-size:14px;font-weight:700;color:var(--o)">${p.preco.toLocaleString()} Kz</div>
+          <button class="btn O s" onclick="_iniciarPagamentoAvulso(${p.paginas},${p.preco})" style="margin-top:4px;font-size:10px;padding:5px 10px">Comprar →</button>
         </div>
       </div>`).join('')}
     </div>

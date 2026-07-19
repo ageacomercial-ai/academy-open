@@ -106,28 +106,9 @@ function _adminSecPagamentos() {
 function _adminSecSenhas(historico) {
   return `
   <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:12px;padding:18px;margin-bottom:14px">
-    <div style="font-size:13px;font-weight:700;color:var(--t1);margin-bottom:14px">🔑 Gerar Senha de Acesso</div>
-    <label class="lbl" style="font-size:11px">Tipo</label>
-    <select class="inp" id="adminTipo" style="margin-bottom:12px;font-size:13px;padding:10px 12px">
-      ${Object.entries(SENHA_TIPOS).map(([id, t]) =>
-        `<option value="${id}">${t.desc} — ${(t.preco||t.valor||PLANOS_DEF[t.plano]?.preco||0).toLocaleString()} Kz</option>`
-      ).join('')}
-    </select>
-    <button class="btn B w" onclick="adminGerarSenha()" style="font-size:14px;padding:14px">⚡ Gerar Senha</button>
-    <div id="adminSenhaGerada" style="display:none;margin-top:14px;background:var(--sf3);border:.5px solid var(--eb);border-radius:10px;padding:16px;text-align:center">
-      <div style="font-size:10px;font-family:var(--fm);color:var(--t3);margin-bottom:8px;letter-spacing:.1em">SENHA GERADA</div>
-      <div id="adminSenhaTexto" style="font-size:22px;font-weight:800;color:var(--b);letter-spacing:.1em;font-family:var(--fm);margin-bottom:12px;word-break:break-all"></div>
-      <div style="display:flex;gap:10px;justify-content:center">
-        <button class="btn B s" onclick="adminCopiar()" style="font-size:12px;padding:8px 16px">📋 Copiar</button>
-        <button class="btn G s" onclick="adminWhatsApp()" style="font-size:12px;padding:8px 16px">💬 WhatsApp</button>
-      </div>
-    </div>
-  </div>
-
-  <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:12px;padding:18px;margin-bottom:14px">
-    <div style="font-size:13px;font-weight:700;color:#FBBF24;margin-bottom:12px">🎁 Código Promocional</div>
+    <div style="font-size:13px;font-weight:700;color:#FBBF24;margin-bottom:12px">🎁 Código Promocional (páginas bónus)</div>
     <div style="display:flex;gap:10px;margin-bottom:10px">
-      <input class="inp" id="adminPromoPags" type="number" min="1" max="9999" value="50" style="flex:1;font-size:14px;text-align:center;padding:10px" placeholder="Páginas bónus"/>
+      <input class="inp" id="adminPromoPags" type="number" min="1" max="9999" value="15" style="flex:1;font-size:14px;text-align:center;padding:10px" placeholder="Páginas bónus"/>
       <button class="btn B" onclick="adminGerarPromo()" style="font-size:13px;padding:10px 16px">Gerar</button>
     </div>
     <div id="adminPromoResult" style="display:none;background:var(--z3);border:.5px solid var(--eb);border-radius:8px;padding:14px;margin-top:10px;text-align:center">
@@ -141,22 +122,22 @@ function _adminSecSenhas(historico) {
   </div>
 
   <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:12px;padding:18px">
-    <div style="font-size:13px;font-weight:700;color:var(--t1);margin-bottom:12px">📜 Últimas Senhas</div>
-    ${historico.slice(0,10).map(h => `
+    <div style="font-size:13px;font-weight:700;color:var(--t1);margin-bottom:12px">📜 Últimos Códigos</div>
+    ${historico.slice(0,15).map(h => `
     <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--z3);border-radius:8px;margin-bottom:6px">
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;font-weight:600;color:var(--b);font-family:var(--fm);letter-spacing:.04em">${h.senha}</div>
         <div style="font-size:10px;color:var(--t3);margin-top:2px">${h.desc} · ${h.data}</div>
       </div>
       <div style="font-size:10px;font-weight:600;color:${h.usada?'#f87171':'var(--b)'};background:${h.usada?'rgba(248,113,113,.12)':'rgba(67,232,167,.12)'};padding:4px 10px;border-radius:6px">${h.usada?'USADA':'OK'}</div>
-    </div>`).join('') || '<div style="font-size:13px;color:var(--t3);padding:12px 0;text-align:center">Nenhuma senha gerada ainda</div>'}
+    </div>`).join('') || '<div style="font-size:13px;color:var(--t3);padding:12px 0;text-align:center">Nenhum código gerado ainda</div>'}
   </div>`;
 }
 
 function _adminSecPrecos() {
   return `
-  <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:12px;padding:18px">
-    <div style="font-size:13px;font-weight:700;color:var(--t1);margin-bottom:14px">💰 Tabela de Preços</div>
+  <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:12px;padding:18px;margin-bottom:14px">
+    <div style="font-size:13px;font-weight:700;color:var(--b);margin-bottom:14px">💰 Preços — Utilizador Comum (faixas)</div>
     <div id="adminPrecosLista">
       ${(getPrecosCache()||[]).map(p => `
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
@@ -165,8 +146,24 @@ function _adminSecPrecos() {
         <span style="font-size:12px;color:var(--t3);font-weight:600;width:35px">Kz</span>
       </div>`).join('')}
     </div>
-    <button class="btn B s" onclick="adminGuardarPrecos()" style="font-size:13px;padding:12px 24px;margin-top:8px">💾 Guardar Alterações</button>
+    <button class="btn B s" onclick="adminGuardarPrecos()" style="font-size:13px;padding:12px 24px;margin-top:8px">💾 Guardar Faixas</button>
     <div id="adminPrecosStatus" style="font-size:11px;margin-top:10px;font-weight:500"></div>
+  </div>
+
+  <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:12px;padding:18px">
+    <div style="font-size:13px;font-weight:700;color:var(--o);margin-bottom:14px">🖨 Planos Gráfica / Cyber</div>
+    <div id="adminGraficaLista">
+      ${(getPlanosGraficaCache()||[]).map(p => `
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <span style="font-size:13px;color:var(--t3);width:90px;flex-shrink:0;font-weight:500">${p.nome}</span>
+        <input class="inp" value="${p.paginas}" style="flex:1;font-size:15px;margin:0;text-align:right;padding:10px 12px" id="grafPags_${p.nome.replace(/\s/g,'_')}"/>
+        <span style="font-size:12px;color:var(--t3)">págs</span>
+        <input class="inp" value="${p.preco}" style="flex:1;font-size:15px;margin:0;text-align:right;padding:10px 12px" id="grafPreco_${p.nome.replace(/\s/g,'_')}"/>
+        <span style="font-size:12px;color:var(--t3)">Kz</span>
+      </div>`).join('')}
+    </div>
+    <button class="btn O s" onclick="adminGuardarGrafica()" style="font-size:13px;padding:12px 24px;margin-top:8px">💾 Guardar Planos Gráfica</button>
+    <div id="adminGraficaStatus" style="font-size:11px;margin-top:10px;font-weight:500"></div>
   </div>`;
 }
 
@@ -247,7 +244,7 @@ function _adminSecRelatorios() {
 ════════════════════════════════════════════════════════════ */
 function adminGerarSenha() {
   const tipo  = document.getElementById('adminTipo')?.value;
-  if (!tipo) return;
+  if (!tipo) { mostrarToast('Usa "Código Promocional" para gerar códigos.'); return; }
   const senha = gerarSenha(tipo);
   if (!senha) return;
   _adminSenhaActual = senha;
@@ -258,7 +255,7 @@ function adminGerarSenha() {
 
   const hist = LS.get('senhas_geradas') || [];
   hist.unshift({
-    senha, desc: SENHA_TIPOS[tipo]?.desc || tipo,
+    senha, desc: tipo,
     data: new Date().toLocaleDateString('pt-PT'), usada: false,
   });
   LS.set('senhas_geradas', hist.slice(0, 50));
@@ -299,11 +296,9 @@ function adminWAPromo() {
 }
 
 function adminWhatsApp() {
-  const tipo = SENHA_TIPOS[_adminTipoActual];
   const msg  = encodeURIComponent(
-    `Olá! Aqui está a tua senha de acesso ao ACADEMY:\n\n*${_adminSenhaActual}*\n\n` +
-    `✓ Válida para: ${tipo?.desc || 'Acesso'}\n\n` +
-    `Como activar:\n1. Abre o ACADEMY\n2. Vai a Planos → "Activar com Senha"\n3. Insere o código acima\n\n` +
+    `Olá! Aqui está o teu código de acesso ao ACADEMY:\n\n*${_adminSenhaActual}*\n\n` +
+    `Como activar:\n1. Abre o ACADEMY\n2. Vai a Planos → "Activar com Senha"\n3. Insere o código\n\n` +
     `Grupo AGEA Comercial`
   );
   window.open(`https://wa.me/?text=${msg}`, '_blank');
@@ -367,26 +362,16 @@ async function adminAprovar(id, tipo, plano, numPags, meses, nome, wa) {
   if (card) card.style.opacity = '.5';
   await sbAprovar(id);
 
-  let senhaGerada = '';
-  try {
-    if (tipo === 'plano' && plano) {
-      const mapPlano = { estudante: 'EST', grafica: 'GRF', premium: 'PREM' };
-      const tipoSenha = mapPlano[plano] || 'EST';
-      senhaGerada = gerarSenha(tipoSenha);
-    } else {
-      const mapPags = { 15: 'C15', 30: 'C30', 200: 'C200', 500: 'C500', 1000: 'C1K' };
-      const chave   = Object.keys(mapPags).find(k => parseInt(k) >= numPags) || '1000';
-      senhaGerada   = gerarSenha(mapPags[chave] || 'C15');
-    }
-  } catch (e) { console.warn('[ADMIN] gerarSenha err:', e); }
+  const pagsFinal = numPags || 15;
+  const senhaGerada = gerarSenhaPromo(pagsFinal, `Compra aprovada: ${pagsFinal} páginas`);
 
   if (senhaGerada) {
     const hist = LS.get('senhas_geradas') || [];
-    hist.unshift({ senha: senhaGerada, desc: `Aprovação: ${nome}`, data: new Date().toLocaleDateString('pt-PT'), usada: false });
+    hist.unshift({ senha: senhaGerada, desc: `Aprovação: ${nome} — ${pagsFinal}p`, data: new Date().toLocaleDateString('pt-PT'), usada: false });
     LS.set('senhas_geradas', hist.slice(0, 50));
   }
 
-  mostrarToast(`✓ Pagamento de ${nome} aprovado.`);
+  mostrarToast(`✓ Pagamento de ${nome} aprovado — ${pagsFinal} páginas.`);
 
   if (card) {
     card.style.opacity  = '1';
@@ -396,12 +381,12 @@ async function adminAprovar(id, tipo, plano, numPags, meses, nome, wa) {
       <div style="display:flex;align-items:center;gap:12px;padding:6px 0">
         <div style="font-size:24px">✅</div>
         <div>
-          <div style="font-size:15px;font-weight:700;color:var(--b)">${nome} — Aprovado</div>
+          <div style="font-size:15px;font-weight:700;color:var(--b)">${nome} — Aprovado (${pagsFinal}p)</div>
           ${senhaGerada ? `
-          <div style="font-size:12px;color:var(--t2);margin-top:6px">Senha: <strong style="color:var(--b);font-family:var(--fm)">${senhaGerada}</strong></div>
+          <div style="font-size:12px;color:var(--t2);margin-top:6px">Código: <strong style="color:var(--b);font-family:var(--fm)">${senhaGerada}</strong></div>
           <div style="display:flex;gap:8px;margin-top:10px">
             <button class="btn B s" style="font-size:11px;padding:6px 12px" onclick="navigator.clipboard?.writeText('${senhaGerada}').then(()=>mostrarToast('✓ Copiada!'))">📋 Copiar</button>
-            ${wa ? `<a href="https://wa.me/${wa.replace(/\D/g,'')}?text=${encodeURIComponent(`Olá ${nome}! Aqui está a tua senha ACADEMY:\n\n*${senhaGerada}*\n\nActivar em: Planos → "Activar com Senha"\n\nGrupo AGEA Comercial`)}" target="_blank" class="btn G s" style="font-size:11px;text-decoration:none;padding:6px 12px">💬 Enviar WA</a>` : ''}
+            ${wa ? `<a href="https://wa.me/${wa.replace(/\D/g,'')}?text=${encodeURIComponent(`Olá ${nome}! Aqui está o teu código ACADEMY:\n\n*${senhaGerada}*\n\nActivar em: Planos → "Activar com Senha"\n\nGrupo AGEA Comercial`)}" target="_blank" class="btn G s" style="font-size:11px;text-decoration:none;padding:6px 12px">💬 Enviar WA</a>` : ''}
           </div>` : ''}
         </div>
       </div>`;
@@ -490,6 +475,48 @@ async function adminGuardarPrecos() {
 /* ════════════════════════════════════════════════════════════
    PARCEIROS E COMISSÕES (ADMIN)
 ════════════════════════════════════════════════════════════ */
+/* ── Guardar planos gráfica ── */
+async function adminGuardarGrafica() {
+  const status = document.getElementById('adminGraficaStatus');
+  if (!status) return;
+  status.textContent = 'A guardar…';
+  status.style.color = 'var(--t3)';
+  try {
+    const lista = getPlanosGraficaCache() || [];
+    let atualizados = 0;
+    for (const p of lista) {
+      const key = p.nome.replace(/\s/g, '_');
+      const pagsInp = document.getElementById(`grafPags_${key}`);
+      const precoInp = document.getElementById(`grafPreco_${key}`);
+      if (!pagsInp || !precoInp) continue;
+      const novasPags = parseInt(pagsInp.value);
+      const novoPreco = parseInt(precoInp.value);
+      if (isNaN(novasPags) || isNaN(novoPreco) || novoPreco < 0) continue;
+      if (novasPags === p.paginas && novoPreco === p.preco) continue;
+      await fetch(SB_URL + `/rest/v1/planos_grafica?nome=eq.${encodeURIComponent(p.nome)}`, {
+        method: 'PATCH',
+        headers: { ...SB_H(), 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ paginas: novasPags, preco: novoPreco }),
+      });
+      p.paginas = novasPags;
+      p.preco = novoPreco;
+      atualizados++;
+    }
+    if (atualizados > 0) {
+      _planosGraficaCache = lista;
+      status.textContent = `✓ ${atualizados} plano(s) actualizado(s)!`;
+      status.style.color = 'var(--b)';
+      mostrarToast('✓ Planos gráfica actualizados!');
+    } else {
+      status.textContent = 'Nenhuma alteração.';
+      status.style.color = 'var(--t3)';
+    }
+  } catch (e) {
+    status.textContent = '✗ Erro: ' + (e.message || '');
+    status.style.color = '#f87171';
+  }
+}
+
 async function carregarParceirosAdmin() {
   const el = document.getElementById('adminParceiros');
   if (!el) return;

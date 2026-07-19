@@ -28,6 +28,7 @@ const _estado = {
     nivel:            '',     /* nível académico */
     turma:            '',     /* turma/ano */
     area:             '',     /* área do curso */
+    autor:            '',     /* nome do autor (preenchimento manual) */
     prof:             '',     /* nome do professor/orientador */
     inst:             '',     /* nome da instituição */
     logo:             null,   /* logo da instituição (base64) */
@@ -104,7 +105,7 @@ const State = {
 
   /* Reset completo do documento em curso (mantém sessão e plano) */
   resetDocumento() {
-    _estado.cfg          = { ..._estado.cfg, tipo: null, tema: '', nivel: '', turma: '', area: '', prof: '', inst: '', logo: null, logoPrev: null, pags: 15, numCaps: 5, mbs: [], refStyle: 'APA', estruturaProf: '', dedicatoria: '', agradecimentos: '', epigrafe: '', epigrafAutor: '', mediaItems: [], postextuais: [] };
+    _estado.cfg          = { ..._estado.cfg, tipo: null, tema: '', nivel: '', turma: '', area: '', autor: '', prof: '', inst: '', logo: null, logoPrev: null, pags: 15, numCaps: 5, mbs: [], refStyle: 'APA', estruturaProf: '', dedicatoria: '', agradecimentos: '', epigrafe: '', epigrafAutor: '', mediaItems: [], postextuais: [] };
     _estado.plano        = null;
     _estado.est          = null;
     _estado.secs         = [];
@@ -209,9 +210,6 @@ const PAGS     = [5, 8, 10, 15, 20, 25, 30, 40, 50, 80, 100];
 
 const PLANOS_DEF = {
   gratuito:  { n: 'Gratuito',  pags_mes: 9999, wm: true,  preco: 0,     cor: 'var(--t3)', ic: '🎁' },
-  estudante: { n: 'Estudante', pags_mes: 70,   wm: false, preco: 5400,  cor: 'var(--b)',  ic: '🎓' },
-  grafica:   { n: 'Gráfica',   pags_mes: 200,  wm: false, preco: 15000, cor: 'var(--o)',  ic: '🖨'  },
-  premium:   { n: 'Premium',   pags_mes: 1000, wm: false, preco: 30000, cor: '#A78BFA',  ic: '⚡'  },
 };
 
 /* Helpers rápidos usados em vários módulos */
@@ -220,5 +218,5 @@ const getEstruturaTipo = (tipoId) => ESTRUTURAS_TIPO[tipoId] || ESTRUTURAS_TIPO[
 const nPags = () => {
   const secs = State.get('secs');
   if (!secs.length) return State.getCfg('pags') || 15;
-  return Math.max(1, Math.ceil(secs.reduce((s, x) => s + (x.c?.split(' ').length || 0), 0) / 250));
+  return Math.max(1, Math.ceil(secs.reduce((s, x) => s + (x.c?.split(' ').length || 0), 0) / 370));
 };

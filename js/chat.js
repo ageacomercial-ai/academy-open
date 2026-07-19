@@ -632,7 +632,7 @@ function abrirEditorConversacional() {
   ecState.metadados = {
     tipo: tp.n, sigla: tp.s, tema: cfg.tema || '',
     inst: cfg.inst || '', prof: cfg.prof || '', nivel: cfg.nivel || '',
-    autores: cfg.mbs?.length ? cfg.mbs : [State.get('u')?.nome || ''],
+    autores: cfg.mbs?.length ? cfg.mbs : [cfg.autor || ''],
     refStyle: cfg.refStyle || 'APA',
   };
   ecState.mensagensChat     = [];

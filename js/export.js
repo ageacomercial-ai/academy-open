@@ -89,25 +89,26 @@ UNESCO. (${ano - 1}). Relatório global de educação. UNESCO.
 Universidade Agostinho Neto. (2020). Regulamento de trabalhos de fim de curso. UAN.`;
 }
 
-async function refGerarAPA(tema, tipo) {
+async function refGerarAPA(tema, tipo, nivel, area) {
   mostrarToast('📚 A gerar referências bibliográficas APA…');
   try {
     const res = await callAcademyAPI({
-      acao:         'chat',
-      tema:         tema || 'trabalho académico',
+      acao:         'gerar_referencias',
+      tema:         tema || '',
       tipoTrabalho: tipo || 'Trabalho Académico',
-      pedido:       `Gera exactamente 10 referências bibliográficas no formato APA 7ª edição para um trabalho sobre "${tema || 'este tema'}". Inclui pelo menos 3 autores africanos ou angolanos e 2 publicações recentes (2018-${new Date().getFullYear()}). Ordena alfabeticamente. Sem bullets ou numeração — texto corrido linha por linha, cada referência separada por linha em branco.`,
-      historico:    [],
+      nivel:        nivel || '',
+      area:         area || '',
+      totalPags:    State.getCfg('pags') || 15,
     });
-    return typeof res === 'string' ? res : refGerarFallback(tema);
-  } catch { return refGerarFallback(tema); }
+    return typeof res === 'string' && res.length > 20 ? res : '';
+  } catch { return ''; }
 }
 
-async function refAnexarAoDocumento(secs, tema, tipo) {
+async function refAnexarAoDocumento(secs, tema, tipo, nivel, area) {
   const d = refDetectar(secs);
   if (d.temRef && d.count >= REF_MIN) return secs;
 
-  const conteudoRefs = await refGerarAPA(tema, tipo);
+  const conteudoRefs = await refGerarAPA(tema, tipo, nivel, area);
 
   if (d.temRef) {
     /* Actualizar secção existente */
@@ -153,7 +154,7 @@ async function refGateExportacao(secs, meta, onContinuar) {
 
   document.getElementById('refBtnGerar').onclick = async () => {
     modal.remove();
-    const secsComRef = await refAnexarAoDocumento(secs, meta.titulo || '', meta.tipo || '');
+    const secsComRef = await refAnexarAoDocumento(secs, meta.titulo || '', meta.tipo || '', meta.nivel || '', meta.area || '');
     mostrarToast('✓ Referências adicionadas. A exportar…');
     onContinuar(secsComRef);
   };
@@ -181,8 +182,8 @@ function expPDF(exId) {
     const mbs = cfg.mbs?.filter(m => m?.nome?.trim()) || [];
     const autores = mbs.length
       ? mbs.map(m => m.nome.trim()).join('\n')
-      : (State.get('u')?.nome || '');
-    meta = { titulo: cfg.tema, tipo: tp.n, sigla: tp.s, inst: cfg.inst, prof: cfg.prof, nivel: cfg.nivel, autor: autores, mbs: mbs, isEx: false, capaImg: capa.imagem || null, logoInst: capa.logoInst || null, logoRepublica: capa.logoRepublica || null, usarCapa: capa.usarCapa !== false };
+      : (cfg.autor || '');
+    meta = { titulo: cfg.tema, tipo: tp.n, sigla: tp.s, inst: cfg.inst, prof: cfg.prof, nivel: cfg.nivel, area: cfg.area, autor: autores, mbs: mbs, isEx: false, capaImg: capa.imagem || null, logoInst: capa.logoInst || null, logoRepublica: capa.logoRepublica || null, usarCapa: capa.usarCapa !== false };
   }
 
   /* Gate de monetização */
@@ -236,10 +237,10 @@ function expDocx(exId) {
     const tp  = tipoActual() || { n: 'Trabalho Académico', s: 'TFC' };
     const cfg = State.get('cfg');
     meta = {
-      titulo: cfg.tema, tipo: tp.n, sigla: tp.s, inst: cfg.inst, prof: cfg.prof, nivel: cfg.nivel,
+      titulo: cfg.tema, tipo: tp.n, sigla: tp.s, inst: cfg.inst, prof: cfg.prof, nivel: cfg.nivel, area: cfg.area,
       autor: cfg.mbs?.length
         ? [...new Set(cfg.mbs.map(m => m.trim()).filter(Boolean))].join('\n')
-        : (State.get('u')?.nome || ''),
+        : (cfg.autor || ''),
       isEx: false,
     };
   }
@@ -539,7 +540,7 @@ function expWord(exId) {
     secs = secsState;
     const tp  = tipoActual() || { n: 'Trabalho Académico', s: 'TFC' };
     const cfg = State.get('cfg');
-    meta = { titulo: cfg.tema, tipo: tp.n, sigla: tp.s, inst: cfg.inst, prof: cfg.prof, nivel: cfg.nivel, autor: cfg.mbs?.length ? [...new Set(cfg.mbs.map(m => m.trim()).filter(Boolean))].join('\n') : State.get('u')?.nome || '', isEx: false };
+    meta = { titulo: cfg.tema, tipo: tp.n, sigla: tp.s, inst: cfg.inst, prof: cfg.prof, nivel: cfg.nivel, area: cfg.area, autor: cfg.mbs?.length ? [...new Set(cfg.mbs.map(m => m.trim()).filter(Boolean))].join('\n') : cfg.autor || '', isEx: false };
   }
   if (!exId) {
     refGateExportacao(secs, meta, secsOk => _expWordExecutar(secsOk, meta));

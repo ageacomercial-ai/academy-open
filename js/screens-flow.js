@@ -71,8 +71,6 @@ function sEntrada() {
 ════════════════════════════════════════════════════════════ */
 function sInicio() {
   const docs       = getDocs();
-  const planoAtual = planoActivo();
-  const planoDef   = PLANOS_DEF[planoAtual];
   const creditos   = getCreditos();
   const nome       = State.get('u')?.nome?.split(' ')[0] || '';
   const cfg        = State.get('cfg');
@@ -82,11 +80,11 @@ function sInicio() {
   /* Toast de expiração se <3 dias */
   if (diasRest !== null && diasRest > 0 && diasRest <= 3 && !sessionStorage.getItem('expWarn')) {
     sessionStorage.setItem('expWarn', '1');
-    setTimeout(() => mostrarToast(`⚠️ Teu plano expira em ${diasRest} dia(s). Renova em Planos →`), 800);
+    setTimeout(() => mostrarToast(`⚠️ Teu crédito expira em ${diasRest} dia(s). Adquire mais páginas em Planos →`), 800);
   }
   if (diasRest !== null && diasRest <= 0 && !sessionStorage.getItem('expWarn')) {
     sessionStorage.setItem('expWarn', '1');
-    setTimeout(() => mostrarToast(`⚠️ Teu plano expirou. Adquire novo plano para continuares a exportar.`), 800);
+    setTimeout(() => mostrarToast(`⚠️ Teu crédito expirou. Adquire novas páginas para continuares.`), 800);
   }
 
   return `
@@ -98,20 +96,19 @@ function sInicio() {
       <span style="color:var(--t2);font-size:20px;font-weight:600">O que criamos hoje?</span>
     </div>
 
-    <!-- Badge do plano e saldo -->
+    <!-- Badge do saldo -->
     <div onclick="irPara('planos')" style="margin-top:14px;background:var(--sf3);border:.5px solid var(--eb);border-radius:var(--r2);padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer">
-      <div style="font-size:16px">${planoDef?.ic || '🎁'}</div>
+      <div style="font-size:16px">🎁</div>
       <div style="flex:1">
-        <div style="font-family:var(--fm);font-size:8px;color:${planoDef?.cor || 'var(--b)'};letter-spacing:.1em">${planoDef?.n || 'Gratuito'}</div>
+        <div style="font-family:var(--fm);font-size:8px;color:var(--b);letter-spacing:.1em">SALDO</div>
         <div style="font-size:12px;color:var(--t2);margin-top:1px">
-          ${planoAtual === 'gratuito'
-            ? (creditos.gen_usada
-                ? `Geração gratuita utilizada · <span style="color:var(--b)">Upgrade →</span>`
-                : `1 geração gratuita disponível · <span style="color:var(--b)">Usar agora →</span>`)
-            : `${creditos.pags || 0} / ${planoDef?.pags_mes} páginas usadas · ${getSaldoDisponivel()} restantes`}
-          ${temCreditoActivo() ? ` · <span style="color:var(--b)">📄 ${getCreditosPags()} págs crédito</span>` : ''}
+          ${temCreditoActivo()
+            ? `${getCreditosPags()} páginas de crédito disponíveis`
+            : (creditos.gen_usada
+                ? `Geração gratuita utilizada · <span style="color:var(--b)">Adquirir páginas →</span>`
+                : `1 geração gratuita disponível · <span style="color:var(--b)">Usar agora →</span>`)}
         </div>
-        ${diasRest !== null ? `<div style="font-family:var(--fm);font-size:8px;color:${expCor};margin-top:2px">${diasRest <= 0 ? '⚠️ Expirado' : `⏳ ${diasRest} dia(s) restantes · até ${getSaldoExpiracao()}`}</div>` : ''}
+        ${diasRest !== null ? `<div style="font-family:var(--fm);font-size:8px;color:${expCor};margin-top:2px">${diasRest <= 0 ? '⚠️ Crédito expirado' : `⏳ ${diasRest} dia(s) restantes · até ${getSaldoExpiracao()}`}</div>` : ''}
       </div>
       <div style="color:var(--t3);font-size:16px">›</div>
     </div>
@@ -356,19 +353,19 @@ function sIdentidade() {
       </div>
     </div>
 
+    <label class="lbl">Nome do Autor</label>
+    <input class="inp" id="iAutor" placeholder="Ex: José Maria dos Santos"
+      value="${State.getCfg('autor') || ''}" style="margin-bottom:14px"
+      oninput="State.setCfg('autor',this.value)"/>
+
     <label class="lbl">Nome do Orientador/Professor</label>
     <input class="inp" id="iProf" placeholder="Ex: Prof. Dr. João Silva"
       value="${State.getCfg('prof') || ''}" style="margin-bottom:14px"
       oninput="State.setCfg('prof',this.value)"/>
 
     <label class="lbl">Nome da Instituição</label>
-    <select class="inp" id="iInst" style="margin-bottom:14px" onchange="mudarInst(this.value)">
-      <option value="">— Selecciona ou escreve abaixo —</option>
-      ${(_instituicoesCache||[]).map(i => `<option value="${i.nome}" ${State.getCfg('inst')===i.nome?'selected':''}>${i.nome}${i.desconto_porcentagem?` (${i.desconto_porcentagem}% desc)`:''}</option>`).join('')}
-      <option value="OUTRA">Outra instituição (escrever manualmente)</option>
-    </select>
-    <input class="inp" id="iInstOutra" placeholder="Ex: Universidade Agostinho Neto"
-      value="${State.getCfg('inst') || ''}" style="margin-bottom:14px;display:${State.getCfg('inst') && !(_instituicoesCache||[]).find(i=>i.nome===State.getCfg('inst'))?'block':'none'}"
+    <input class="inp" id="iInst" placeholder="Ex: Universidade Agostinho Neto"
+      value="${State.getCfg('inst') || ''}" style="margin-bottom:14px"
       oninput="State.setCfg('inst',this.value)"/>
 
     <label class="lbl">Número de capítulos</label>
@@ -423,15 +420,6 @@ function actualizarMembros(n) {
       <input class="inp" placeholder="Nome do integrante ${i+1}" value="${m.nome||''}" style="flex:1;font-size:12px;margin:0" oninput="mbsNome(${i},this.value)"/>
     </div>`
   ).join('');
-}
-function mudarInst(val) {
-  if (val === 'OUTRA') {
-    document.getElementById('iInstOutra').style.display = 'block';
-    State.setCfg('inst', '');
-  } else {
-    document.getElementById('iInstOutra').style.display = 'none';
-    State.setCfg('inst', val);
-  }
 }
 function mbsNome(i, nome) {
   const mbs = State.getCfg('mbs') || [];
@@ -504,16 +492,14 @@ function sPreviewGen() {
     <div style="margin-bottom:12px">
       <div style="font-family:var(--fm);font-size:8px;color:var(--b);letter-spacing:.1em;margin-bottom:8px">ADQUIRIR PÁGINAS</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-        ${[
-          { p: 15,  preco: 950 },
-          { p: 30,  preco: 1650 },
-          { p: 200, preco: 12000 },
-          { p: 500, preco: 29500 },
-        ].filter(opt => opt.p >= pags - saldo).slice(0, 4).map(opt => `
-        <div style="background:var(--z2);border:.5px solid var(--eb);border-radius:var(--r2);padding:10px;text-align:center;cursor:pointer" onclick="_iniciarPagamentoAvulso(${opt.p},${opt.preco})">
-          <div style="font-size:15px;font-weight:700;color:var(--t1)">${opt.p}p</div>
-          <div style="font-family:var(--fm);font-size:9px;color:var(--t3)">${opt.preco.toLocaleString()} Kz</div>
-        </div>`).join('')}
+        ${getPrecosCache().filter(f => f.faixa_fim >= pags - saldo).slice(0, 4).map(f => {
+          const p = f.faixa_fim;
+          const preco = calcPreco(p);
+          return `<div style="background:var(--z2);border:.5px solid var(--eb);border-radius:var(--r2);padding:10px;text-align:center;cursor:pointer" onclick="_iniciarPagamentoAvulso(${p},${preco})">
+            <div style="font-size:15px;font-weight:700;color:var(--t1)">${p}p</div>
+            <div style="font-family:var(--fm);font-size:9px;color:var(--t3)">${preco.toLocaleString()} Kz</div>
+          </div>`;
+        }).join('')}
       </div>
     </div>
     <button class="btn G w" onclick="irPara('planos',{numPags:${pags}})" style="font-size:13px;margin-bottom:22px">
