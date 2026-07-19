@@ -275,6 +275,27 @@ function repararAST(raw, capNum, capTit, subs) {
     version    : 1,
     sections   : [],
   };
+  if (!ast && typeof raw === 'string' && raw.length > 100) {
+    const secs = [];
+    const linhas = raw.split('\n').map(l => l.trim()).filter(Boolean);
+    let secAtual = null;
+    for (const linha of linhas) {
+      const numMatch = linha.match(/^(\d+\.\d+(?:\.\d+)?)\s+(.+)/);
+      if (numMatch && subs.some(s => linha.toLowerCase().includes(s.toLowerCase().substring(0, 15)))) {
+        if (secAtual) secs.push(secAtual);
+        secAtual = { section_id: `${capNum}.${numMatch[1]}`, title: numMatch[2], paragraphs: [] };
+        continue;
+      }
+      if (!secAtual) {
+        secAtual = { section_id: `${capNum}.1`, title: subs?.[0] || 'Introdução', paragraphs: [] };
+      }
+      if (linha.length > 20) secAtual.paragraphs.push(linha);
+    }
+    if (secAtual) secs.push(secAtual);
+    if (secs.length > 0 && secs.some(s => s.paragraphs.length > 0)) {
+      return { ...base, sections: secs, _repaired: true, _repair_reason: 'raw_text_parsed' };
+    }
+  }
   if (!ast) {
     const secsDefault = (Array.isArray(subs) && subs.length > 0 ? subs : [
       'Contextualização', 'Desenvolvimento', 'Análise Crítica'
@@ -757,58 +778,39 @@ ${pNivel.citacoes}
 ${pArea.instrucoes}
 
 FORMATAÇÃO OBRIGATÓRIA:
-- Título do capítulo: "${capNum}. ${capTit}" — NÃO escrevas "Capítulo ${capNum} —"
-- Cada subtítulo (${capNum}.1, ${capNum}.2, etc.) em LINHA PRÓPRIA com linha em branco ANTES e DEPOIS
-- NUNCA coloques o subtítulo e o texto na mesma linha
-- Parágrafos separados por linha em branco
-- Sem bullets, sem markdown
 - Português formal académico
-- ⚠ LIMITE: ${palavras} PALAVRAS — PÁRA ao atingir este limite
+- Cada parágrafo: 3-5 frases completas, sem bullets
 ${p.instrucaoSubtitulos ? '\n' + p.instrucaoSubtitulos : ''}
-${antiIA(capNum, totalCaps, geoInstrucao)}
-
-Escreve o capítulo completo agora.`;
+${antiIA(capNum, totalCaps, geoInstrucao)}`;
 
   const promptAST = prompt + `
 
-FORMATO DE SAÍDA OBRIGATÓRIO — JSON:
-Não escrevas texto livre. Responde APENAS com este JSON (sem markdown, sem \`\`\`):
-{
-  "chapter_id": "${capNum}",
-  "title": "${capTit}",
-  "sections": [
-    {
-      "section_id": "${capNum}.1",
-      "title": "Título do subtópico",
-      "paragraphs": [
-        "Texto do parágrafo 1.",
-        "Texto do parágrafo 2.",
-        "Texto do parágrafo 3."
-      ]
-    }
-  ]
-}
-Cada secção corresponde a um subtópico listado acima.
-Cada parágrafo é uma string completa sem formatação.
+FORMA DE SAÍDA — JSON:
+Não escrevas texto. Gera APENAS o JSON abaixo (sem \`\`\`, sem markdown, sem texto adicional):
+{"chapter_id":"${capNum}","title":"${capTit}","sections":[{"section_id":"${capNum}.1","title":"Primeiro subtópico","paragraphs":["Parágrafo 1.","Parágrafo 2.","Parágrafo 3."]}],"total_paragraphs":${palavras}}
+⚠ LIMITE: ~${palavras} palavras no total, divididas pelos parágrafos.
+Cada parágrafo é uma string completa de texto corrido, sem formatação.
 Mínimo 3 parágrafos por secção.`;
 
-  let r = await callAI([{ role:'user', content:promptAST }], { max_tokens:maxTok, temperature:0.65 });
+  let r1 = await callAI([{ role:'user', content:promptAST }], { max_tokens:maxTok, temperature:0.65 });
   let astRaw = null;
-  try { astRaw = extrairJSON(r); } catch (_) {}
+  try { astRaw = extrairJSON(r1); } catch (_) {}
+  let rawFallback = r1;
 
   if (!validarAST(astRaw)) {
     console.warn(`[AST v73] T1 falhou — retry simplificado — cap ${capNum}`);
     retryCount++;
-    const promptSimples = `Escreve capítulo ${capNum} "${capTit}" sobre "${tema}".
-Subtópicos: ${subs}
-JSON APENAS, sem markdown:
-{"chapter_id":"${capNum}","title":"${capTit}","sections":[{"section_id":"${capNum}.1","title":"Primeiro subtópico","paragraphs":["Parágrafo 1.","Parágrafo 2.","Parágrafo 3."]}]}
-Português formal. Mínimo 3 parágrafos/secção.`;
-    r = await callAI([{ role:'user', content:promptSimples }], { max_tokens:maxTok, temperature:0.5 });
-    try { astRaw = extrairJSON(r); } catch (_) {}
+    const promptSimples = `Gera APENAS JSON para o capítulo ${capNum} "${capTit}" sobre "${tema}".
+Subtópicos: ${capSubs.join('; ')}
+JSON (sem markdown, sem texto):
+{"chapter_id":"${capNum}","title":"${capTit}","sections":[{"section_id":"${capNum}.1","title":"${capSubs[0]||'Introdução'}","paragraphs":["Parágrafo 1.","Parágrafo 2.","Parágrafo 3."]}]}
+Português formal académico. Mínimo 3 parágrafos por secção.`;
+    const r2 = await callAI([{ role:'user', content:promptSimples }], { max_tokens:maxTok, temperature:0.5 });
+    rawFallback = r2;
+    try { astRaw = extrairJSON(r2); } catch (_) {}
   }
 
-  const ast = repararAST(astRaw || r, capNum, capTit, capSubs);
+  const ast = repararAST(astRaw || rawFallback, capNum, capTit, capSubs);
   if (ast._repaired) {
     console.warn(`[AST v72] Reparado — cap ${capNum} — razão: ${ast._repair_reason}`);
   }
