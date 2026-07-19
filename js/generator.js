@@ -643,25 +643,71 @@ function verificarAntesDeGerar(gerarDirecto) {
 }
 
 function _mostrarSaldoInsuficiente(pags, saldo) {
-  mostrarToast(`⚠ Saldo insuficiente: precisas de ${pags} páginas, tens ${saldo}.`);
+  const falta = pags - saldo;
+  const pac   = calcPacote(pags);
   const overlay = document.createElement('div');
   overlay.id = 'saldo-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;z-index:699;background:rgba(0,0,0,.6);backdrop-filter:blur(8px)';
   const div = document.createElement('div');
-  div.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:700;background:var(--z2);border:1.5px solid rgba(248,113,113,.5);border-radius:14px;padding:24px 22px;width:calc(100% - 48px);max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,.7);text-align:center;animation:aparecer .2s;`;
+  div.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:700;background:var(--z2);border:.5px solid var(--e1);border-radius:16px;padding:28px 24px;width:calc(100% - 48px);max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,.7);animation:aparecer .2s;`;
   div.innerHTML = `
-    <div style="font-size:32px;margin-bottom:12px">📄</div>
-    <div style="font-size:15px;font-weight:700;color:var(--t1);margin-bottom:4px">Saldo insuficiente</div>
-    <div style="font-size:13px;color:var(--t2);line-height:1.65;margin-bottom:16px">
-      Este trabalho requer <strong>${pags} páginas</strong>.<br/>
-      Teu saldo actual: <strong>${saldo} páginas</strong>.
+    <button onclick="div.remove();overlay.remove()"
+      style="position:absolute;top:12px;right:14px;background:none;border:none;color:var(--t3);font-size:18px;cursor:pointer;padding:4px">✕</button>
+
+    <div style="display:flex;gap:6px;margin-bottom:20px;justify-content:center">
+      <span style="width:8px;height:8px;border-radius:50%;background:var(--b)"></span>
+      <span style="width:8px;height:8px;border-radius:50%;background:var(--b)"></span>
+      <span style="width:8px;height:8px;border-radius:50%;background:var(--e0)"></span>
     </div>
-    <button onclick="this.closest('#saldo-overlay').remove();irPara('planos',{numPags:${pags}})"
-      style="width:100%;padding:12px;border-radius:10px;background:linear-gradient(135deg,var(--b),var(--bd));border:none;color:var(--t-inv);font-family:var(--fu);font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px">
-      🚀 Adquirir páginas
+
+    <div style="font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:var(--t3);text-transform:uppercase;margin-bottom:4px">Passo 1 de 2 · Verificar saldo</div>
+    <div style="font-size:17px;font-weight:700;color:var(--t1);margin-bottom:16px">Saldo insuficiente</div>
+
+    <div style="background:var(--z3);border-radius:12px;padding:14px;margin-bottom:6px;display:flex;align-items:center;gap:12px">
+      <div style="font-size:20px">📄</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:12px;color:var(--t2)">Precisas</span>
+          <span style="font-size:13px;font-weight:700;color:var(--t1)">${pags} páginas</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:12px;color:var(--t2)">Tens</span>
+          <span style="font-size:13px;font-weight:700;color:#f87171">${saldo} páginas</span>
+        </div>
+        <div style="height:6px;background:var(--e0);border-radius:3px;margin:8px 0 4px;overflow:hidden">
+          <div style="height:100%;width:${Math.min(100, (saldo / pags) * 100)}%;background:linear-gradient(90deg,var(--b),var(--bd));border-radius:3px;transition:width .4s"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="font-size:11px;color:var(--t3)">Faltam <strong style="color:var(--t1)">${falta} páginas</strong></span>
+          <span style="font-size:11px;color:var(--b)">${Math.round((saldo / pags) * 100)}%</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="font-family:var(--fm);font-size:8px;letter-spacing:.12em;color:var(--t3);text-transform:uppercase;margin:18px 0 8px">Passo 2 de 2 · Escolher pacote</div>
+
+    <div style="background:var(--sf3);border:.5px solid var(--eb);border-radius:12px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px">
+      <div style="font-size:22px">🚀</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600;color:var(--t1)">${pac.label}</div>
+        <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-top:2px">${pac.pags} páginas · válido 30 dias</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:15px;font-weight:700;color:var(--b)">${pac.preco.toLocaleString()} Kz</div>
+        <div style="font-family:var(--fm);font-size:8px;color:var(--t3)">${pac.pags}p</div>
+      </div>
+    </div>
+
+    <button onclick="div.remove();overlay.remove();_iniciarPagamentoAvulso(${pac.pags},${pac.preco})"
+      style="width:100%;padding:13px;border-radius:10px;background:linear-gradient(135deg,var(--b),var(--bd));border:none;color:var(--t-inv);font-family:var(--fu);font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px">
+      Comprar ${pac.label} — ${pac.preco.toLocaleString()} Kz →
     </button>
-    <button onclick="document.getElementById('saldo-overlay').remove()"
-      style="width:100%;padding:10px;border-radius:10px;background:transparent;border:.5px solid var(--e0);color:var(--t3);font-family:var(--fu);font-size:13px;cursor:pointer">
+    <button onclick="div.remove();overlay.remove();irPara('planos',{numPags:${pags}})"
+      style="width:100%;padding:10px;border-radius:10px;background:transparent;border:.5px solid var(--e0);color:var(--t3);font-family:var(--fu);font-size:12px;cursor:pointer;margin-bottom:6px">
+      Ver todos os planos
+    </button>
+    <button onclick="div.remove();overlay.remove()"
+      style="width:100%;padding:10px;border-radius:10px;background:transparent;border:none;color:var(--t3);font-family:var(--fu);font-size:12px;cursor:pointer">
       Voltar
     </button>`;
   overlay.onclick = () => { div.remove(); overlay.remove(); };

@@ -97,20 +97,22 @@ function sInicio() {
     </div>
 
     <!-- Badge do saldo -->
-    <div onclick="irPara('planos')" style="margin-top:14px;background:var(--sf3);border:.5px solid var(--eb);border-radius:var(--r2);padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer">
-      <div style="font-size:16px">🎁</div>
-      <div style="flex:1">
-        <div style="font-family:var(--fm);font-size:8px;color:var(--b);letter-spacing:.1em">SALDO</div>
-        <div style="font-size:12px;color:var(--t2);margin-top:1px">
-          ${temCreditoActivo()
-            ? `${getCreditosPags()} páginas de crédito disponíveis`
-            : (creditos.gen_usada
-                ? `Geração gratuita utilizada · <span style="color:var(--b)">Adquirir páginas →</span>`
-                : `1 geração gratuita disponível · <span style="color:var(--b)">Usar agora →</span>`)}
-        </div>
-        ${diasRest !== null ? `<div style="font-family:var(--fm);font-size:8px;color:${expCor};margin-top:2px">${diasRest <= 0 ? '⚠️ Crédito expirado' : `⏳ ${diasRest} dia(s) restantes · até ${getSaldoExpiracao()}`}</div>` : ''}
+    <div onclick="irPara('planos')" style="margin-top:14px;background:var(--sf3);border:.5px solid var(--eb);border-radius:14px;padding:12px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:all .2s">
+      <div style="width:38px;height:38px;border-radius:10px;background:var(--z2);border:.5px solid var(--eb);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">🎁</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-family:var(--fm);font-size:7px;color:var(--t3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:2px">SALDO</div>
+        ${temCreditoActivo() ? `
+          <div style="font-size:14px;font-weight:700;color:var(--t1)">${getCreditosPags()} páginas</div>
+          <div style="font-size:11px;color:var(--t3);margin-top:1px">${diasRest !== null ? `Expira em ${diasRest} dia(s)` : 'Disponíveis'}</div>` : `
+          <div style="font-size:14px;font-weight:700;color:var(--t1)">${creditos.gen_usada ? '0 páginas' : '1 geração gratuita'}</div>
+          <div style="font-size:11px;color:var(--t3);margin-top:1px">${creditos.gen_usada ? 'Geração gratuita utilizada' : 'Disponível para o primeiro trabalho'}</div>`}
+        ${!temCreditoActivo() && creditos.gen_usada ? `
+        <div style="margin-top:6px;display:flex;gap:6px;align-items:center">
+          <span style="font-family:var(--fm);font-size:8px;padding:2px 8px;border-radius:8px;background:var(--b);color:var(--t-inv);font-weight:700">${getPrecosCache()[0].preco.toLocaleString()} Kz</span>
+          <span style="font-size:11px;color:var(--t2)">15 páginas · pacote inicial</span>
+        </div>` : ''}
       </div>
-      <div style="color:var(--t3);font-size:16px">›</div>
+      <div style="color:var(--t3);font-size:18px;flex-shrink:0">›</div>
     </div>
   </div>
 
