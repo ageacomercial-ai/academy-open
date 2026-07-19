@@ -762,18 +762,26 @@ ${subs}
 ABORDAGEM ANALÍTICA OBRIGATÓRIA:
 ${abordagemAnalitica}
 
-ESTRUTURA DE CADA SUBTÓPICO (nesta ordem exacta):
-1. Contextualização teórica com pelo menos 1 citação (Autor, Ano)
-2. Desenvolvimento analítico — confrontar perspectivas, não apenas descrever
-3. Dado quantitativo verificável com fonte e ano (ex: "Segundo [Fonte], em [Ano], X registou Y"), 2023)"
-4. Análise crítica do dado — o que significa para o tema?
-5. Síntese argumentativa — qual é a posição do autor?
+ESTRUTURA DE CADA SUBTÓPICO (nesta ordem exacta, com RÓTULOS VISÍVEIS):
+1. 「Contextualização」— contextualização teórica com pelo menos 1 citação (Autor, Ano)
+2. 「Desenvolvimento」— desenvolvimento analítico, confrontar perspectivas, não apenas descrever
+3. 「Dados e Análise」— dado quantitativo verificável com fonte e ano (ex: "Segundo [Fonte], em [Ano], X registou Y")
+4. 「Análise Crítica」— análise crítica do dado — o que significa para o tema?
+5. 「Síntese」— síntese argumentativa — qual é a posição do autor?
+
+⚠ IMPORTANTE: Cada bloco DEVE começar com o seu rótulo visível (ex: **Contextualização:**, **Desenvolvimento:**, **Dados e Análise:**, **Análise Crítica:**, **Síntese:**) a negrito, como mini-cabeçalho dentro do parágrafo, para que um leitor consiga identificar rapidamente a estrutura.
 
 NÍVEL ACADÉMICO — ${nivelKey.toUpperCase()}:
 ${pNivel.profundidade}
 
 CITAÇÕES OBRIGATÓRIAS:
 ${pNivel.citacoes}
+
+REGRAS DE CITAÇÃO:
+- CADA parágrafo DEVE conter pelo menos 1 citação explícita (Autor, Ano)
+- As citações no corpo do texto DEVEM corresponder a autores que constam das referências finais do trabalho
+- NUNCA uses "estudos indicam", "investigações mostram" ou expressões genéricas — diz sempre QUAL estudo/Autor
+- No final do capítulo, inclui a secção "Referências" com a lista completa das obras citadas neste capítulo
 
 ${pArea.instrucoes}
 

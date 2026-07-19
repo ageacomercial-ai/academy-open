@@ -508,6 +508,29 @@ function htmlTOC(mapa) {
   </div>`;
 }
 
+function htmlEstrutura(est) {
+  if (!Array.isArray(est) || !est.length) return '';
+  const numCap = est.length;
+  const numSub = est.reduce((a, c) => a + (c.subs?.length || 0), 0);
+  const linhas = est.map(c => `
+    <div style="margin-bottom:14px">
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">
+        <span style="font-family:Georgia,serif;font-size:11pt;font-weight:700;color:#111;min-width:28px">${c.num || ''}.</span>
+        <span style="font-family:Georgia,serif;font-size:11pt;font-weight:700;color:#111;flex:1">${c.titulo || ''}</span>
+      </div>
+      ${(c.subs || []).length > 0 ? `
+      <div style="padding-left:36px;margin-top:4px">
+        ${c.subs.map(sub => `<div style="font-family:Georgia,serif;font-size:10pt;color:#444;line-height:1.7;padding:2px 0;border-left:2pt solid #DDD;padding-left:10px;margin-bottom:3px">${sub}</div>`).join('')}
+      </div>` : ''}
+    </div>`).join('');
+
+  return `<div style="padding:40px 0">
+    <h2 style="font-family:'Cormorant Garamond',Georgia,serif;font-size:18pt;font-weight:700;text-transform:uppercase;border-bottom:1.5pt solid #111;padding-bottom:10px;margin-bottom:8px;letter-spacing:.04em">Estrutura do Trabalho</h2>
+    <div style="font-family:Georgia,serif;font-size:10pt;color:#666;margin-bottom:20px;font-style:italic">${numCap} capítulo${numCap !== 1 ? 's' : ''} · ${numSub} subtópico${numSub !== 1 ? 's' : ''}</div>
+    ${linhas}
+  </div>`;
+}
+
 function htmlPretextuais(cfg) {
   const pags = [];
   if (cfg.dedicatoria?.trim()) {
@@ -571,23 +594,34 @@ function htmlContracapa(meta) {
 }
 
 function htmlMediaItem(item, idx) {
+  if (!item || !item.tipo) return '';
   switch (item.tipo) {
     case 'imagem':
+      if (!item.src) return '';
       return `<div style="margin:16px 0;text-align:center">
         <img src="${item.src}" style="max-width:100%;max-height:180px;object-fit:contain;border:1px solid #EEE" alt="${item.legenda || ''}"/>
         <div style="font-family:Georgia,serif;font-size:9pt;color:#555;margin-top:6px;font-style:italic">Figura ${idx}. ${item.legenda || ''}</div>
       </div>`;
     case 'tabela':
+      if (!item.dados || !Array.isArray(item.dados) || item.dados.length === 0) return '';
+      const cols = item.cols || (item.dados[0]?.length ? null : null);
+      const headers = item.headers || (cols ? [] : []);
+      const dataRows = item.dados;
+      const headerHTML = headers.length > 0
+        ? `<tr style="background:#F5F5F5">${headers.map(h => `<th style="padding:6px;border:1px solid #DDD;text-align:left">${h}</th>`).join('')}</tr>`
+        : '';
       return `<div style="margin:16px 0">
         <div style="font-family:Georgia,serif;font-size:9pt;color:#555;margin-bottom:6px;font-style:italic">Tabela ${idx}. ${item.titulo || ''}</div>
         <table style="width:100%;border-collapse:collapse;font-family:Georgia,serif;font-size:10pt">
-          <tr style="background:#F5F5F5"><th style="padding:6px;border:1px solid #DDD">Dados</th></tr>
-          <tr><td style="padding:6px;border:1px solid #DDD">—</td></tr>
+          ${headerHTML}
+          ${dataRows.map(row => `<tr>${(Array.isArray(row) ? row : [row]).map(cell => `<td style="padding:6px;border:1px solid #DDD">${cell}</td>`).join('')}</tr>`).join('')}
         </table>
       </div>`;
     case 'grafico':
+      if (!item.dados && !item.src) return '';
       return `<div style="margin:16px 0;padding:20px;background:#F9F9F9;border:1px solid #EEE;text-align:center">
-        <div style="font-family:Georgia,serif;font-size:10pt;color:#999">Gráfico ${idx}. ${item.titulo || ''}</div>
+        <div style="font-family:Georgia,serif;font-size:10pt;color:#333;font-weight:600">Gráfico ${idx}. ${item.titulo || ''}</div>
+        ${item.src ? `<img src="${item.src}" style="max-width:100%;max-height:200px;margin-top:8px" alt="${item.titulo || ''}"/>` : ''}
       </div>`;
     default:
       return '';
@@ -613,19 +647,26 @@ function montarDocumentoPDF(secs, meta) {
 
   /* 3. TOC real */
   const mapaCapTOC = layoutGerarTOCReal(paginasDeBlocos);
-  const totalPgs   = 2 + paginasDeBlocos.length;
+  const temEstrutura = Array.isArray(State.get('est')) && State.get('est').length > 0;
+  const totalPgs   = 2 + (temEstrutura ? 1 : 0) + paginasDeBlocos.length;
 
   const paginas = [];
 
   /* Capa */
   paginas.push(renderPagina(htmlCapa(metaC), { num: 1, total: totalPgs, titulo: metaC.titulo, isCapa: true, watermark: wm }));
 
+  /* Estrutura do trabalho (perto da capa, conforme pedido) */
+  const estruturaHtml = htmlEstrutura(State.get('est'));
+  if (estruturaHtml) {
+    paginas.push(renderPagina(estruturaHtml, { num: 2, total: totalPgs, titulo: metaC.titulo, isCapa: false, watermark: wm }));
+  }
+
   /* Pré-textuais */
   const pretexts = htmlPretextuais(meta.cfg || State.get('cfg') || {});
   pretexts.forEach((html, pi) => {
-    paginas.push(renderPagina(html, { num: 2 + pi, total: totalPgs, titulo: metaC.titulo, isCapa: false, watermark: wm }));
+    paginas.push(renderPagina(html, { num: 2 + pi + (estruturaHtml ? 1 : 0), total: totalPgs, titulo: metaC.titulo, isCapa: false, watermark: wm }));
   });
-  const offsetTOC = 1 + pretexts.length;
+  const offsetTOC = 1 + pretexts.length + (estruturaHtml ? 1 : 0);
 
   /* TOC */
   paginas.push(renderPagina(htmlTOC(mapaCapTOC), { num: 1 + offsetTOC, total: totalPgs, titulo: metaC.titulo, isTOC: true, watermark: wm }));
@@ -644,9 +685,16 @@ function montarDocumentoPDF(secs, meta) {
     }));
   });
 
-  /* Media sem página definida → Anexos */
+  /* Media sem página definida → Anexos (só se tiver conteúdo real) */
   const allMedia    = (meta.cfg || State.get('cfg') || {}).mediaItems || [];
-  const mediaSemPag = allMedia.filter(m => !m.pag);
+  const mediaComConteudo = allMedia.filter(m => {
+    if (!m || !m.tipo) return false;
+    if (m.tipo === 'imagem') return !!m.src;
+    if (m.tipo === 'tabela') return Array.isArray(m.dados) && m.dados.length > 0;
+    if (m.tipo === 'grafico') return !!m.dados || !!m.src;
+    return false;
+  });
+  const mediaSemPag = mediaComConteudo.filter(m => !m.pag);
   if (mediaSemPag.length > 0) {
     const mediaHtml = `<div style="padding:40px 0">
       <h2 style="font-family:'Cormorant Garamond',Georgia,serif;font-size:16pt;font-weight:700;text-transform:uppercase;border-bottom:1.5pt solid #111;padding-bottom:8px;margin-bottom:20px">Anexos</h2>
