@@ -114,12 +114,12 @@ POSIÇÃO NO DOCUMENTO: ${fase} — adequa profundidade analítica`;
 const PERFIL_NIVEL = {
   'ensino médio': {
     profundidade: `Linguagem clara para estudantes 14-18 anos. Conceitos desde o básico. Para Ciências: fórmulas básicas com cada variável explicada. Exemplos reconhecíveis do contexto do tema. 3-4 parágrafos densos por subtópico.`,
-    citacoes: `1-2 citações por subtópico formato (Apelido, Ano). Exemplo: "Segundo Cardoso (2019),..." ou "...processo fundamental (Lima & Santos, 2020)."`,
+    citacoes: `2-3 citações por subtópico formato (Apelido, Ano). Exemplo: "Segundo Cardoso (2019),..." ou "...processo fundamental (Lima & Santos, 2020)." OBRIGATÓRIO: pelo menos 1 citação em CADA parágrafo principal.`,
     refs_min: 8, refs_africanos: 2,
   },
   'licenciatura': {
     profundidade: `Nível universitário 1º ciclo. Rigor conceptual. Análise crítica: comparar perspectivas de pelo menos 2 autores. Dados estatísticos e factos verificáveis com anos e instituições (contexto do tema). 4-5 parágrafos densos por subtópico.`,
-    citacoes: `2-3 citações por subtópico. Exemplos: "De acordo com Ferreira (2021),..." / "(Neto, 2019; Costa, 2022)." / "Silva (2020, p.45) argumenta que..." OBRIGATÓRIO: pelo menos 1 citação no meio de cada parágrafo principal, não apenas no fim.`,
+    citacoes: `2-3 citações por subtópico. Exemplos: "De acordo com Ferreira (2021),..." / "(Neto, 2019; Costa, 2022)." / "Silva (2020, p.45) argumenta que..." OBRIGATÓRIO: pelo menos 1 citação em CADA parágrafo principal, não apenas no fim.`,
     refs_min: 10, refs_africanos: 3,
   },
   'mestrado': {
@@ -777,17 +777,20 @@ ${pNivel.profundidade}
 CITAÇÕES OBRIGATÓRIAS:
 ${pNivel.citacoes}
 
-REGRAS DE CITAÇÃO:
-- CADA parágrafo DEVE conter pelo menos 1 citação explícita (Autor, Ano)
-- As citações no corpo do texto DEVEM corresponder a autores que constam das referências finais do trabalho
-- NUNCA uses "estudos indicam", "investigações mostram" ou expressões genéricas — diz sempre QUAL estudo/Autor
-- No final do capítulo, inclui a secção "Referências" com a lista completa das obras citadas neste capítulo
+REGRAS DE CITAÇÃO — SEGUE EXACTAMENTE ESTE EXEMPLO:
+Cada parágrafo DEVE conter pelo menos 1 citação explícita no formato (Autor, Ano) ou "Autor (Ano) afirma que...".
+Exemplo correcto: "Segundo Santos (2020), o turismo em Angola cresceu 15% entre 2018 e 2023, contribuindo com 3.2% para o PIB nacional (INE, 2024)."
+Exemplo INCORRECTO: "Estudos indicam que o turismo é importante para a economia." (genérico, sem citação)
+As citações no corpo DEVEM corresponder a autores que constam das referências finais.
+NUNCA uses "estudos indicam", "investigações mostram", "pesquisas revelam" ou expressões genéricas — diz sempre QUAL estudo/Autor.
+Cada parágrafo: 3-5 frases, com dados concretos (percentagens, anos, instituições).
 
 ${pArea.instrucoes}
 
 FORMATAÇÃO OBRIGATÓRIA:
-- Português formal académico
+- Português formal académico, SEM aspas a envolver parágrafos inteiros
 - Cada parágrafo: 3-5 frases completas, sem bullets
+- NÃO uses markdown (***, **, *, `) dentro dos parágrafos
 ${p.instrucaoSubtitulos ? '\n' + p.instrucaoSubtitulos : ''}
 ${antiIA(capNum, totalCaps, geoInstrucao)}`;
 
@@ -812,7 +815,8 @@ Mínimo 3 parágrafos por secção.`;
 Subtópicos: ${capSubs.join('; ')}
 JSON (sem markdown, sem texto):
 {"chapter_id":"${capNum}","title":"${capTit}","sections":[{"section_id":"${capNum}.1","title":"${capSubs[0]||'Introdução'}","paragraphs":["Parágrafo 1.","Parágrafo 2.","Parágrafo 3."]}]}
-Português formal académico. Mínimo 3 parágrafos por secção.`;
+Português formal académico, SEM aspas a envolver parágrafos inteiros.
+CADA parágrafo DEVE conter 1 citação explícita (Autor, Ano). Mínimo 3 parágrafos por secção.`;
     const r2 = await callAI([{ role:'user', content:promptSimples }], { max_tokens:maxTok, temperature:0.5 });
     rawFallback = r2;
     try { astRaw = extrairJSON(r2); } catch (_) {}

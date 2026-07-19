@@ -125,6 +125,8 @@ function docEstruturarSemanticoTexto(sec, txt, blocos) {
     || /"(?:chapter_id|section_id|title|paragraphs|content|status|generated_at|generated_by|version|sections)"\s*:/.test(l)
     || /^[\{\[].*[\}\]]$/.test(l);
 
+  const tituloNorm = tituloCap;
+
   const isDuplicadoTitulo = l => {
     if (!tituloCap || tituloCap.length < 4) return false;
     const linhaNorm = l.toLowerCase().replace(/^\d+\.?\d*\.?\s*/, '').trim();
@@ -133,7 +135,6 @@ function docEstruturarSemanticoTexto(sec, txt, blocos) {
     if (linhaNorm.length > 4 && linhaNorm.includes(tituloCap.split(' ')[0]) && linhaNorm.split(' ').length <= 3) return true;
     return false;
   };
-  const tituloNorm = tituloCap;
 
   for (let i = 0; i < linhas.length; i++) {
     const linha = linhas[i].trim();
