@@ -403,7 +403,7 @@ function layoutHtmlBloco(bloco) {
     case 'heading_group':
       return `<div class="heading-group">${layoutHtmlBloco(bloco.heading)}${layoutHtmlBloco(bloco.firstChild)}</div>`;
     case 'titulo_cap':
-      return `<div class="cap-titulo"><span class="cap-num">${bloco.num || ''}</span>${bloco.titulo}</div>`;
+      return `<div class="cap-titulo"><span class="cap-num">${bloco.num || ''}</span> ${bloco.titulo}</div>`;
     case 'h2':
       return `<h3 class="sub-h2">${t}</h3>`;
     case 'h3':

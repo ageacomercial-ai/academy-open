@@ -27,12 +27,22 @@ function sanitizarConteudo(txt) {
   t = t.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   t = t.replace(/\n{3,}/g, '\n\n');
 
-  /* 4. Remover espaços e tabs a mais */
+  /* 4. Remover aspas que envolvem parágrafos inteiros (a IA às vezes coloca) */
+  /* Aspas retas "..." e tipográficas "..." / "..." */
+  t = t.split('\n\n').map(b => {
+    const s = b.trim();
+    if (s.length > 10 && /^["\u201C\u201E][\s\S]+?["\u201D\u201C],?\s*$/.test(s)) {
+      return s.replace(/^["\u201C\u201E]\s*/, '').replace(/\s*["\u201D\u201C]\s*,?\s*$/, '');
+    }
+    return b;
+  }).join('\n\n');
+
+  /* 5. Remover espaços e tabs a mais */
   t = t.replace(/[ \t]{2,}/g, ' ');
   t = t.replace(/^[ \t]+/gm,  '');
   t = t.replace(/[ \t]+$/gm,  '');
 
-  /* 5. Remover vestígios de JSON/AST que possam ter escapado da IA */
+  /* 6. Remover vestígios de JSON/AST que possam ter escapado da IA */
   t = t.replace(/\{\s*"(?:chapter_id|section_id|title|paragraphs|content|status|generated_at|generated_by|version|sections|tipo|conteudo|num|titulo|c)"\s*:\s*"[^"]*"(?:\s*,\s*"[^"]+"\s*:\s*(?:"[^"]*"|[\d\.\-]+|true|false|null|\[[^\]]*\]))*\s*\}/g, '');
   t = t.replace(/\{\s*"(?:chapter_id|section_id|title|paragraphs|content|status|sections)"\s*:/g, '');
   t = t.replace(/^\s*"[a-z_]+"\s*:\s*"[^"]*"\s*,?\s*$/gm, '');
