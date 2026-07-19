@@ -146,7 +146,10 @@ function _adminSecPrecos() {
         <span style="font-size:12px;color:var(--t3);font-weight:600;width:35px">Kz</span>
       </div>`).join('')}
     </div>
-    <button class="btn B s" onclick="adminGuardarPrecos()" style="font-size:13px;padding:12px 24px;margin-top:8px">💾 Guardar Faixas</button>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn B s" onclick="adminGuardarPrecos()" style="font-size:13px;padding:12px 24px;flex:1">💾 Guardar Faixas</button>
+      <button class="btn s" onclick="adminResetPrecos()" style="font-size:12px;padding:12px 16px;color:var(--t3);border:.5px solid var(--e0)" title="Restaurar predefinições">↺ Restaurar</button>
+    </div>
     <div id="adminPrecosStatus" style="font-size:11px;margin-top:10px;font-weight:500"></div>
   </div>
 
@@ -468,6 +471,29 @@ async function adminGuardarPrecos() {
     }
   } catch (e) {
     status.textContent = '✗ Erro ao guardar: ' + (e.message || '');
+    status.style.color = '#f87171';
+  }
+}
+
+/* ── Restaurar preços predefinidos ── */
+async function adminResetPrecos() {
+  if (!confirm('Restaurar preços para os valores predefinidos?')) return;
+  const status = document.getElementById('adminPrecosStatus');
+  if (!status) return;
+  status.textContent = 'A restaurar…';
+  status.style.color = 'var(--t3)';
+  try {
+    for (const p of _PRECOS_DEFAULT) {
+      await fetch(SB_URL + '/rest/v1/precos?on_conflict=faixa_inicio,faixa_fim', {
+        method: 'POST',
+        headers: { ...SB_H(), 'Prefer': 'resolution=merge-duplicates' },
+        body: JSON.stringify(p),
+      });
+    }
+    _precosCache = JSON.parse(JSON.stringify(_PRECOS_DEFAULT));
+    mudarAdminAba('precos');
+  } catch (e) {
+    status.textContent = '✗ Erro: ' + (e.message || '');
     status.style.color = '#f87171';
   }
 }

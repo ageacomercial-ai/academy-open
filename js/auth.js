@@ -16,10 +16,12 @@ let _planosGraficaCache = null;
 
 /* Preços padrão (fallback se Supabase offline) */
 const _PRECOS_DEFAULT = [
-  { faixa_inicio: 0,  faixa_fim: 15, preco: 1850, label: '0-15 páginas' },
-  { faixa_inicio: 16, faixa_fim: 20, preco: 2250, label: '16-20 páginas' },
-  { faixa_inicio: 21, faixa_fim: 30, preco: 5500, label: '21-30 páginas' },
-  { faixa_inicio: 31, faixa_fim: 50, preco: 8500, label: '31-50 páginas' },
+  { faixa_inicio: 0,   faixa_fim: 15,   preco: 1850, label: '0-15 páginas' },
+  { faixa_inicio: 16,  faixa_fim: 30,   preco: 2850, label: '16-30 páginas' },
+  { faixa_inicio: 31,  faixa_fim: 50,   preco: 5500, label: '31-50 páginas' },
+  { faixa_inicio: 51,  faixa_fim: 200,  preco: 16000, label: '51-200 páginas' },
+  { faixa_inicio: 201, faixa_fim: 500,  preco: 40000, label: '201-500 páginas' },
+  { faixa_inicio: 501, faixa_fim: 1000, preco: 80000, label: '501-1000 páginas' },
 ];
 const _PLANOS_GRAFICA_DEFAULT = [
   { nome: 'Gráfica 150',     paginas: 150, preco: 15000 },

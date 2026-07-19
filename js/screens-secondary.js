@@ -426,7 +426,7 @@ function sPlanosPrecos(opts) {
     <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r2);overflow:hidden;margin-bottom:20px">
       ${getPrecosCache().map((f, i, arr) => {
         const pags = f.faixa_fim;
-        const preco = calcPreco(pags);
+        const preco = _aplDesc(f.preco);
         const label = `${f.faixa_inicio}-${f.faixa_fim} páginas`;
         const popular = f.faixa_inicio <= 0 && f.faixa_fim >= 15;
         return `
@@ -526,6 +526,21 @@ async function _iniciarPagamentoAvulso(numPags, valor) {
   }
 }
 
+function toggleBanco(id) {
+  const body = document.getElementById('bbody-' + id);
+  const btn  = document.getElementById('bbtn-' + id);
+  const seta = document.getElementById('bset-' + id);
+  if (!body) return;
+  const abrindo = body.style.display !== 'block';
+  document.querySelectorAll('[id^="bbody-"]').forEach(el => { el.style.display = 'none'; });
+  document.querySelectorAll('[id^="bbtn-"]').forEach(el => { el.style.borderLeftColor = 'transparent'; });
+  if (abrindo) {
+    body.style.display = 'block';
+    if (btn) btn.style.borderLeftColor = 'var(--b)';
+    if (seta) seta.textContent = '▲';
+  }
+}
+
 const _BANCOS_PAGAMENTO = [
   { id:'bfa', nome:'BFA', iban:'AO06 0040 0000 8864 9766 3011 4', titular:'Adelino Graça Daniel João', instant:false },
   { id:'bai', nome:'BAI', iban:'AO06 0040 0000 2479 2016 1017 5', titular:'Adelino Graça Daniel João', instant:false },
@@ -536,38 +551,23 @@ const _WHATSAPP_NUM = '244937876711';
 const _WHATSAPP_NUM2 = '244958614517';
 
 function _mostrarInstrucoesPagamento(ref, valor, numPags) {
-  const _bancoAberto = { id: null };
   const _msgWhatsApp = () => {
     const txt = `ACADEMY · Pagamento\n\nValor: ${valor.toLocaleString()} Kz\nPáginas: ${numPags}\nRef: ${ref}\n\nSegue o comprovativo em anexo.`;
     return encodeURIComponent(txt);
   };
 
-  const _renderBancos = () => _BANCOS_PAGAMENTO.map(b => {
-    const aberto = _bancoAberto.id === b.id;
-    return `
+  const _renderBancos = () => _BANCOS_PAGAMENTO.map(b => `
     <div style="border-bottom:.5px solid var(--e0)">
-      <div onclick="(function(){
-        const target = document.querySelector('[data-banco=\\'${b.id}\\']');
-        const isOpen = target && target.style.display !== 'none';
-        document.querySelectorAll('[data-banco]').forEach(el => el.style.display = 'none');
-        document.querySelectorAll('[data-banco-btn]').forEach(el => el.style.borderColor = 'var(--e0)');
-        if (!isOpen) {
-          if (target) target.style.display = 'block';
-          const btn = document.querySelector('[data-banco-btn=\\'${b.id}\\']');
-          if (btn) btn.style.borderColor = 'var(--b)';
-          _bancoAberto.id = '${b.id}';
-        } else { _bancoAberto.id = null; }
-      })()"
-        data-banco-btn="${b.id}"
-        style="display:flex;align-items:center;gap:12px;padding:14px 12px;cursor:pointer;border-left:3px solid ${aberto ? 'var(--b)' : 'transparent'};background:${aberto ? 'var(--sf3)' : 'transparent'};transition:all .15s">
+      <div onclick="toggleBanco('${b.id}')" id="bbtn-${b.id}"
+        style="display:flex;align-items:center;gap:12px;padding:14px 12px;cursor:pointer;border-left:3px solid transparent;transition:all .15s">
         <div style="width:36px;height:36px;border-radius:50%;background:var(--z3);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:var(--b);flex-shrink:0">${b.nome[0]}</div>
         <div style="flex:1">
           <div style="font-size:13px;font-weight:600;color:var(--t1)">${b.nome}</div>
           <div style="font-family:var(--fm);font-size:8px;color:var(--t3);margin-top:1px">${b.instant ? '⚡ Activação imediata' : b.id === 'multicaixa' ? 'Número Express' : 'IBAN'}</div>
         </div>
-        ${b.instant ? '<span style="font-family:var(--fm);font-size:7px;background:#3FE8A7;color:#050D1A;padding:2px 6px;border-radius:8px;font-weight:700">⚡ IMEDIATO</span>' : '<span style="color:var(--t3);font-size:16px;transition:transform .2s">' + (aberto ? '▲' : '▼') + '</span>'}
+        ${b.instant ? '<span style="font-family:var(--fm);font-size:7px;background:#3FE8A7;color:#050D1A;padding:2px 6px;border-radius:8px;font-weight:700">⚡ IMEDIATO</span>' : '<span id="bset-'+b.id+'" style="color:var(--t3);font-size:16px">▼</span>'}
       </div>
-      <div data-banco="${b.id}" style="display:${aberto ? 'block' : 'none'};padding:4px 12px 16px">
+      <div id="bbody-${b.id}" style="display:none;padding:4px 12px 16px">
         <div style="font-family:var(--fm);font-size:8px;color:var(--t3);margin-bottom:4px;letter-spacing:.05em">${b.id === 'multicaixa' ? 'NÚMERO EXPRESS' : 'IBAN'}</div>
         <div style="background:var(--z3);border-radius:var(--r2);padding:10px 12px;font-family:var(--fm);font-size:14px;font-weight:700;color:var(--t1);letter-spacing:.08em;word-break:break-all">${b.iban}</div>
         <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-top:6px">Titular: <strong style="color:var(--t1)">${b.titular}</strong></div>
@@ -576,8 +576,7 @@ function _mostrarInstrucoesPagamento(ref, valor, numPags) {
         <button onclick="navigator.clipboard.writeText('${b.iban}').then(()=>mostrarToast('✓ IBAN copiado'))"
           style="margin-top:10px;padding:7px 14px;border-radius:var(--r2);border:.5px solid var(--eb);background:var(--z2);color:var(--t1);font-size:11px;cursor:pointer;width:100%">📋 Copiar ${b.id === 'multicaixa' ? 'número' : 'IBAN'}</button>
       </div>
-    </div>`;
-  }).join('');
+    </div>`).join('');
 
   const div = document.createElement('div');
   div.style.cssText = 'position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.8);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;padding:24px';
