@@ -63,11 +63,24 @@ async function sbUpsertUser(u) {
 
 async function sbInsertPagamento(p) {
   try {
+    const payload = {
+      ref: p.ref,
+      uid: p.uid || sbUserId(),
+      utilizador_id: p.utilizador_id || p.uid || sbUserId(),
+      nome: p.nome || 'Desconhecido',
+      whatsapp: p.whatsapp || null,
+      tipo: p.tipo || 'avulso',
+      num_pags: Number(p.num_pags) || 15,
+      valor: Number(p.valor) || 0,
+      estado: p.estado || 'pendente',
+      criado_em: p.criado_em || new Date().toISOString(),
+    };
     const r = await fetch(SB_URL + '/rest/v1/pagamentos', {
       method: 'POST',
       headers: { ...SB_H(), 'Prefer': 'return=minimal' },
-      body: JSON.stringify(p),
+      body: JSON.stringify(payload),
     });
+    if (!r.ok) console.warn('[SB] insertPag status:', r.status, await r.text().catch(()=>''));
     return r.ok;
   } catch (e) { console.warn('[SB] insertPag:', e); return false; }
 }
@@ -146,9 +159,9 @@ async function sbCheckAprovados() {
 
 async function sbSalvarDoc(doc) {
   try {
+    const uid = sbUserId();
     const payload = {
-      uid:        sbUserId(),
-      doc_id:     String(doc.id),
+      uid, doc_id: String(doc.id),
       titulo:     doc.cfg?.tema || 'Sem título',
       tipo:       doc.cfg?.tipo || null,
       pags:       doc.secs?.length || 0,
@@ -156,11 +169,19 @@ async function sbSalvarDoc(doc) {
       dados:      JSON.stringify(doc),
       updated_at: new Date().toISOString(),
     };
-    const r = await fetch(SB_URL + '/rest/v1/documentos', {
+    let r = await fetch(SB_URL + '/rest/v1/documentos?on_conflict=uid,doc_id', {
       method: 'POST',
       headers: { ...SB_H(), 'Prefer': 'resolution=merge-duplicates' },
       body: JSON.stringify(payload),
     });
+    if (r.status === 409) {
+      r = await fetch(SB_URL + '/rest/v1/documentos?uid=eq.' + uid + '&doc_id=eq.' + encodeURIComponent(String(doc.id)), {
+        method: 'PATCH',
+        headers: SB_H(),
+        body: JSON.stringify(payload),
+      });
+    }
+    if (!r.ok) console.warn('[SB] salvarDoc status:', r.status, await r.text().catch(()=>''));
     return r.ok;
   } catch (e) { console.warn('[SB] salvarDoc:', e); return false; }
 }
