@@ -401,8 +401,6 @@ function layoutRenderPagina(blocos, opts) {
 function layoutHtmlBloco(bloco) {
   const t = (bloco.texto || bloco.titulo || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   switch (bloco.tipo) {
-    case 'localizador':
-      return bloco.html || '';
     case 'heading_group':
       return `<div class="heading-group">${layoutHtmlBloco(bloco.heading)}${layoutHtmlBloco(bloco.firstChild)}</div>`;
     case 'titulo_cap':
@@ -524,36 +522,6 @@ function htmlTOC(mapa) {
   </div>`;
 }
 
-function htmlLocalizador(est, capActual) {
-  if (!Array.isArray(est) || !est.length) return '';
-  const numCap = est.length;
-  const linhas = est.map(c => {
-    const isActual = c.num === capActual;
-    const cor      = isActual ? '#3FE8A7' : '#DDD';
-    const texto    = isActual ? '#111' : '#888';
-    const fundo    = isActual ? '#F0FDF9' : 'transparent';
-    const subsHTML = (c.subs || []).map(s => {
-      const subActual = isActual && s.toLowerCase().includes(String(capActual) + '.');
-      return `<div style="font-family:Georgia,serif;font-size:8pt;line-height:1.4;color:${subActual ? '#111' : '#777'};padding:1px 0;${subActual ? 'font-weight:600' : ''}">· ${s}</div>`;
-    }).join('');
-    return `<div style="margin-bottom:${isActual ? '6px' : '2px'};padding:4px 6px;background:${fundo};border-left:2pt solid ${cor};${isActual ? 'border-radius:0 4px 4px 0' : ''}">
-      <div style="display:flex;align-items:baseline;gap:6px">
-        <span style="font-family:Georgia,serif;font-size:9pt;font-weight:${isActual ? '700' : '600'};color:${texto}">${c.num}.</span>
-        <span style="font-family:Georgia,serif;font-size:${isActual ? '9.5pt' : '9pt'};font-weight:${isActual ? '700' : '500'};color:${texto};flex:1;${isActual ? '' : 'opacity:0.7'}">${c.titulo || ''}</span>
-      </div>
-      ${isActual ? `<div style="padding-left:18px;margin-top:3px">${subsHTML}</div>` : ''}
-    </div>`;
-  }).join('');
-
-  return `<div style="background:#FAFAFA;border:.5pt solid #E5E5E5;border-radius:6px;padding:8px 10px;margin-bottom:14pt;font-family:Georgia,serif">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;border-bottom:.5pt solid #DDD;padding-bottom:4px">
-      <span style="font-family:Georgia,serif;font-size:8pt;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#666">📍 Localizador</span>
-      <span style="font-family:Georgia,serif;font-size:8pt;color:#888">${capActual} / ${numCap}</span>
-    </div>
-    <div>${linhas}</div>
-  </div>`;
-}
-
 function htmlPretextuais(cfg) {
   const pags = [];
   if (cfg.dedicatoria?.trim()) {
@@ -669,7 +637,6 @@ function montarDocumentoPDF(secs, meta) {
   layoutValidarDocumento(paginasDeBlocos, blocos);
 
   /* 3. Calcular pré-textuais e offset ANTES do TOC */
-  const est          = State.get('est') || [];
   const pretexts     = htmlPretextuais(meta.cfg || State.get('cfg') || {});
   const offsetTOC    = 1 + pretexts.length; /* capa (1) + pré-textuais (N) = TOC vem depois */
 
@@ -690,7 +657,7 @@ function montarDocumentoPDF(secs, meta) {
   /* TOC */
   paginas.push(renderPagina(htmlTOC(mapaCapTOC), { num: offsetTOC + 1, total: totalPgs, titulo: metaC.titulo, isTOC: true, watermark: wm }));
 
-  /* Conteúdo — injecta localizador no início de cada capítulo */
+  /* Conteúdo */
   const pgsValidas = paginasDeBlocos.filter(pg =>
     pg && pg.some(b => ['titulo_cap','h2','h3','paragrafo','ref_item'].includes(b.tipo))
   );
@@ -698,10 +665,7 @@ function montarDocumentoPDF(secs, meta) {
   pgsValidas.forEach((pg, pi) => {
     const tc = pg.find(b => b.tipo === 'titulo_cap');
     if (tc) nomeCap = tc.titulo;
-    const pgComLoc = (tc && est.length > 0)
-      ? [{ tipo: 'localizador', html: htmlLocalizador(est, tc.num) }, ...pg]
-      : pg;
-    paginas.push(layoutRenderPagina(pgComLoc, {
+    paginas.push(layoutRenderPagina(pg, {
       num: offsetTOC + 1 + 1 + pi, total: totalPgs,
       titulo: metaC.titulo, nomeCap: tc ? '' : nomeCap, watermark: wm,
     }));
