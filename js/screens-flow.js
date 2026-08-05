@@ -223,12 +223,8 @@ function sInicio() {
 /* ════════════════════════════════════════════════════════════
    ECRÃ 2 — TIPO DE TRABALHO
 ════════════════════════════════════════════════════════════ */
-let _modoProfAberto = false;
 
 function sTipo() {
-  const selTipo = State.getCfg('tipo');
-  const estruturaArr = (ESTRUTURAS_TIPO[selTipo]?.caps || []).map(c => c.titulo);
-  const previewItens = estruturaArr.length > 0 ? estruturaArr : ['Introdução','Desenvolvimento','Conclusão','Referências Bibliográficas'];
   return `
   <div style="padding-bottom:32px">
     <div style="font-family:var(--fm);font-size:8px;letter-spacing:.18em;color:var(--t3);margin-bottom:6px">PASSO 1 DE 4</div>
@@ -237,9 +233,9 @@ function sTipo() {
 
     <div style="display:flex;flex-direction:column;gap:8px">
       ${TIPOS.map(t => {
-        const selected = selTipo === t.id;
+        const selected = State.getCfg('tipo') === t.id;
         return `
-      <div onclick="State.setCfg('tipo','${t.id}');renderizar()"
+      <div onclick="State.setCfg('tipo','${t.id}');irPara('tema_')"
         style="background:${selected ? 'var(--sf3)' : 'var(--z2)'};border:.5px solid ${selected ? 'var(--eb)' : 'var(--e1)'};border-radius:var(--r2);padding:15px 16px;cursor:pointer;display:flex;align-items:center;gap:14px;transition:all .2s">
         <div style="font-size:24px;width:36px;text-align:center;flex-shrink:0">${t.i}</div>
         <div style="flex:1">
@@ -249,32 +245,6 @@ function sTipo() {
         <div style="font-size:12px;color:${selected ? 'var(--b)' : 'var(--t4)'}">${selected ? '✓' : '›'}</div>
       </div>`;}).join('')}
     </div>
-
-    ${selTipo ? `
-    <!-- Pré-visualização da estrutura -->
-    <div style="margin-top:16px;background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r2);padding:14px 16px">
-      <div style="font-family:var(--fm);font-size:7px;letter-spacing:.14em;color:var(--b);text-transform:uppercase;margin-bottom:8px">ESTRUTURA — ${(TIPOS.find(t=>t.id===selTipo)?.s||'').toUpperCase()}</div>
-      <div style="font-size:12px;color:var(--t2);line-height:2">
-        ${previewItens.map(e => `· ${e}`).join('<br/>')}
-      </div>
-    </div>
-
-    <!-- Modo Professor -->
-    <div style="margin-top:12px;background:var(--z2);border:.5px solid var(--e0);border-radius:var(--r2);overflow:hidden">
-      <div onclick="_modoProfAberto=!_modoProfAberto;renderizar()"
-        style="padding:12px 14px;cursor:pointer;display:flex;align-items:center;gap:10px">
-        <span style="font-size:18px">🎓</span>
-        <span style="flex:1;font-size:13px;font-weight:600;color:var(--t1)">Modo Professor</span>
-        <span style="font-family:var(--fm);font-size:8px;background:rgba(251,191,36,.12);color:#FBBF24;padding:2px 6px;border-radius:6px;font-weight:600">NOVO</span>
-        <span style="color:var(--t3);font-size:14px">${_modoProfAberto ? '▲' : '▼'}</span>
-      </div>
-      <div style="display:${_modoProfAberto ? 'block' : 'none'};padding:0 14px 14px">
-        <div style="font-size:12px;color:var(--t2);line-height:1.6;margin-bottom:10px">O professor exige estrutura específica? No próximo passo, cola a estrutura que o professor pediu — a ACADEMY vai respeitar exactamente essa estrutura.</div>
-      </div>
-    </div>
-
-    <button class="btn B w" style="margin-top:16px" onclick="irPara('tema_')">Continuar →</button>
-    ` : ''}
   </div>`;
 }
 
