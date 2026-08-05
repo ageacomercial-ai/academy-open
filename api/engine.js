@@ -589,7 +589,7 @@ async function doCapitulo(p) {
 
   const promptAST = prompt + montarPromptAST(capNum, capTit, palavras);
 
-  let r1 = await callAI([{ role:'user', content:promptAST }], { max_tokens:maxTok, temperature:0.65 });
+  let r1 = await callAI([{ role:'user', content:promptAST }], { max_tokens:maxTok, temperature:0.65, response_format:{ type:'json_object' } });
   let astRaw = null;
   try { astRaw = extrairJSON(r1); } catch (_) {}
   let rawFallback = r1;
@@ -598,7 +598,7 @@ async function doCapitulo(p) {
     console.warn(`[AST v73] T1 falhou — retry simplificado — cap ${capNum}`);
     retryCount++;
     const promptSimples = montarPromptRetry(capNum, capTit, tema, capSubs, palavras);
-    const r2 = await callAI([{ role:'user', content:promptSimples }], { max_tokens:maxTok, temperature:0.5, model:'google/gemma-4-31b-it:free' });
+    const r2 = await callAI([{ role:'user', content:promptSimples }], { max_tokens:maxTok, temperature:0.5, model:'google/gemma-4-31b-it:free', response_format:{ type:'json_object' } });
     rawFallback = r2;
     try { astRaw = extrairJSON(r2); } catch (_) {}
   }
@@ -1233,12 +1233,13 @@ async function doHealthCheck() {
 /* ---------------- ENGINE IA (OpenRouter) ---------------- */
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
-/* Cadeia de modelos: o default era gemini-2.5-flash-lite, que falha
-   consistentemente o formato JSON do AST (→ reparação → 503).
-   Primário: nvidia nemotron-3-super (free, forte em esquemas JSON).
-   Fallback: gemini-2.5-flash-lite (pago — garantia de resposta). */
-const MODELO_PRINCIPAL = process.env.AC_MODELO_PRINCIPAL || 'nvidia/nemotron-3-super-120b-a12b:free';
-const MODELO_GARANTIA  = 'google/gemini-2.5-flash-lite';
+/* Cadeia de modelos com MODO JSON forçado (response_format json_object).
+   O gemini-2.5-flash-lite SEM json_object falha o formato do AST
+   (→ reparação → 503). Com json_object devolve JSON válido em ~8s.
+   Fallback: nemotron-3-super (free) — se responder com preâmbulo de
+   raciocínio, o extrairJSON robusto apanha o último bloco JSON. */
+const MODELO_PRINCIPAL = process.env.AC_MODELO_PRINCIPAL || 'google/gemini-2.5-flash-lite';
+const MODELO_GARANTIA  = 'nvidia/nemotron-3-super-120b-a12b:free';
 
 async function callAI(messages, opts={}) {
   const orKey  = process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_KEY;
@@ -1253,6 +1254,11 @@ async function callAI(messages, opts={}) {
       const t = setTimeout(()=>ctrl.abort(), 30000);
       let resp;
       try {
+        const corpo = {
+          model, messages, temperature:opts.temperature??0.7,
+          max_tokens:opts.max_tokens??800, stream:false,
+        };
+        if (opts.response_format) corpo.response_format = opts.response_format;
         resp = await fetch(OPENROUTER_URL, {
           method:'POST', signal:ctrl.signal,
           headers:{
@@ -1261,7 +1267,7 @@ async function callAI(messages, opts={}) {
             'HTTP-Referer':'https://academy-open.vercel.app',
             'X-Title':'ACADEMY',
           },
-          body:JSON.stringify({ model, messages, temperature:opts.temperature??0.7, max_tokens:opts.max_tokens??800, stream:false }),
+          body:JSON.stringify(corpo),
         });
       } finally { clearTimeout(t); }
       if (!resp.ok) { const err=await resp.text().catch(()=>String(resp.status)); throw new Error('OpenRouter '+resp.status+': '+err); }
@@ -1279,13 +1285,41 @@ async function callAI(messages, opts={}) {
 }
 
 /* ---------------- JSON EXTRACTOR ---------------- */
+/* Recolhe todos os blocos {...} ou [...] equilibrados (respeitando
+   strings e escapes) — aguenta preâmbulos de raciocínio (CoT). */
+function blocosBalanceados(s) {
+  const out = [];
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch !== '{' && ch !== '[') continue;
+    const ab = ch, fe = ch === '{' ? '}' : ']';
+    let profund = 0, str = false, esc = false, fim = -1;
+    for (let j = i; j < s.length; j++) {
+      const c = s[j];
+      if (esc) { esc = false; continue; }
+      if (c === '\\') { esc = true; continue; }
+      if (c === '"') { str = !str; continue; }
+      if (str) continue;
+      if (c === ab) profund++;
+      else if (c === fe) { profund--; if (profund === 0) { fim = j; break; } }
+    }
+    if (fim > i) out.push({ bloco: s.substring(i, fim + 1), i, fim });
+  }
+  return out;
+}
+
 function extrairJSON(texto) {
   if (!texto) throw new Error('resposta vazia');
   const s = texto.replace(/```(?:json)?\s*/gi,'').replace(/```/g,'').trim();
-  try { return JSON.parse(s); } catch {}
-  const m = s.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-  if (m) try { return JSON.parse(m[1]); } catch {}
-  throw new Error('JSON inválido na resposta');
+  try { const p = JSON.parse(s); if (p && typeof p === 'object') return p; } catch {}
+  const validos = [];
+  for (const b of blocosBalanceados(s)) {
+    try { validos.push(JSON.parse(b.bloco)); } catch (_) {}
+  }
+  if (!validos.length) throw new Error('JSON inválido na resposta');
+  /* preferir o ÚLTIMO bloco válido com sections (o JSON real vem no fim) */
+  const comSections = validos.filter(v => v && typeof v === 'object' && Array.isArray(v.sections));
+  return comSections.length ? comSections[comSections.length - 1] : validos[validos.length - 1];
 }
 
 /* ---------------- HELPER ---------------- */
