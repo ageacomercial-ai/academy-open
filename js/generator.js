@@ -327,7 +327,8 @@ async function iniciarGer(retomar) {
   irPara('geracao');
 
   const totalPags  = State.getCfg('pags') || 15;
-  const pagsRef    = Math.max(1, Math.round(totalPags / (est.length || 1)));
+  /* PAGE BUDGET ENGINE — o nº de páginas é uma restrição obrigatória */
+  const pbePlan    = pbePlanear(est, totalPags);
   const tp         = tipoActual() || { n: 'Trabalho Académico' };
   const plano      = State.get('plano') || {};
 
@@ -375,7 +376,10 @@ async function iniciarGer(retomar) {
             capTitulo:           cap.titulo,
             capSubs:             cap.subs || [],
             totalCaps:           est.length,
-            palavrasPorCap:      Math.max(200, pagsRef * 220),
+            palavrasPorCap:      Math.max(pbePlan.piso, pbePlan.porCapitulo[i]),
+            wordBudget:          pbePlan.totalPalavras,
+            palavrasPorPagina:   pbePlan.palavrasPorPagina,
+            paginasAlvo:         totalPags,
             objetivo:            (plano.objetivo || '').substring(0, 120),
             hipotese:            (plano.hipotese || '').substring(0, 100),
             metodologia:         (plano.metodologia || '').substring(0, 100),
@@ -479,6 +483,11 @@ async function iniciarGer(retomar) {
     mostrarToast('⏹ Geração pausada — trabalho guardado. Podes retomar.');
     return;
   }
+
+  /* ── PAGE BUDGET ENGINE — validação final de paginação (obrigatória) ── */
+  const estimGEl = document.getElementById('estimG');
+  if (estimGEl) estimGEl.textContent = 'A calibrar paginação…';
+  await pbeValidarEAjustar(est, pbePlan);
 
   const restEl2 = document.getElementById('estimG');
   if (restEl2) restEl2.textContent = 'Concluído ✓';

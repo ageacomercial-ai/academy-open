@@ -1,4 +1,4 @@
-const CACHE = 'academy-v83';
+const CACHE = 'academy-v84';
 const ASSETS = [
   './',
   './index.html',
@@ -14,6 +14,7 @@ const ASSETS = [
   './js/doc-history.js',
   './js/generator.js',
   './js/layout.js',
+  './js/pbe.js',
   './js/export.js',
   './js/editor.js',
   './js/screens-flow.js',
