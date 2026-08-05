@@ -656,7 +656,7 @@ REGRAS:
   });
 
   const completeness = calcularCompleteness(
-    ast, palavras * (capSubs.length || 3), totalCaps, nivelKey
+    ast, palavras, totalCaps, nivelKey
   );
 
   health.issues = enriquecerIssuesComAccoes(health.issues);
