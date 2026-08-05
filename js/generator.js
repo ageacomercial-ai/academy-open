@@ -327,8 +327,11 @@ async function iniciarGer(retomar) {
   irPara('geracao');
 
   const totalPags  = State.getCfg('pags') || 15;
-  /* PAGE BUDGET ENGINE — o nº de páginas é uma restrição obrigatória */
-  const pbePlan    = pbePlanear(est, totalPags);
+  /* PAGE BUDGET ENGINE — o nº de páginas é uma restrição obrigatória.
+     Se o pbe.js não estiver carregado (cache antiga do SW), degrada
+     para estimativa — o botão nunca pode falhar por causa disto. */
+  const temPBE     = typeof pbePlanear === 'function' && typeof pbeValidarEAjustar === 'function';
+  const pbePlan    = temPBE ? pbePlanear(est, totalPags) : null;
   const tp         = tipoActual() || { n: 'Trabalho Académico' };
   const plano      = State.get('plano') || {};
 
@@ -376,9 +379,9 @@ async function iniciarGer(retomar) {
             capTitulo:           cap.titulo,
             capSubs:             cap.subs || [],
             totalCaps:           est.length,
-            palavrasPorCap:      Math.max(pbePlan.piso, pbePlan.porCapitulo[i]),
-            wordBudget:          pbePlan.totalPalavras,
-            palavrasPorPagina:   pbePlan.palavrasPorPagina,
+            palavrasPorCap:      pbePlan ? Math.max(pbePlan.piso, pbePlan.porCapitulo[i]) : Math.max(200, Math.round(totalPags * 220 / Math.max(1, est.length))),
+            wordBudget:          pbePlan ? pbePlan.totalPalavras : 0,
+            palavrasPorPagina:   pbePlan ? pbePlan.palavrasPorPagina : 262,
             paginasAlvo:         totalPags,
             objetivo:            (plano.objetivo || '').substring(0, 120),
             hipotese:            (plano.hipotese || '').substring(0, 100),
@@ -485,12 +488,13 @@ async function iniciarGer(retomar) {
   }
 
   /* ── PAGE BUDGET ENGINE — validação final de paginação (obrigatória) ── */
-  const estimGEl = document.getElementById('estimG');
-  if (estimGEl) estimGEl.textContent = 'A calibrar paginação…';
-  await pbeValidarEAjustar(est, pbePlan);
-
-  const restEl2 = document.getElementById('estimG');
-  if (restEl2) restEl2.textContent = 'Concluído ✓';
+  if (temPBE) {
+    const estimGEl = document.getElementById('estimG');
+    if (estimGEl) estimGEl.textContent = 'A calibrar paginação…';
+    await pbeValidarEAjustar(est, pbePlan);
+    const restEl2 = document.getElementById('estimG');
+    if (restEl2) restEl2.textContent = 'Concluído ✓';
+  }
 
   genLimparProgresso();
   limparRascunhoPendente();
