@@ -7,7 +7,7 @@
 import {
   PERFIL_NIVEL, PERFIL_AREA,
   detectarNivel, detectarArea, detectarContextoGeo,
-  montarPromptCapitulo, montarPromptAST, montarPromptRetry,
+  montarPromptCapitulo, montarPromptRetry,
   montarPromptReferencias, peneirarReferencias,
   montarPromptPlano, montarPromptEstrutura,
   montarPromptEdicaoSimples, montarPromptEdicaoDocumento,
@@ -575,7 +575,7 @@ async function doCapitulo(p) {
   const pArea     = PERFIL_AREA[areaKey];
   const geoCtx    = detectarContextoGeo(tema, p.pais);
 
-  const maxTok = Math.min(Math.max(Math.round(palavras*1.8), 600), 12000);
+  const maxTok = Math.min(Math.max(Math.round(palavras*2.5), 1500), 12000);
 
   const prompt = montarPromptCapitulo({
     tema, tipo, nivel, inst, prof, area,
@@ -587,9 +587,20 @@ async function doCapitulo(p) {
     maxTok, instrucaoSubtitulos: p.instrucaoSubtitulos,
   });
 
-  const promptAST = prompt + montarPromptAST(capNum, capTit, palavras);
+  /* Schema JSON como SYSTEM message (sem system, os modelos "lite" devolvem
+     arrays de strings ou JSON truncado → 503). Com system schema + json_object
+     o flash-lite e o gpt-4o-mini devolvem sections válidos em ~2s. */
+  const systemJSON = `Gera APENAS um objeto JSON com este esquema EXACTO (sem markdown, sem texto adicional):
+{"chapter_id":"${capNum}","title":"${capTit}","total_paragraphs":${Math.max(3, Math.round(palavras / 90))},"sections":[{"section_id":"${capNum}.1","title":"<subtítulo>","paragraphs":["<parágrafo 1>","<parágrafo 2>","<parágrafo 3>"]}]}
+REGRAS:
+- sections: UMA entrada por subtópico obrigatório do prompt do utilizador, na mesma ordem e numeração.
+- paragraphs: 3-5 parágrafos completos (3-5 frases cada), texto corrido, sem markdown, sem bullets.
+- Resposta DEVE ser exclusivamente esse objeto JSON.`;
 
-  let r1 = await callAI([{ role:'user', content:promptAST }], { max_tokens:maxTok, temperature:0.65, response_format:{ type:'json_object' } });
+  let r1 = await callAI([
+    { role:'system', content: systemJSON },
+    { role:'user', content: prompt },
+  ], { max_tokens:maxTok, temperature:0.65, response_format:{ type:'json_object' } });
   let astRaw = null;
   try { astRaw = extrairJSON(r1); } catch (_) {}
   let rawFallback = r1;
@@ -598,7 +609,10 @@ async function doCapitulo(p) {
     console.warn(`[AST v73] T1 falhou — retry simplificado — cap ${capNum}`);
     retryCount++;
     const promptSimples = montarPromptRetry(capNum, capTit, tema, capSubs, palavras);
-    const r2 = await callAI([{ role:'user', content:promptSimples }], { max_tokens:maxTok, temperature:0.5, model:'google/gemma-4-31b-it:free', response_format:{ type:'json_object' } });
+    const r2 = await callAI([
+      { role:'system', content: systemJSON },
+      { role:'user', content: promptSimples },
+    ], { max_tokens:maxTok, temperature:0.5, model:'google/gemma-4-31b-it:free', response_format:{ type:'json_object' } });
     rawFallback = r2;
     try { astRaw = extrairJSON(r2); } catch (_) {}
   }
@@ -1233,13 +1247,15 @@ async function doHealthCheck() {
 /* ---------------- ENGINE IA (OpenRouter) ---------------- */
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
-/* Cadeia de modelos com MODO JSON forçado (response_format json_object).
-   O gemini-2.5-flash-lite SEM json_object falha o formato do AST
-   (→ reparação → 503). Com json_object devolve JSON válido em ~8s.
-   Fallback: nemotron-3-super (free) — se responder com preâmbulo de
-   raciocínio, o extrairJSON robusto apanha o último bloco JSON. */
-const MODELO_PRINCIPAL = process.env.AC_MODELO_PRINCIPAL || 'google/gemini-2.5-flash-lite';
-const MODELO_GARANTIA  = 'nvidia/nemotron-3-super-120b-a12b:free';
+/* Cadeia de modelos com MODO JSON forçado (response_format json_object)
+   + schema no system message.
+   Primário: gpt-4o-mini — compliance de esquema consistente (2/2 sondas),
+   custo negligenciável (~$0.002/capítulo).
+   Garantia: gemini-2.5-flash-lite (free) — com system schema devolve
+   sections válidos em ~2s; se responder com preâmbulo, o extrairJSON
+   robusto apanha o último bloco JSON. */
+const MODELO_PRINCIPAL = process.env.AC_MODELO_PRINCIPAL || 'openai/gpt-4o-mini';
+const MODELO_GARANTIA  = 'google/gemini-2.5-flash-lite';
 
 async function callAI(messages, opts={}) {
   const orKey  = process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_KEY;
