@@ -597,8 +597,8 @@ async function doCapitulo(p) {
   if (!validarAST(astRaw)) {
     console.warn(`[AST v73] T1 falhou — retry simplificado — cap ${capNum}`);
     retryCount++;
-    const promptSimples = montarPromptRetry(capNum, capTit, tema, capSubs);
-    const r2 = await callAI([{ role:'user', content:promptSimples }], { max_tokens:maxTok, temperature:0.5 });
+    const promptSimples = montarPromptRetry(capNum, capTit, tema, capSubs, palavras);
+    const r2 = await callAI([{ role:'user', content:promptSimples }], { max_tokens:maxTok, temperature:0.5, model:'google/gemma-4-31b-it:free' });
     rawFallback = r2;
     try { astRaw = extrairJSON(r2); } catch (_) {}
   }
@@ -638,7 +638,7 @@ async function doCapitulo(p) {
     generation_time_ms : Date.now() - _startTime,
     pages_requested    : totalPags,
     word_count         : totalWords,
-    model_used         : 'openrouter/google/gemini-2.5-flash-lite',
+    model_used         : 'openrouter/' + (globalThis.__ac_model || MODELO_PRINCIPAL),
   });
 
   const completeness = calcularCompleteness(
@@ -662,17 +662,26 @@ async function doCapitulo(p) {
     generation_time_ms : Date.now() - _startTime,
     pages_requested    : totalPags,
     word_count         : completeness.palavras,
-    model_used         : 'openrouter/google/gemini-2.5-flash-lite',
+    model_used         : 'openrouter/' + (globalThis.__ac_model || MODELO_PRINCIPAL),
   });
 
   /* ── QUALITY GATE (backend) ──
-     Reparação fraca, readiness não pronto ou completude <80 → 503
-     CAPITULO_INVALIDO. A reparação até pode devolver parágrafos, mas
-     nunca é tratada como sucesso se a estrutura ficou fraca. */
+     Reparação fraca, AST vazio, completude <80 ou parágrafos abaixo do
+     orçamento PBE → 503 CAPITULO_INVALIDO. O mínimo de parágrafos é
+     derivado do orçamento real (~90 palavras/parágrafo), não da regra
+     antiga de 9 parágrafos (incompatível com os orçamentos do PBE). */
+  const totalParasLivro = (ast.sections || []).reduce(
+    (acc, s) => acc + (s.paragraphs || []).length, 0
+  );
+  const parasMinAlvo = Math.max(3, Math.min(9, Math.floor(palavras / 90)));
   const motivosInvalido = [];
   if (!validarAST(ast)) motivosInvalido.push('Sem conteúdo (AST vazio)');
   if (ast._repaired === true) motivosInvalido.push(`Estrutura reconstruída (${ast._repair_reason || 'reparação fraca'})`);
-  if (!readiness.ready) motivosInvalido.push(readiness.blockers?.[0] || 'readiness não pronto');
+  if (totalParasLivro < parasMinAlvo) motivosInvalido.push(`Parágrafos insuficientes: ${totalParasLivro} (esperado ≥${parasMinAlvo})`);
+  if (!readiness.ready) {
+    const blockerReal = (readiness.blockers || []).find(b => !/par[áa]grafos insuficientes/i.test(b));
+    if (blockerReal) motivosInvalido.push('readiness: ' + blockerReal);
+  }
   const compNum = Number(completeness?.completeness);
   if (Number.isFinite(compNum) && compNum < 80) motivosInvalido.push(`Completude ${Math.round(compNum)}% (<80)`);
 
@@ -1224,33 +1233,49 @@ async function doHealthCheck() {
 /* ---------------- ENGINE IA (OpenRouter) ---------------- */
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
+/* Cadeia de modelos: o default era gemini-2.5-flash-lite, que falha
+   consistentemente o formato JSON do AST (→ reparação → 503).
+   Primário: nvidia nemotron-3-super (free, forte em esquemas JSON).
+   Fallback: gemini-2.5-flash-lite (pago — garantia de resposta). */
+const MODELO_PRINCIPAL = process.env.AC_MODELO_PRINCIPAL || 'nvidia/nemotron-3-super-120b-a12b:free';
+const MODELO_GARANTIA  = 'google/gemini-2.5-flash-lite';
+
 async function callAI(messages, opts={}) {
-  const model  = opts.model  || 'google/gemini-2.5-flash-lite';
   const orKey  = process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_KEY;
   if (!orKey) throw new Error('OPENROUTER_API_KEY não configurada');
 
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(()=>ctrl.abort(), 30000);
-    let resp;
+  const modelos = [...new Set([opts.model || MODELO_PRINCIPAL, MODELO_GARANTIA])];
+  let ultimoErro = null;
+
+  for (const model of modelos) {
     try {
-      resp = await fetch(OPENROUTER_URL, {
-        method:'POST', signal:ctrl.signal,
-        headers:{
-          'Content-Type':'application/json',
-          'Authorization':'Bearer '+orKey,
-          'HTTP-Referer':'https://academy-open.vercel.app',
-          'X-Title':'ACADEMY',
-        },
-        body:JSON.stringify({ model, messages, temperature:opts.temperature??0.7, max_tokens:opts.max_tokens??800, stream:false }),
-      });
-    } finally { clearTimeout(t); }
-    if (!resp.ok) { const err=await resp.text().catch(()=>String(resp.status)); throw new Error('OpenRouter '+resp.status+': '+err); }
-    const data = await resp.json();
-    const text = data?.choices?.[0]?.message?.content?.trim();
-    if (!text || text.length<=10) throw new Error('resposta vazia ou muito curta');
-    return text;
-  } catch(e) { throw new Error('OpenRouter: '+e.message); }
+      const ctrl = new AbortController();
+      const t = setTimeout(()=>ctrl.abort(), 30000);
+      let resp;
+      try {
+        resp = await fetch(OPENROUTER_URL, {
+          method:'POST', signal:ctrl.signal,
+          headers:{
+            'Content-Type':'application/json',
+            'Authorization':'Bearer '+orKey,
+            'HTTP-Referer':'https://academy-open.vercel.app',
+            'X-Title':'ACADEMY',
+          },
+          body:JSON.stringify({ model, messages, temperature:opts.temperature??0.7, max_tokens:opts.max_tokens??800, stream:false }),
+        });
+      } finally { clearTimeout(t); }
+      if (!resp.ok) { const err=await resp.text().catch(()=>String(resp.status)); throw new Error('OpenRouter '+resp.status+': '+err); }
+      const data = await resp.json();
+      const text = data?.choices?.[0]?.message?.content?.trim();
+      if (!text || text.length<=10) throw new Error('resposta vazia ou muito curta');
+      globalThis.__ac_model = model;
+      return text;
+    } catch(e) {
+      ultimoErro = e;
+      if (modelos.length > 1) continue; /* tenta o modelo de garantia */
+    }
+  }
+  throw new Error('OpenRouter: '+(ultimoErro?.message||'falha em todos os modelos'));
 }
 
 /* ---------------- JSON EXTRACTOR ---------------- */
@@ -1265,5 +1290,5 @@ function extrairJSON(texto) {
 
 /* ---------------- HELPER ---------------- */
 function ok(action, data) {
-  return { ok:true, action, data, meta:{ ts:Date.now(), provider:'openrouter', model:'google/gemini-2.5-flash-lite' } };
+  return { ok:true, action, data, meta:{ ts:Date.now(), provider:'openrouter', model: globalThis.__ac_model || MODELO_PRINCIPAL } };
 }

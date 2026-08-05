@@ -310,7 +310,10 @@ function validarQualidadeCapitulo(raw, textoFinal, ast) {
     if (raw._genFalhou === true) motivos.push('falha assinalada pelo motor');
     if (raw._repaired === true) motivos.push('estrutura reconstruída (reparação fraca)');
     if (raw.readiness && raw.readiness.ready === false) {
-      motivos.push('readiness: ' + (raw.readiness.blockers?.[0] || raw.readiness.verdict || 'não pronto'));
+      /* bloqueador de conteúdo (não a contagem de parágrafos, que é
+         orçada pelo PBE: ~90 palavras/parágrafo) */
+      const blockerReal = (raw.readiness.blockers || []).find(b => !/par[áa]grafos insuficientes/i.test(b));
+      if (blockerReal) motivos.push('readiness: ' + blockerReal);
     }
     if (typeof raw.completeness?.completeness === 'number') {
       const comp = Math.round(raw.completeness.completeness);
@@ -324,6 +327,8 @@ function validarQualidadeCapitulo(raw, textoFinal, ast) {
     const parasValidos = s => (s.paragrafos || s.paragraphs || [])
       .filter(p => p && typeof p === 'string' && p.trim().length > 15);
     const semConteudo = ast.sections.filter(s => parasValidos(s).length === 0);
+    const totalParas = ast.sections.reduce((a, s) => a + parasValidos(s).length, 0);
+    if (totalParas < 2) motivos.push('muito poucos parágrafos');
     if (semConteudo.length === ast.sections.length) motivos.push('subtópicos sem parágrafos');
   } else if (limpo.length < 120) {
     motivos.push('sem AST e texto curto');

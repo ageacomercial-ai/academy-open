@@ -75,18 +75,18 @@ export function montarPromptAST(capNum, capTit, palavras) {
 
 FORMA DE SAÍDA — JSON:
 Não escrevas texto. Gera APENAS o JSON abaixo (sem \`\`\`, sem markdown, sem texto adicional):
-{"chapter_id":"${capNum}","title":"${capTit}","sections":[{"section_id":"${capNum}.1","title":"Primeiro subtópico","paragraphs":["Parágrafo 1.","Parágrafo 2.","Parágrafo 3."]}],"total_paragraphs":${palavras}}
+{"chapter_id":"${capNum}","title":"${capTit}","sections":[{"section_id":"${capNum}.1","title":"Primeiro subtópico","paragraphs":["Parágrafo 1.","Parágrafo 2.","Parágrafo 3."]}],"total_paragraphs":${Math.max(3, Math.round(palavras / 90))}}
 ⚠ LIMITE: ~${palavras} palavras no total, divididas pelos parágrafos.
 Cada parágrafo é uma string completa de texto corrido, sem formatação.
 Mínimo 3 parágrafos por secção.`;
 }
 
 /* ── Prompt simplificado (retry) ── */
-export function montarPromptRetry(capNum, capTit, tema, capSubs) {
+export function montarPromptRetry(capNum, capTit, tema, capSubs, palavrasAlvo = 400) {
   return `Gera APENAS JSON para o capítulo ${capNum} "${capTit}" sobre "${tema}".
 Subtópicos: ${capSubs.join('; ')}
 JSON (sem markdown, sem texto):
-{"chapter_id":"${capNum}","title":"${capTit}","sections":[{"section_id":"${capNum}.1","title":"${capSubs[0]||'Introdução'}","paragraphs":["Parágrafo 1.","Parágrafo 2.","Parágrafo 3."]}]}
+{"chapter_id":"${capNum}","title":"${capTit}","sections":[{"section_id":"${capNum}.1","title":"${capSubs[0]||'Introdução'}","paragraphs":["Parágrafo 1.","Parágrafo 2.","Parágrafo 3."]}],"total_paragraphs":${Math.max(3, Math.round(palavrasAlvo / 90))}}
 Português formal académico, SEM aspas a envolver parágrafos inteiros.
 CADA parágrafo DEVE conter 1 citação explícita (Autor, Ano). Mínimo 3 parágrafos por secção.`;
 }
