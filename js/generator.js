@@ -43,11 +43,19 @@ async function callAcademyAPI(rawPayload) {
 
     if (!resp.ok) {
       const ed = await resp.json().catch(() => ({}));
-      throw new Error(ed?.error || 'Engine HTTP ' + resp.status);
+      const e = new Error(ed?.error || 'Engine HTTP ' + resp.status);
+      e.retry   = !!ed?.retry;
+      e.details = ed?.data   || null;
+      throw e;
     }
 
     const envelope = await resp.json();
-    if (!envelope?.ok) throw new Error(envelope?.error || 'Engine: resposta inválida');
+    if (!envelope?.ok) {
+      const e = new Error(envelope?.error || 'Engine: resposta inválida');
+      e.retry   = !!envelope?.retry;
+      e.details = envelope?.data || null;
+      throw e;
+    }
 
     const resposta = envelope?.data?.resposta;
     if (resposta === undefined || resposta === null || resposta === '') {
@@ -289,6 +297,47 @@ function genLimparProgresso() {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   QUALITY GATE — um capítulo só fica 'p' (PRONTO) se passar.
+   Rejeita reparações fracas, readiness/completeza baixos e
+   placeholders. O estado 'x' = REJEITADO/pendente: sobrevive ao
+   save/retomar e volta a ser tentado, mas NUNCA entra no livro
+   final como se estivesse concluído.
+═══════════════════════════════════════════════════════════ */
+function validarQualidadeCapitulo(raw, textoFinal, ast) {
+  const motivos = [];
+  if (!raw) motivos.push('resposta vazia');
+  if (raw && typeof raw === 'object') {
+    if (raw._genFalhou === true) motivos.push('falha assinalada pelo motor');
+    if (raw._repaired === true) motivos.push('estrutura reconstruída (reparação fraca)');
+    if (raw.readiness && raw.readiness.ready === false) {
+      motivos.push('readiness: ' + (raw.readiness.blockers?.[0] || raw.readiness.verdict || 'não pronto'));
+    }
+    if (typeof raw.completeness?.completeness === 'number') {
+      const comp = Math.round(raw.completeness.completeness);
+      if (comp < 80) motivos.push(`Completude ${comp}% (<80)`);
+    }
+  }
+  const limpo = String(textoFinal || '').trim();
+  if (limpo.length < 60) motivos.push('conteúdo insuficiente');
+  if (limpo.startsWith('[') && /[Ss]ec[çc][ãa]o/.test(limpo)) motivos.push('placeholder de falha');
+  if (ast && Array.isArray(ast.sections) && ast.sections.length > 0) {
+    const parasValidos = s => (s.paragrafos || s.paragraphs || [])
+      .filter(p => p && typeof p === 'string' && p.trim().length > 15);
+    const semConteudo = ast.sections.filter(s => parasValidos(s).length === 0);
+    if (semConteudo.length === ast.sections.length) motivos.push('subtópicos sem parágrafos');
+  } else if (limpo.length < 120) {
+    motivos.push('sem AST e texto curto');
+  }
+  return { valido: motivos.length === 0, motivos };
+}
+
+/* O livro só fecha (genFim + addDoc) se TODOS os capítulos forem 'p' com conteúdo. */
+function validarIntegridadeLivro() {
+  const secs = State.get('secs') || [];
+  return secs.every(s => s.e === 'p' && s.c && !s.c.startsWith('['));
+}
+
+/* ═══════════════════════════════════════════════════════════
    LOOP DE GERAÇÃO PRINCIPAL
 ═══════════════════════════════════════════════════════════ */
 
@@ -311,7 +360,7 @@ async function iniciarGer(retomar) {
     const prog = genTemProgresso();
     if (prog) {
       State.set('secs', prog.secs);
-      iniciarEm = State.get('secs').findIndex(s => s.e !== 'p' && s.e !== 'x');
+      iniciarEm = State.get('secs').findIndex(s => s.e !== 'p');
       if (iniciarEm === -1) iniciarEm = State.get('secs').length;
     }
   }
@@ -355,110 +404,159 @@ async function iniciarGer(retomar) {
     if (i > iniciarEm) await new Promise(r => setTimeout(r, _DELAY(i)));
     if (_genCancelado) break;
 
-    /* ── GERAÇÃO DO CAPÍTULO ────────────────────────────────────────
-       Tenta até 4 vezes. Para quando tiver resultado válido.
+    /* ── GERAÇÃO DO CAPÍTULO (com QUALITY GATE) ───────────────────
+       Máximo 3 chamadas à IA (1 original + 2 auto-retries).
+       Um capítulo que nunca passa sai como 'x' (a completar),
+       NUNCA como 'p'.
     ─────────────────────────────────────────────────────────────── */
-    const isRef    = cap.titulo && (cap.titulo.toLowerCase().includes('refer') || cap.titulo.toLowerCase().includes('bibliog'));
-    const acaoGer  = isRef ? 'gerar_capitulo_referencias' : 'gerar_capitulo';
+    const MAX_QC_RETRIES = 2;
+    let qcOk        = false;
+    let rawEnvelope = null;
+    let textoFinal  = '[Secção não gerada. Toca em ↺ para regenerar.]';
+    let astFinal    = null;
 
-    let resultado   = null;
-    let tentativas  = 0;
-    let _capTimedOut = false;
-    const _capTimeout = setTimeout(() => { _capTimedOut = true; }, 120000);
+    for (let qcPass = 0; qcPass <= MAX_QC_RETRIES && !qcOk && !_genCancelado; qcPass++) {
+      if (qcPass > 0) {
+        aSecDOM(i, 'g', `Qualidade baixa — re-tentativa ${qcPass}/${MAX_QC_RETRIES}…`);
+        mostrarToast(`⚠ Cap. ${cap.num}: conteúdo inválido — a regenerar (${qcPass}/${MAX_QC_RETRIES})…`);
+        await new Promise(r => setTimeout(r, _DELAY(i)));
+      }
 
-    try {
-      while (!resultado && tentativas < 4 && !_genCancelado && !_capTimedOut) {
-        try {
-          const raw = await callAcademyAPI({
-            acao:                acaoGer,
-            tema:                State.getCfg('tema'),
-            tipoTrabalho:        tp.n,
-            nivel:               State.getCfg('nivel'),
-            totalPags,
-            capNum:              cap.num,
-            capTitulo:           cap.titulo,
-            capSubs:             cap.subs || [],
-            totalCaps:           est.length,
-            palavrasPorCap:      pbePlan ? Math.max(pbePlan.piso, pbePlan.porCapitulo[i]) : Math.max(200, Math.round(totalPags * 220 / Math.max(1, est.length))),
-            wordBudget:          pbePlan ? pbePlan.totalPalavras : 0,
-            palavrasPorPagina:   pbePlan ? pbePlan.palavrasPorPagina : 262,
-            paginasAlvo:         totalPags,
-            objetivo:            (plano.objetivo || '').substring(0, 120),
-            hipotese:            (plano.hipotese || '').substring(0, 100),
-            metodologia:         (plano.metodologia || '').substring(0, 100),
-            inst:                State.getCfg('inst'),
-            prof:                State.getCfg('prof'),
-            area:                State.getCfg('area'),
-            instrucaoSubtitulos: `Cada subtópico em capSubs DEVE aparecer como subtítulo numerado em linha própria.`,
-            memoriaDocumento:    DOC_MEMORY.gerarInstrucao(),
-          });
+      const isRef    = cap.titulo && (cap.titulo.toLowerCase().includes('refer') || cap.titulo.toLowerCase().includes('bibliog'));
+      const acaoGer  = isRef ? 'gerar_capitulo_referencias' : 'gerar_capitulo';
 
-          /* raw pode ser { resposta, health, readiness } ou valor directo */
-          let _rawVal = raw;
-          if (raw && typeof raw === 'object' && 'resposta' in raw) {
-            _rawVal = raw.resposta;
-            const secsArr = State.get('secs');
-            secsArr[i].health       = raw.health       || null;
-            secsArr[i].readiness    = raw.readiness    || null;
-            secsArr[i].confidence   = raw.confidence   || null;
-            secsArr[i].completeness = raw.completeness || null;
-            State.set('secs', secsArr);
-          }
+      let resultado   = null;
+      let tentativas  = 0;
+      let _capTimedOut = false;
+      const _capTimeout = setTimeout(() => { _capTimedOut = true; }, 120000);
 
-          if (_rawVal && (typeof _rawVal === 'object' || (typeof _rawVal === 'string' && _rawVal.length > 30))) {
-            resultado = _rawVal;
-          } else {
+      try {
+        while (!resultado && tentativas < 4 && !_genCancelado && !_capTimedOut) {
+          try {
+            const raw = await callAcademyAPI({
+              acao:                acaoGer,
+              tema:                State.getCfg('tema'),
+              tipoTrabalho:        tp.n,
+              nivel:               State.getCfg('nivel'),
+              totalPags,
+              capNum:              cap.num,
+              capTitulo:           cap.titulo,
+              capSubs:             cap.subs || [],
+              totalCaps:           est.length,
+              palavrasPorCap:      pbePlan ? Math.max(pbePlan.piso, pbePlan.porCapitulo[i]) : Math.max(200, Math.round(totalPags * 220 / Math.max(1, est.length))),
+              wordBudget:          pbePlan ? pbePlan.totalPalavras : 0,
+              palavrasPorPagina:   pbePlan ? pbePlan.palavrasPorPagina : 262,
+              paginasAlvo:         totalPags,
+              objetivo:            (plano.objetivo || '').substring(0, 120),
+              hipotese:            (plano.hipotese || '').substring(0, 100),
+              metodologia:         (plano.metodologia || '').substring(0, 100),
+              inst:                State.getCfg('inst'),
+              prof:                State.getCfg('prof'),
+              area:                State.getCfg('area'),
+              instrucaoSubtitulos: `Cada subtópico em capSubs DEVE aparecer como subtítulo numerado em linha própria.`,
+              memoriaDocumento:    DOC_MEMORY.gerarInstrucao(),
+            });
+
+            rawEnvelope = raw; /* reter envelope de qualidade p/ o gate */
+
+            /* raw pode ser { resposta, health, readiness } ou valor directo */
+            let _rawVal = raw;
+            if (raw && typeof raw === 'object' && 'resposta' in raw) {
+              _rawVal = raw.resposta;
+              const secsArr = State.get('secs');
+              secsArr[i].health       = raw.health       || null;
+              secsArr[i].readiness    = raw.readiness    || null;
+              secsArr[i].confidence   = raw.confidence   || null;
+              secsArr[i].completeness = raw.completeness || null;
+              State.set('secs', secsArr);
+            }
+
+            if (_rawVal && (typeof _rawVal === 'object' || (typeof _rawVal === 'string' && _rawVal.length > 30))) {
+              resultado = _rawVal;
+            } else {
+              tentativas++;
+            }
+          } catch (er) {
             tentativas++;
+            /* 503 CAPITULO_INVALIDO já foi validado no backend: sai rápido
+               do loop interno e deixa o Quality Gate gerir o retry. */
+            if (/CAPITULO_INVALIDO/i.test(er?.message || '')) { tentativas = 4; break; }
+            const espera = Math.min(tentativas * 8000, 45000);
+            aSecDOM(i, 'g', `Tentativa ${tentativas}/4 — aguarda ${Math.round(espera / 1000)}s…`);
+            if (restEl) restEl.textContent = 'Erro API — a re‐tentar…';
+            await new Promise(r => setTimeout(r, espera));
           }
-        } catch (er) {
-          tentativas++;
-          const espera = Math.min(tentativas * 8000, 45000);
-          aSecDOM(i, 'g', `Tentativa ${tentativas}/4 — aguarda ${Math.round(espera / 1000)}s…`);
-          if (restEl) restEl.textContent = 'Erro API — a re‐tentar…';
-          await new Promise(r => setTimeout(r, espera));
+        }
+      } finally {
+        clearTimeout(_capTimeout);
+        if (!resultado) resultado = `[Cap. ${cap.num} não concluído. Toca em ↺.]`;
+      }
+
+      if (_genCancelado) break;
+
+      /* ── PROCESSAR RESULTADO ──────────────────────────────────────
+         Normalizar para texto + AST independentemente do formato
+      ─────────────────────────────────────────────────────────────── */
+      if (resultado) {
+        if (typeof resultado === 'object' && resultado.sections) {
+          astFinal   = resultado;
+          textoFinal = astParaTexto(resultado);
+        } else if (typeof resultado === 'string' && resultado.trim().startsWith('{')) {
+          try {
+            const parsed = JSON.parse(resultado);
+            if (parsed?.sections) { astFinal = parsed; textoFinal = astParaTexto(parsed); }
+            else textoFinal = '[JSON devolvido sem estrutura válida. Toca em ↺.]';
+          } catch {
+            const m = resultado.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+            if (m) {
+              try {
+                const parsed = JSON.parse(m[1]);
+                if (parsed?.sections) { astFinal = parsed; textoFinal = astParaTexto(parsed); }
+                else textoFinal = '[JSON devolvido sem estrutura válida. Toca em ↺.]';
+              } catch { textoFinal = '[JSON malformado. Toca em ↺ para regenerar.]'; }
+            } else {
+              textoFinal = '[JSON malformado. Toca em ↺ para regenerar.]';
+            }
+          }
+        } else if (typeof resultado === 'string') {
+          textoFinal = resultado;
         }
       }
-    } finally {
-      clearTimeout(_capTimeout);
-      if (!resultado) resultado = `[Cap. ${cap.num} não concluído. Toca em ↺.]`;
+
+      /* ── QUALITY GATE ── */
+      const qc = validarQualidadeCapitulo(rawEnvelope, textoFinal, astFinal);
+      qcOk = qc.valido;
+      if (!qcOk) {
+        aSecDOM(i, 'g', 'Qualidade insuficiente…');
+        if (restEl) restEl.textContent = 'A regenerar capítulo…';
+        console.warn(`[QC] Cap ${cap.num} rejeitado: ${qc.motivos.join('; ')}`);
+      }
     }
 
     if (_genCancelado) { genGuardarProgresso(); break; }
 
-    /* ── PROCESSAR RESULTADO ──────────────────────────────────────
-       Normalizar para texto + AST independentemente do formato
-    ─────────────────────────────────────────────────────────────── */
-    let textoFinal = '[Secção não gerada. Toca em ↺ para regenerar.]';
-    let astFinal   = null;
+    const secsArr = State.get('secs');
 
-    if (resultado) {
-      if (typeof resultado === 'object' && resultado.sections) {
-        astFinal   = resultado;
-        textoFinal = astParaTexto(resultado);
-      } else if (typeof resultado === 'string' && resultado.trim().startsWith('{')) {
-        try {
-          const parsed = JSON.parse(resultado);
-          if (parsed?.sections) { astFinal = parsed; textoFinal = astParaTexto(parsed); }
-          else textoFinal = '[JSON devolvido sem estrutura válida. Toca em ↺.]';
-        } catch {
-          const m = resultado.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-          if (m) {
-            try {
-              const parsed = JSON.parse(m[1]);
-              if (parsed?.sections) { astFinal = parsed; textoFinal = astParaTexto(parsed); }
-              else textoFinal = '[JSON devolvido sem estrutura válida. Toca em ↺.]';
-            } catch { textoFinal = '[JSON malformado. Toca em ↺ para regenerar.]'; }
-          } else {
-            textoFinal = '[JSON malformado. Toca em ↺ para regenerar.]';
-          }
-        }
-      } else if (typeof resultado === 'string') {
-        textoFinal = resultado;
-      }
+    /* Capítulo rejeitado após 3 tentativas: NUNCA 'p' — fica 'x' (a completar). */
+    if (!qcOk) {
+      textoFinal = textoFinal && textoFinal.trim().length > 0 && !textoFinal.startsWith('[')
+        ? textoFinal
+        : `[Secção '${cap.num}' incompleta. Toca em ↺ para regenerar.]`;
+      secsArr[i].e        = 'x';
+      secsArr[i].c        = textoFinal;
+      secsArr[i].blocks   = blkExtrair({ c: textoFinal });
+      secsArr[i].ast      = astFinal;
+      secsArr[i].qcRejeitado = true;
+      State.set('secs', secsArr);
+      aSecDOM(i, 'x', '⚠ POR COMPLETAR', textoFinal);
+      aBarra(i + 1, est.length);
+      genGuardarProgresso();
+      autoGuardar();
+      mostrarToast(`⚠ Cap. ${cap.num}: qualidade insuficiente — deixado "a completar". Toca em ↺ no editor.`);
+      continue;
     }
 
-    /* ── GUARDAR NA SECÇÃO ── */
-    const secsArr   = State.get('secs');
+    /* ── GUARDAR NA SECÇÃO (aprovado pelo gate) ── */
     secsArr[i].e   = 'p';
     secsArr[i].c   = textoFinal;
     secsArr[i].blocks = blkExtrair({ c: textoFinal });
@@ -494,6 +592,19 @@ async function iniciarGer(retomar) {
     await pbeValidarEAjustar(est, pbePlan);
     const restEl2 = document.getElementById('estimG');
     if (restEl2) restEl2.textContent = 'Concluído ✓';
+  }
+
+  /* ── QUALITY GATE FINAL ──
+     O livro só fecha (genFim + addDoc) se TODOS os capítulos forem 'p'
+     com conteúdo. Se algum ficou 'x' (rejeitado) ou placeholder, o build
+     NÃO finaliza — guarda-se progresso para retomar. */
+  if (!validarIntegridadeLivro()) {
+    const secsP = State.get('secs') || [];
+    const pend  = secsP.filter(s => s.e !== 'p' || (s.c && s.c.startsWith('['))).length;
+    autoGuardar();
+    mostrarToast(`⚠ ${pend} capítulo(s) incompleto(s) — o documento NÃO foi finalizado. Regenera os capítulos assinalados e volta a gerar.`);
+    renderizar();
+    return;
   }
 
   genLimparProgresso();

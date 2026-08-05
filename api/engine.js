@@ -58,7 +58,9 @@ function truncar(texto, max) {
 
 /* ================================================================
    AST REPAIR ENGINE — v72
-================================================================ */
+=============================================================== */
+const REGEX_LIXO_JSON = /^\s*[\{\[]|"(?:chapter_id|section_id|title|paragraphs|content|status|generated_at|generated_by|version|sections)"\s*:/;
+
 function repararAST(raw, capNum, capTit, subs) {
   let ast = null;
   if (raw && typeof raw === 'object') {
@@ -94,7 +96,7 @@ function repararAST(raw, capNum, capTit, subs) {
       if (!secAtual) {
         secAtual = { section_id: `${capNum}.1`, title: subs?.[0] || 'Introdução', paragraphs: [] };
       }
-      if (linha.length > 20) secAtual.paragraphs.push(linha);
+      if (linha.length > 20 && !REGEX_LIXO_JSON.test(linha)) secAtual.paragraphs.push(linha);
     }
     if (secAtual) secs.push(secAtual);
     if (secs.length > 0 && secs.some(s => s.paragraphs.length > 0)) {
@@ -125,11 +127,11 @@ function repararAST(raw, capNum, capTit, subs) {
   } else {
     ast.sections = ast.sections.map((sec, i) => {
       if (!sec.section_id) sec.section_id = `${capNum}.${i+1}`;
-      if (!sec.title) sec.title = subs?.[i] || `${capNum}.${i+1}`;
+      if (!sec.title || REGEX_LIXO_JSON.test(String(sec.title))) sec.title = subs?.[i] || `${capNum}.${i+1}`;
       if (!Array.isArray(sec.paragraphs)) {
         if (typeof sec.content === 'string' && sec.content.trim()) {
           sec.paragraphs = sec.content.split('\n\n')
-            .map(p => p.trim()).filter(p => p.length > 20);
+            .map(p => p.trim()).filter(p => p.length > 20 && !REGEX_LIXO_JSON.test(p));
         } else {
           sec.paragraphs = [];
         }
@@ -138,7 +140,7 @@ function repararAST(raw, capNum, capTit, subs) {
       }
       sec.paragraphs = sec.paragraphs
         .map(p => typeof p === 'string' ? p.trim() : '')
-        .filter(p => p.length > 15);
+        .filter(p => p.length > 15 && !REGEX_LIXO_JSON.test(p));
       return sec;
     });
   }
@@ -489,7 +491,13 @@ export default async function handler(req, res) {
     }
   } catch (err) {
     console.error('[ENGINE v66]', action, err.message);
-    return res.status(500).json({ ok:false, error:'INTERNAL_ERROR', detail:err.message.substring(0,200) });
+    const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 500;
+    return res.status(status).json({
+      ok: false,
+      error: err.message || 'INTERNAL_ERROR',
+      retry: !!err.retry,
+      data : err.data || null,
+    });
   }
 }
 
@@ -524,6 +532,20 @@ async function doChat(p) {
 }
 
 /* ---------------- CAPÍTULO (v65: estratificado) ---------------- */
+
+/* Capítulo rejeitado pelo Quality Gate → HTTP 503 CAPITULO_INVALIDO.
+   O frontend faz auto-retry (máx. 2) e, no falho final, marca 'x'
+   (NUNCA 'p') — o capítulo não entra no livro. */
+class CapituloInvalidoError extends Error {
+  constructor(motivos, dados) {
+    super('CAPITULO_INVALIDO');
+    this.status = 503;
+    this.retry  = true;
+    this.data   = dados;
+    this.motivos = motivos;
+  }
+}
+
 async function doCapitulo(p) {
   const tema      = (p.tema||'').substring(0,300);
   const tipo      = (p.tipoTrabalho||'Trabalho Académico').substring(0,100);
@@ -642,6 +664,31 @@ async function doCapitulo(p) {
     word_count         : completeness.palavras,
     model_used         : 'openrouter/google/gemini-2.5-flash-lite',
   });
+
+  /* ── QUALITY GATE (backend) ──
+     Reparação fraca, readiness não pronto ou completude <80 → 503
+     CAPITULO_INVALIDO. A reparação até pode devolver parágrafos, mas
+     nunca é tratada como sucesso se a estrutura ficou fraca. */
+  const motivosInvalido = [];
+  if (!validarAST(ast)) motivosInvalido.push('Sem conteúdo (AST vazio)');
+  if (ast._repaired === true) motivosInvalido.push(`Estrutura reconstruída (${ast._repair_reason || 'reparação fraca'})`);
+  if (!readiness.ready) motivosInvalido.push(readiness.blockers?.[0] || 'readiness não pronto');
+  const compNum = Number(completeness?.completeness);
+  if (Number.isFinite(compNum) && compNum < 80) motivosInvalido.push(`Completude ${Math.round(compNum)}% (<80)`);
+
+  if (motivosInvalido.length > 0) {
+    throw new CapituloInvalidoError(motivosInvalido, {
+      ast,
+      health,
+      readiness,
+      confidence,
+      completeness,
+      reparado: ast._repaired || false,
+      razao    : ast._repair_reason || null,
+      motivos  : motivosInvalido,
+      _patch   : true,
+    });
+  }
 
   return {
     resposta    : ast,
