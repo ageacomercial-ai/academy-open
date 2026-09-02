@@ -895,7 +895,7 @@ REGRAS:
   const totalParasLivro = (ast.sections || []).reduce(
     (acc, s) => acc + (s.paragraphs || []).length, 0
   );
-  const parasMinAlvo = Math.max(3, Math.min(6, Math.floor(palavras / 120)));
+  const parasMinAlvo = Math.max(3, Math.min(9, (capSubs.length||1)*3));
   const motivosInvalido = [];
   if (!validarAST(ast)) motivosInvalido.push('Sem conteúdo (AST vazio)');
   const compNum = Number(completeness?.completeness);
