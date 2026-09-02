@@ -706,19 +706,21 @@ async function doCapitulo(p) {
     } else {
       _ts.search_at = _ts.verify_at = _ts.evidence_at = _ts.support_at = Date.now();
     }
-    // Persistir source_claims para todas as suportadas antes de WRITE
+    // Persistir source_claims — BUG-008 FIX: falha crítica não é ignorada
+    let persistFailed = false;
     if (fontesQueSustentamClaim.length) {
       for (const s of fontesQueSustentamClaim) {
         try {
           if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
             const ctrl = new AbortController(); setTimeout(()=>ctrl.abort(), 4000);
-            await fetch(`${process.env.SUPABASE_URL}/rest/v1/source_claims`, {
+            const r = await fetch(`${process.env.SUPABASE_URL}/rest/v1/source_claims`, {
               method: 'POST', signal: ctrl.signal,
               headers: { 'Content-Type':'application/json', apikey: process.env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_KEY}`, Prefer: 'return=minimal' },
               body: JSON.stringify({ source_id: s.source_id, claim_id: s._claimId || allClaimsPre[0]?.id || 'claim_1', evidence_text: s._evidence?.evidence_text?.substring(0,500) || null, page: null, section: null, confidence: s._support?.confidence || 0.7, support_status: s._support?.support_status || 'DIRECTLY_SUPPORTS' })
-            }).catch(()=>{});
+            });
+            if (!r.ok) { persistFailed = true; console.warn('[EVIDENCE] source_claims persist falhou', r.status); }
           }
-        } catch {}
+        } catch (e) { persistFailed = true; console.warn('[EVIDENCE] source_claims erro', e.message); }
       }
       // Re-rank já filtradas
       const claimP = allClaimsPre[0] || { text: `${capTit} — ${capSubs.join(' ')}` };
@@ -738,7 +740,8 @@ async function doCapitulo(p) {
     globalThis.__lastEvidenceTimestamps = _ts;
   } catch (e) { console.warn('[EVIDENCE-FIRST] falhou, seguindo sem fontes verificadas:', e.message); }
 
-  const maxTok = Math.min(Math.max(Math.round(palavras*6), 6000), 12000);
+  // BUG-005 FIX: tokens suficientes para evitar truncamento JSON parcial (causa de Fsquisa/Santcxs)
+  const maxTok = Math.min(Math.max(Math.round(palavras*7), 8000), 16000);
 
   const prompt = montarPromptCapitulo({
     tema, tipo, nivel, inst, prof, area,

@@ -90,10 +90,16 @@ export async function verificarReferenciaOnline(ref, opts = {}) {
     }
   }
 
-  /* 4. Fallback: verificação estrutural */
+  /* 4. Fallback: SEM verificação externa não inflar */
   resultado.attempts.push('structural_only');
-  resultado.confidence = title && auth && year ? 'partially_verified' : 'needs_review';
-
+  // BUG-007 FIX: existência de título+autor+ano NÃO é evidência de existência da fonte
+  if (title && auth && year) {
+    resultado.confidence = 'needs_review';
+    resultado.error = 'Sem confirmação externa (CrossRef/OpenLibrary indisponível) — requer revisão manual';
+  } else {
+    resultado.confidence = 'unverified';
+    resultado.error = 'Metadados incompletos + sem confirmação externa';
+  }
   return resultado;
 }
 
@@ -202,4 +208,25 @@ async function fetchWithTimeout(url, ms) {
   } finally {
     clearTimeout(id);
   }
+}
+
+/* ── Verificação de suporte claim vs evidência (EVIDENCE-FIRST) ── */
+export function verificarSuporteClaim(claimText, evidenceText) {
+  if (!evidenceText || evidenceText.length < 20) return { support_status: 'NOT_VERIFIED', confidence: 0 };
+  const c = claimText.toLowerCase();
+  const e = evidenceText.toLowerCase();
+  // Números: claim tem número que evidência não tem → NOT_VERIFIED
+  const cNums = claimText.match(/\d+(?:[.,]\d+)?\s*%/g) || [];
+  const eNums = evidenceText.match(/\d+(?:[.,]\d+)?\s*%/g) || [];
+  if (cNums.length && !cNums.some(n => eNums.includes(n))) {
+    return { support_status: 'DOES_NOT_SUPPORT', confidence: 0.85, reason: 'Número do claim ausente na evidência' };
+  }
+  const cWords = new Set(c.split(/\s+/).filter(w => w.length > 4));
+  const eWords = new Set(e.split(/\s+/).filter(w => w.length > 4));
+  let common = 0; for (const w of cWords) if (eWords.has(w)) common++;
+  const ratio = cWords.size ? common / cWords.size : 0;
+  if (ratio > 0.55) return { support_status: 'DIRECTLY_SUPPORTS', confidence: 0.9 };
+  if (ratio > 0.35) return { support_status: 'PARTIALLY_SUPPORTS', confidence: 0.65 };
+  if (ratio < 0.12) return { support_status: 'DOES_NOT_SUPPORT', confidence: 0.75 };
+  return { support_status: 'NOT_VERIFIED', confidence: 0.4 };
 }

@@ -42,15 +42,16 @@ function sanitizarConteudo(txt) {
   t = t.replace(/^[ \t]+/gm,  '');
   t = t.replace(/[ \t]+$/gm,  '');
 
-  /* 6. Remover vestígios de JSON/AST que possam ter escapado da IA */
-  t = t.replace(/\{\s*"(?:chapter_id|section_id|title|paragraphs|content|status|generated_at|generated_by|version|sections|tipo|conteudo|num|titulo|c)"\s*:\s*"[^"]*"(?:\s*,\s*"[^"]+"\s*:\s*(?:"[^"]*"|[\d\.\-]+|true|false|null|\[[^\]]*\]))*\s*\}/g, '');
-  t = t.replace(/\{\s*"(?:chapter_id|section_id|title|paragraphs|content|status|sections)"\s*:/g, '');
-  t = t.replace(/^\s*"[a-z_]+"\s*:\s*"[^"]*"\s*,?\s*$/gm, '');
+  /* 6. Remover vestígios de JSON/AST que possam ter escapado da IA — BUG-005 FIX: regex menos agressiva */
+  // Só remove linhas que são JSON puro, não parágrafos que mencionam "title" literais
+  t = t.replace(/^\s*\{\s*"(?:chapter_id|section_id|title|paragraphs)"\s*:\s*"[^"]*"\s*,?\s*$/gm, '');
   t = t.replace(/^\s*\{\s*$|^\s*\}\s*$|^\s*\[\s*$|^\s*\]\s*$/gm, '');
-  t = t.replace(/"paragraphs"\s*:\s*\[\s*"?/g, '');
-  t = t.replace(/"\s*}\s*,?\s*$/gm, '');
-  t = t.replace(/\\"/g, '"');
-  t = t.replace(/\\n/g, '\n');
+  t = t.replace(/^\s*"[a-z_]+"\s*:\s*"[^"]*"\s*,?\s*$/gm, '');
+  // BUG-005: não fazer \\" -> " globalmente se conteúdo legítimo contém aspas escapadas; só se for resíduo JSON
+  if (/^\s*\{/.test(t.slice(0,200)) || /"paragraphs"\s*:/.test(t.slice(0,500))) {
+    t = t.replace(/\\"/g, '"');
+    t = t.replace(/\\n/g, '\n');
+  }
 
   /* 6. Remover linhas que ficaram vazias ou só com artefactos */
   t = t.split('\n').filter(l => l.trim().length > 0).join('\n');
@@ -91,26 +92,10 @@ function refValidar(secs) {
 }
 
 function refGerarFallback(tema) {
-  const ano = new Date().getFullYear();
-  return `World Bank. (${ano - 1}). World Development Report. World Bank Publications.
-
-UNESCO. (${ano - 1}). Global Education Monitoring Report. UNESCO.
-
-OECD. (${ano - 2}). Education at a Glance. OECD Publishing.
-
-Kaplan, R., & Norton, D. (${ano - 5}). The Balanced Scorecard. Harvard Business Review.
-
-Santos, B. de S. (2018). O fim do império cognitivo. Autêntica.
-
-Mbembe, A. (2016). Políticas da inimizade. Antígona.
-
-Tavares, M. J., & Lopes, C. (${ano - 2}). Estratégias de ensino superior em países lusófonos. Revista Lusófona de Educação, 51(1), 45–62.
-
-Porter, M. (2019). Competitive Strategy. Free Press.
-
-WHO. (${ano - 1}). World Health Statistics. World Health Organization.
-
-ITU. (${ano - 1}). Measuring Digital Development. International Telecommunication Union.`;
+  // BUG-004 FIX: ZERO FABRICAÇÃO — fallback nunca retorna refs genéricas falsas
+  // Se não há pipeline real, retorna vazio e deixa gate bloquear FINAL
+  console.warn('[EXPORT] refGerarFallback bloqueado — sem fontes verificadas, não inventar refs');
+  return '';
 }
 
 async function refGerarAPA(tema, tipo, nivel, area) {

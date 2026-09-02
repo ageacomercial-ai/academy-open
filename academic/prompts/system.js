@@ -5,23 +5,23 @@
 /* ── Perfis por nível académico ── */
 export const PERFIL_NIVEL = {
   'ensino médio': {
-    profundidade: `Linguagem clara para estudantes 14-18 anos. Conceitos desde o básico. Para Ciências: fórmulas básicas com cada variável explicada. Exemplos reconhecíveis do contexto do tema. 3-4 parágrafos densos por subtópico.`,
-    citacoes: `2-3 citações por subtópico formato (Apelido, Ano). Exemplo: "Segundo Cardoso (2019),..." ou "...processo fundamental (Lima & Santos, 2020)." OBRIGATÓRIO: pelo menos 1 citação em CADA parágrafo principal.`,
+    profundidade: `Linguagem clara para estudantes 14-18 anos. Conceitos desde o básico. Para Ciências: fórmulas básicas com cada variável explicada. Exemplos reconhecíveis do contexto do tema. 3-4 parágrafos densos por subtópico. CADA SUBTÓPICO TEM FUNÇÃO DISTINTA — não repetir estrutura frase-a-frase.`,
+    citacoes: `2-3 citações por subtópico formato (Apelido, Ano). Exemplo: "Segundo Cardoso (2019),..." ou "...processo fundamental (Lima & Santos, 2020)." REGRA: citar SOMENTE quando houver fonte verificada no bloco FONTES; se sem fonte, escrever como interpretação qualificada sem citação ou marcar [CITAÇÃO A VERIFICAR] — NUNCA inventar autor.`,
     refs_min: 8, refs_africanos: 2,
   },
   licenciatura: {
-    profundidade: `Nível universitário 1º ciclo. Rigor conceptual. Análise crítica: comparar perspectivas de pelo menos 2 autores. Dados estatísticos e factos verificáveis com anos e instituições (contexto do tema). 4-5 parágrafos densos por subtópico.`,
-    citacoes: `2-3 citações por subtópico. Exemplos: "De acordo com Ferreira (2021),..." / "(Neto, 2019; Costa, 2022)." / "Silva (2020, p.45) argumenta que..." OBRIGATÓRIO: pelo menos 1 citação em CADA parágrafo principal, não apenas no fim.`,
+    profundidade: `Nível universitário 1º ciclo. Rigor conceptual. Análise crítica: comparar perspectivas de pelo menos 2 autores quando fontes existem. Dados estatísticos SOMENTE com fonte verificada. 4-5 parágrafos densos por subtópico com função própria.`,
+    citacoes: `2-3 citações por subtópico. Exemplos: "De acordo com Ferreira (2021),..." / "(Neto, 2019; Costa, 2022)." REGRA: citação só com SOURCE_ID verificado; sem fonte → interpretação sem citação + [CITAÇÃO A VERIFICAR] se factual.`,
     refs_min: 10, refs_africanos: 3,
   },
   mestrado: {
-    profundidade: `Pós-graduação. Confrontar teorias, identificar lacunas. Síntese original com voz argumentativa. OBRIGATÓRIO: pelo menos 1 tensão teórica por subtópico (Autor A defende X, Autor B argumenta Y). 5-7 parágrafos de alta densidade por subtópico.`,
-    citacoes: `3-4 citações por subtópico, directas e indirectas alternadas. Citação directa: Segundo Lopes (2018, p.112), "a gestão estratégica implica..." Citação indirecta: (Banda, 2020; Kiala & Mabiala, 2021). OBRIGATÓRIO: 1 tensão teórica por subtópico.`,
+    profundidade: `Pós-graduação. Confrontar teorias, identificar lacunas. Síntese original com voz argumentativa. 5-7 parágrafos por subtópico, cada um com papel diferente (tese, antítese, evidência, limitação, implicação).`,
+    citacoes: `3-4 citações por subtópico, directas e indirectas alternadas. Citação directa: Segundo Lopes (2018, p.112), "a gestão estratégica implica..." REGRA: 1 tensão teórica SOMENTE se ambas fontes verificadas; caso contrário explicitar limitação.`,
     refs_min: 12, refs_africanos: 4,
   },
   doutoramento: {
-    profundidade: `Investigação original. Mapear estado da arte, propor contribuição nova. Posicionamento epistemológico. Obras seminais + investigação recente (últimos 5 anos). OBRIGATÓRIO: identificar lacuna na literatura por subtópico. 6-8 parágrafos de alta densidade.`,
-    citacoes: `4-6 citações por subtópico. Obras fundacionais E investigação recente. Exemplo: "A teoria de Bourdieu (1980) foi revisitada por Mabiala (2019), que argumenta..." OBRIGATÓRIO: lacuna na literatura por subtópico.`,
+    profundidade: `Investigação original. Mapear estado da arte, propor contribuição nova. Posicionamento epistemológico. Obras seminais + investigação recente (últimos 5 anos). 6-8 parágrafos com função epistémica distinta por subtópico.`,
+    citacoes: `4-6 citações por subtópico. Obras fundacionais E investigação recente. Exemplo: "A teoria de Bourdieu (1980) foi revisitada por Mabiala (2019)..." REGRA: citação só com verificação; sem fonte → declarar lacuna.`,
     refs_min: 15, refs_africanos: 5,
   },
 };
@@ -106,9 +106,12 @@ export function detectarArea(tema, areaParam) {
   return 'humanidades';
 }
 
+export const PLATFORM_SCOPE = 'GLOBAL';
+
 export function detectarContextoGeo(tema, pais) {
+  // PLATFORM_SCOPE = GLOBAL — nunca presumir Angola; escopo vem do TEMA, não da plataforma/usuário
+  // pais (usuário) é IGNORADO — ver academic/policies/scope.js: usuarioNaoEhObjeto
   const t = (tema||'').toLowerCase();
-  const p = (pais||'').toLowerCase();
   if (/angola|luanda|benguela|huambo|cabinda|namibe|malanje/.test(t)) return 'angola';
   if (/cabo.?verde|mindelo|praia|fogo|sal\b|barlavento/.test(t)) return 'cabo_verde';
   if (/moçambique|mozambique|maputo|beira\b|nampula/.test(t)) return 'mocambique';
@@ -119,8 +122,7 @@ export function detectarContextoGeo(tema, pais) {
   if (/europa|ue\b|união europeia|berlim|paris|madrid|roma\b/.test(t)) return 'europa';
   if (/china|beijing|xangai|asia\b|japão|índia/.test(t)) return 'asia';
   if (/africa\b|africano|subsaariana|continente africano/.test(t)) return 'africa_geral';
-  if (p && p !== 'angola') return p;
-  if (p === 'angola') return 'angola';
+  // pais ignorado — PLATFORM_SCOPE GLOBAL
   return 'global';
 }
 
@@ -179,7 +181,7 @@ export const POOLS_ANTI_IA = {
 };
 
 /* ── Instruções anti-IA (única fonte de verdade — frontend e backend) ── */
-export function gerarInstrucaoAntiIA(capNum, totalCaps, geoInstrucao) {
+export function gerarInstrucaoAntiIA(capNum, totalCaps, geoInstrucao, pAreaLabel = '') {
   const n = Math.max(0, (capNum||1) - 1);
   const pick = (arr, s) => arr[(n*7 + s*3) % arr.length];
   const pools = POOLS_ANTI_IA;
@@ -201,20 +203,41 @@ TOM E VOZ:
 7. Para concluir usa: "${pick(pools.conclusoes,3)}"
 8. Para transições usa: "${pick(pools.transicoes,4)}"
 
+ANTI-DETECÇÃO IA — PROIBIÇÕES ABSOLUTAS:
+9. NUNCA uses frases genéricas tipo: "É importante salientar que...", "Vale a pena referir que...", "Neste contexto..."
+10. NUNCA uses "actualmente", "hoje em dia", "era uma vez", "desde sempre" — usa datas específicas
+11. NUNCA uses "diversos estudos", "várias investigações", "muitos autores" — cita sempre nomes concretos
+12. NUNCA uses "por um lado... por outro lado" — usa contraste direto entre autores
+13. NUNCA uses "em suma", "em jeito de conclusão", "para finalizar" — termina o argumento naturalmente
+14. Varia a EXTENSÃO dos parágrafos: uns com 4 frases, outros com 6-7, outros com 3 — ritmo humano
+15. Inclui pelo menos 1 dado quantitativo concreto por subtópico (percentagem, ano, número)
+
 CITAÇÕES — OBRIGATÓRIO:
-9. Cada dado estatístico DEVE ter citação inline: (Autor, Ano) ou (Instituição, Ano)
-10. Não escrever "segundo dados do INE" sem especificar o ano: "segundo INE (2023)"
-11. Mínimo 2 citações por parágrafo de desenvolvimento — integradas no argumento, não no fim
+16. Cada dado estatístico DEVE ter citação inline: (Autor, Ano) ou (Instituição, Ano)
+17. Não escrever "segundo dados do INE" sem especificar o ano: "segundo INE (2023)"
+18. Mínimo 2 citações por parágrafo de desenvolvimento — integradas no argumento, não no fim
+19. Alterna entre citação direta ("Autor (Ano, p.X) afirma que...") e indireta ("...conforme demonstrado por Autor (Ano)")
+20. Nunca cites o mesmo autor mais de 3 vezes no capítulo — diversifica as fontes
 
 CONTEXTO GEOGRÁFICO: ${geoInstrucao}
 
-POSIÇÃO NO DOCUMENTO: ${fase} — adequa profundidade analítica`;
+POSIÇÃO NO DOCUMENTO: ${fase} — adequa profundidade analítica
+
+PROIBIÇÕES DE VOCABULÁRIO IA (NUNCA usar):
+- "multifacetado", "complexo", "dinâmico", "abrangente", "significativo", "relevante", "importante"
+- "paradigma", "ecossistema", "alavancagem", "ucket", "engajamento", "impactante"
+- "sob a ótica", "sob a perspectiva", "no âmbito", "à luz de", "em face de"
+Substitui por termos específicos da área${pAreaLabel ? ': ' + pAreaLabel : ''}`;
 }
 
-/* ── Contexto geográfico ── */
+/* ── Contexto geográfico — PLATFORM_SCOPE = GLOBAL ── */
 export function gerarInstrucaoGeo(tema, pais, geoCtx) {
   const ctx = geoCtx || detectarContextoGeo(tema, pais);
-  if (ctx === 'angola') return 'O tema refere-se especificamente a Angola. Quando relevante, usa dados angolanos com fonte e ano.';
-  if (ctx === 'cabo_verde') return 'O tema refere-se a Cabo Verde. Usa referências cabo-verdianas quando relevante.';
-  return 'Trata o tema de forma universal e académica. NÃO faças referência a Angola, Brasil, Portugal ou qualquer país específico a não ser que o tema o exija explicitamente. Usa fontes académicas internacionais.';
+  const baseGlobal = 'A ACADEMY É PLATAFORMA ACADÊMICA GLOBAL (PLATFORM_SCOPE=GLOBAL). NUNCA presuma Angola. O escopo vem do TEMA/OBJETIVOS, não da plataforma/usuário/idioma. ';
+  if (ctx === 'angola') return baseGlobal + 'O tema foca Angola — use fontes angolanas + africanas + internacionais relevantes quando sustentarem o claim. Internacional é válido para Angola.';
+  if (ctx === 'cabo_verde') return baseGlobal + 'O tema foca Cabo Verde — use fontes cabo-verdianas + internacionais relevantes.';
+  if (ctx === 'brasil') return baseGlobal + 'O tema foca Brasil — use fontes brasileiras + internacionais relevantes.';
+  if (ctx === 'portugal') return baseGlobal + 'O tema foca Portugal — use fontes portuguesas + internacionais relevantes.';
+  if (ctx === 'eua' || ctx === 'europa' || ctx === 'asia' || ctx === 'africa_geral') return baseGlobal + `O tema foca ${ctx} — use fontes dessa região + literatura global. Nunca restrinja a Angola.`;
+  return baseGlobal + 'Tema global/universal — priorize literatura internacional, meta-análises, WB/UN/UNESCO/WHO/ITU/OECD e revistas globais. Nunca insira Angola por padrão. Melhor fonte disponível para cada claim, não fonte do país da plataforma.';
 }

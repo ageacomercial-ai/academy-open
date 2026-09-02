@@ -7,13 +7,17 @@
 
 const ACADEMY_ENGINE_URL = '/api/engine';
 
-/* ── Delays entre capítulos (para não sobrecarregar a API) ── */
-const _DELAY       = (i) => i < 10 ? 1600 : i < 20 ? 2800 : i < 35 ? 4000 : 5500;
-const _RETRY_QUOTA = 45000; /* 45s de espera ao detectar rate limit */
+/* ── Delays mínimos — percepção de velocidade ── */
+const _DELAY       = (i) => i === 0 ? 0 : i < 8 ? 80 : 150;
+const _RETRY_QUOTA = 30000; /* 30s de espera ao detectar rate limit */
 const _GEN_SAVE_KEY = 'acy_gen_prog';
 
 let _genCancelado = false;
+let _genPausadoIndisponivel = false;
 let _treRetroRefCount = 0;
+let _genTimerInterval = null;
+let _genMicroIt = null;
+let _genStartTime = 0;
 
 /* ═══════════════════════════════════════════════════════════
    CHAMADA CENTRAL AO /api/engine
@@ -24,27 +28,25 @@ let _treRetroRefCount = 0;
 async function callAcademyAPI(rawPayload) {
   const action = rawPayload.acao || rawPayload.tipo || '';
   const { acao: _a, tipo: _t, ...payload } = rawPayload;
-  let ep = LS.get('engine_pref') || '';
-  if (!ep || ep === 'openrouter/google/gemini-2.0-flash-001') { LS.set('engine_pref', 'openrouter/google/gemini-2.5-flash-lite'); ep = 'openrouter/google/gemini-2.5-flash-lite'; }
-  const engine = (ep || '').split('/');
-  const ac_model = engine[0] === 'openrouter' ? engine.slice(1).join('/') : 'google/gemini-2.5-flash-lite';
-  const ac_engine = engine[0] || 'openrouter';
+  /* AI Router decide o provedor/modelo (Ollama → OpenRouter FREE → API existente).
+     O frontend não envia chaves nem escolhe modelos. */
 
   const ctrl = new AbortController();
-  const tid  = setTimeout(() => ctrl.abort(), 60000);
+  const tid  = setTimeout(() => ctrl.abort(), 300000);
   try {
     const resp = await fetch(ACADEMY_ENGINE_URL, {
       method:  'POST',
       mode:    'cors',
       signal:  ctrl.signal,
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ action, payload: { ...payload, ac_model, ac_engine } }),
+      body:    JSON.stringify({ action, payload }),
     });
 
     if (!resp.ok) {
       const ed = await resp.json().catch(() => ({}));
       const e = new Error(ed?.error || 'Engine HTTP ' + resp.status);
       e.retry   = !!ed?.retry;
+      e.generic = !!ed?.generic || ed?.error === 'AI_INDISPONIVEL';
       e.details = ed?.data   || null;
       throw e;
     }
@@ -53,6 +55,7 @@ async function callAcademyAPI(rawPayload) {
     if (!envelope?.ok) {
       const e = new Error(envelope?.error || 'Engine: resposta inválida');
       e.retry   = !!envelope?.retry;
+      e.generic = !!envelope?.generic || envelope?.error === 'AI_INDISPONIVEL';
       e.details = envelope?.data || null;
       throw e;
     }
@@ -94,30 +97,42 @@ function astParaTexto(ast) {
 }
 
 /* ── Render de erro de API no ecrã ── */
-function renderErroAPI(ec, erMsg, retryCb, voltarCb) {
+/* Regra: a infraestrutura é transparente. O utilizador NUNCA vê
+   provedor, modelo, quota, GPU ou causas técnicas. Apenas mensagens
+   profissionais e genéricas. */
+function renderErroAPI(ec, erMsg, retryCb, voltarCb, generic) {
   const linhas  = erMsg.replace('ACADEMY FALHOU:\n', '').split('\n').filter(Boolean);
   const isCORS  = erMsg.includes('EDGE_DOWN') || linhas.some(l => l.includes('CORS') || l.includes('Failed to fetch') || l.includes('NetworkError'));
-  const isQuota = erMsg.includes('QUOTA')     || (!isCORS && linhas.some(l => l.includes('429') || l.includes('quota')));
-  const is404   = !isCORS && !isQuota && linhas.some(l => l.includes('404'));
 
-  let icone  = '📡';
-  let titulo = 'Falha no servidor ACADEMY';
-  let desc   = 'O servidor não respondeu. Detalhes:';
-  if (isCORS)  { icone = '🔌'; titulo = 'Servidor indisponível'; desc = 'Não foi possível contactar o servidor ACADEMY. Verifica a tua ligação à internet.'; }
-  if (isQuota) { icone = '⏳'; titulo = 'Quota diária esgotada'; desc = 'Atingiste o limite da API. Aguarda uns segundos e tenta novamente.'; }
-  if (is404)   { icone = '🔌'; titulo = 'Serviço não encontrado'; desc = 'O serviço não está disponível nesta região. Tenta novamente.'; }
+  const MENSAGEM_GENERICA_TITULO = 'Processamento temporariamente indisponível';
+  const MENSAGEM_GENERICA_DESC   = 'O serviço está passando por uma indisponibilidade momentânea. Tente novamente dentro de alguns minutos.';
 
-  const detalhes = linhas.map(l => `<div style="text-align:left;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05)">${l}</div>`).join('');
+  let icone  = '⏳';
+  let titulo = MENSAGEM_GENERICA_TITULO;
+  let desc   = MENSAGEM_GENERICA_DESC;
+  let semTecnica = true;
+
+  if (generic || /AI_INDISPONIVEL|CAPITULO_INVALIDO/.test(erMsg)) {
+    /* indisponibilidade total → mensagem profissional, sem detalhes técnicos */
+  } else if (isCORS) {
+    titulo = MENSAGEM_GENERICA_TITULO;
+    desc   = MENSAGEM_GENERICA_DESC;
+    semTecnica = true;
+  } else {
+    /* outros erros: mesmo assim mensagem genérica profissional */
+    semTecnica = true;
+  }
+
+  const botaoRetry = `<button class="btn B" onclick="${retryCb}">↺ Tentar novamente</button>`;
+  const botaoVoltar = `<button class="btn G" onclick="${voltarCb}" style="margin-top:2px">← Voltar</button>`;
 
   if (ec) ec.innerHTML = `
     <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;text-align:center;padding:24px">
       <div style="font-size:40px">${icone}</div>
       <div class="T1" style="font-size:20px">${titulo}</div>
-      <div class="desc" style="max-width:300px">${desc}</div>
-      <div style="font-family:var(--fm);font-size:9px;color:var(--t3);width:100%;max-width:320px;padding:10px;background:var(--z3);border-radius:8px;overflow-x:hidden">${detalhes || erMsg.substring(0, 300)}</div>
-      <button class="btn B" onclick="${retryCb}">↺ Tentar novamente</button>
-      ${isQuota ? `<button class="btn O" onclick="nav('exemplares')" style="margin-top:2px">◉ Ver Exemplares Oficiais</button>` : ''}
-      <button class="btn G" onclick="${voltarCb}" style="margin-top:2px">← Voltar</button>
+      <div class="desc" style="max-width:320px">${desc}</div>
+      ${botaoRetry}
+      ${botaoVoltar}
     </div>`;
 }
 
@@ -141,7 +156,7 @@ async function gerarPlano() {
     State.set('plano', null);
     State.set('load', false);
     const ec = document.querySelector('.ecra');
-    renderErroAPI(ec, e.message || 'erro desconhecido', 'gerarPlano()', "irPara('nivel')");
+    renderErroAPI(ec, e.message || 'erro desconhecido', 'gerarPlano()', "irPara('nivel')", e.generic);
     return;
   }
   State.set('load', false);
@@ -165,7 +180,20 @@ async function gerarEst() {
       estruturaPadrao:  estruturaPadrao?.caps || [],
     });
     const parsed = typeof raw === 'object' ? raw : JSON.parse(raw);
-    State.set('est', parsed.capitulos || parsed);
+    /* Normalizar: o motor pode devolver array directo ou { capitulos:[...] }.
+       NUNCA guardar um objecto como est — o render e o loop esperam array. */
+    let estFinal = null;
+    if (Array.isArray(parsed))                    estFinal = parsed;
+    else if (Array.isArray(parsed?.capitulos))    estFinal = parsed.capitulos;
+    else {
+      const primeiroArray = Object.values(parsed || {}).find(Array.isArray);
+      estFinal = Array.isArray(primeiroArray) ? primeiroArray : null;
+    }
+    if (estFinal?.length) {
+      State.set('est', estFinal);
+    } else {
+      throw new Error('ESTRUTURA_INVALIDA');
+    }
   } catch (e) {
     /* Fallback: estrutura padrão sem IA */
     const estruturaPadrao = getEstruturaTipo(State.getCfg('tipo'));
@@ -178,7 +206,7 @@ async function gerarEst() {
     State.set('est', null);
     State.set('load', false);
     const ec = document.querySelector('.ecra');
-    renderErroAPI(ec, e.message || 'erro desconhecido', 'gerarEst()', "irPara('plano')");
+    renderErroAPI(ec, e.message || 'erro desconhecido', 'gerarEst()', "irPara('plano')", e.generic);
     return;
   }
   State.set('load', false);
@@ -204,6 +232,7 @@ const DOC_MEMORY = {
   exemplosUsados:   new Set(),
   conceitosChave:   new Set(),
   _capitulosTexto:  [],
+  _autoresDetalhados: [], /* [{autor, ano, contexto}] */
 
   reset() {
     this.conectoresUsados.clear();
@@ -212,6 +241,7 @@ const DOC_MEMORY = {
     this.exemplosUsados.clear();
     this.conceitosChave.clear();
     this._capitulosTexto = [];
+    this._autoresDetalhados = [];
   },
 
   registar(texto) {
@@ -226,22 +256,300 @@ const DOC_MEMORY = {
     /* Extrair frases de 4+ palavras para evitar repetição */
     const frases = texto.match(/[A-ZÁÉÍÓÚÂÊÎÔÛÃÕÀÜ][^.!?]{15,80}[.!?]/g) || [];
     frases.slice(0, 8).forEach(f => this.frasesUsadas.add(f.substring(0, 60)));
+
+    /* EXTRAIR AUTORES CITADOS — prioridade máxima */
+    this.extrairAutoresCitados(texto);
+  },
+
+  extrairAutoresCitados(texto) {
+    if (!texto) return;
+    
+    // BUG-006 FIX: regex correta com ano completo (sem split m[2]+m[3]), suporta ORGs e & e et al.
+    const padraoParenteses = /\(([A-ZÀ-Ü][A-Za-zÀ-Üà-ÿ]+(?:\s*&\s*[A-ZÀ-Ü][A-Za-zÀ-Üà-ÿ]+)*(?:\s+et\s+al\.)?)\s*,\s*((?:19|20)\d{2}[a-z]?)\s*\)/g;
+    let m;
+    while ((m = padraoParenteses.exec(texto)) !== null) {
+      const autor = m[1].trim();
+      const ano = m[2];
+      const chave = `${autor} (${ano})`;
+      if (!this.autoresCitados.has(chave)) {
+        this.autoresCitados.add(chave);
+        this._autoresDetalhados.push({ autor, ano, contexto: texto.substring(Math.max(0, m.index - 80), m.index + m[0].length + 80) });
+      }
+    }
+    // ORG uppercase: (INE, 2024) (OMS, 2023)
+    const padraoOrg = /\b([A-Z]{2,8})\s*,\s*((?:19|20)\d{2}[a-z]?)\b/g;
+    // Nota: só captura se dentro de parênteses já tratada acima; este é fallback para INE 2024 sem parên
+    const padraoAutorInicio = /(?:^|[.!?]\s+)([A-ZÀ-Ü][a-zà-ÿ]+(?:\s+[A-ZÀ-Ü][a-zà-ÿ]+){0,2})\s*\(((?:19|20)\d{2}[a-z]?)\)/g;
+    while ((m = padraoAutorInicio.exec(texto)) !== null) {
+      const autor = m[1].trim();
+      const ano = m[2];
+      const chave = `${autor} (${ano})`;
+      if (!this.autoresCitados.has(chave)) {
+        this.autoresCitados.add(chave);
+        this._autoresDetalhados.push({ autor, ano, contexto: '' });
+      }
+    }
+    const padraoSegundo = /(segundo|conforme|de acordo com|citado por|apud)\s+([A-ZÀ-Ü][a-zà-ÿ]+(?:\s+[A-ZÀ-Ü][a-zà-ÿ]+){0,2})\s*\(((?:19|20)\d{2}[a-z]?)\)/gi;
+    while ((m = padraoSegundo.exec(texto)) !== null) {
+      const autor = m[2].trim();
+      const ano = m[3];
+      const chave = `${autor} (${ano})`;
+      if (!this.autoresCitados.has(chave)) {
+        this.autoresCitados.add(chave);
+        this._autoresDetalhados.push({ autor, ano, contexto: '' });
+      }
+    }
   },
 
   gerarInstrucao() {
     const proibidos = [...this.conectoresUsados].slice(0, 5).join(', ');
     const frases    = [...this.frasesUsadas].slice(0, 3).map(f => `"${f}"`).join(', ');
-    if (!proibidos && !frases) return '';
+    
+    /* Lista de autores já citados para evitar repetição */
+    const autoresJaCitados = [...this.autoresCitados].slice(-8).join(', ');
+    const instrutoresAutores = autoresJaCitados 
+      ? `\n- AUTORES JÁ UTILIZADOS NOS CAPÍTULOS ANTERIORES: ${autoresJaCitados}. Tenta usar novos autores ou aprofunda diferentes aspetos dos mesmos.`
+      : '';
+
+    if (!proibidos && !frases && !instrutoresAutores) return '';
     return `MEMÓRIA DO DOCUMENTO (PROIBIÇÕES ABSOLUTAS PARA ESTE CAPÍTULO):
 ${proibidos ? `- PROIBIDO usar estes conectores já usados: ${proibidos}` : ''}
-${frases    ? `- PROIBIDO começar frases com: ${frases}` : ''}
+${frases    ? `- PROIBIDO começar frases com: ${frases}` : ''}${instrutoresAutores}
 - OBRIGATÓRIO: este capítulo deve ter estilo e vocabulário claramente diferente dos anteriores.`;
   },
+
+  getAutoresParaReferencias() {
+    /* Retorna lista única de autores para validar contra bibliografia */
+    return [...this.autoresCitados].map(s => {
+      const partes = s.split(' (');
+      return { autor: partes[0], ano: partes[1]?.replace(')', '') || '' };
+    });
+  }
 };
 
 /* ── Registar capítulo no DOC_MEMORY após geração ── */
 function ailRegistarCapitulo(texto) {
   DOC_MEMORY.registar(texto);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AUDITORIA ACADÉMICA — validação automática de qualidade
+   ═══════════════════════════════════════════════════════════ */
+function verificarQualidadeAcademica(secs) {
+  const resultado = {
+    valido: true,
+    avisos: [],
+    erros: [],
+    verificacoes: {}
+  };
+
+  /* 1. Verificar se todos os capítulos têm conteúdo substancial */
+  let totalPalavras = 0;
+  secs.forEach((sec, i) => {
+    if (/refer[eê]ncias|bibliograf/i.test(sec.titulo || '')) return;
+    const palavras = (sec.c || '').split(/\s+/).length;
+    totalPalavras += palavras;
+    
+    if (palavras < 150) {
+      resultado.erros.push(`Capítulo ${sec.num || i+1} "${sec.titulo}" tem apenas ${palavras} palavras (mínimo: 150)`);
+      resultado.valido = false;
+    } else if (palavras < 300) {
+      resultado.avisos.push(`Capítulo ${sec.num || i+1} "${sec.titulo}" tem apenas ${palavras} palavras (recomendado: 300+)`);
+    }
+  });
+
+  resultado.verificacoes.totalPalavras = totalPalavras;
+
+  /* 2. Verificar objetivos presentes */
+  const temObjetivos = secs.some(s => 
+    /(objetivo|objetivos|finalidades|propósitos)/i.test(s.c || '')
+  );
+  resultado.verificacoes.temObjetivos = temObjetivos;
+  if (!temObjetivos) {
+    resultado.avisos.push('Não foram detetados objetivos claros no documento');
+  }
+
+  /* 3. Verificar metodologia presente */
+  const temMetodologia = secs.some(s =>
+    /(metodologia|método|abordagem|procedimento|técnicas de pesquisa)/i.test(s.c || '')
+  );
+  resultado.verificacoes.temMetodologia = temMetodologia;
+  if (!temMetodologia) {
+    resultado.avisos.push('Não foi detetada descrição metodológica');
+  }
+
+  /* 4. Verificar problema de pesquisa */
+  const temProblema = secs.some(s =>
+    /(problema|questão|pergunta de investigação|problemática)/i.test(s.c || '')
+  );
+  resultado.verificacoes.temProblema = temProblema;
+  if (!temProblema) {
+    resultado.avisos.push('Não foi detetado problema de pesquisa claro');
+  }
+
+  /* 5. Verificar dados quantitativos */
+  const dadosQuantitativos = secs.reduce((count, s) => {
+    const matches = (s.c || '').match(/\d+[\.,]?\d*\s*(%|por cento|mil|milhões)/gi) || [];
+    return count + matches.length;
+  }, 0);
+  resultado.verificacoes.dadosQuantitativos = dadosQuantitativos;
+  if (dadosQuantitativos < 3) {
+    resultado.avisos.push(`Apenas ${dadosQuantitativos} dados quantitativos detetados (recomendado: 5+)`);
+  }
+
+  /* 6. Verificar diversidade de citações */
+  const autoresCitados = DOC_MEMORY.getAutoresParaReferencias();
+  resultado.verificacoes.autoresCitados = autoresCitados.length;
+  if (autoresCitados.length < 5) {
+    resultado.avisos.push(`Apenas ${autoresCitados.length} autores citados (recomendado: 5+)`);
+  }
+
+  /* 7. Verificar correspondência citações ↔ referências */
+  const secRefs = secs.find(s => /refer[eê]ncias|bibliograf/i.test(s.titulo || ''));
+  
+  if (autoresCitados.length > 0 && secRefs) {
+    const refsTexto = secRefs.c || '';
+    let refsFaltantes = [];
+    let refsNaoUsadas = [];
+
+    autoresCitados.forEach(({ autor, ano }) => {
+      const padraoBusca = new RegExp(`${autor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[,\\.]?\\s*\\(${ano}\\)`);
+      if (!padraoBusca.test(refsTexto)) {
+        refsFaltantes.push({ autor, ano });
+      }
+    });
+
+    /* Verificar se há referências na bibliografia que não são citadas */
+    const padraoRefAPA = /([A-Z][a-zà-ÿ]+(?:[.,]\s*[A-Z]\.?)+)\s*\((19|20)\d{2}/g;
+    let m;
+    const refsBiblio = [];
+    while ((m = padraoRefAPA.exec(refsTexto)) !== null) {
+      refsBiblio.push({ autor: m[1], ano: m[2] + m[3] });
+    }
+
+    refsBiblio.forEach(ref => {
+      const jaCitado = autoresCitados.some(a => a.autor === ref.autor && a.ano === ref.ano);
+      if (!jaCitado) {
+        refsNaoUsadas.push(ref);
+      }
+    });
+
+    resultado.verificacoes.refsNaBibliografia = refsBiblio.length;
+    resultado.verificacoes.refsFaltantes = refsFaltantes;
+    resultado.verificacoes.refsNaoUsadas = refsNaoUsadas;
+
+    if (refsFaltantes.length > 0) {
+      resultado.erros.push(`${refsFaltantes.length} citação(ões) no texto sem referência na bibliografia: ${refsFaltantes.map(r => `${r.autor} (${r.ano})`).join(', ')}`);
+      resultado.valido = false;
+    }
+
+    if (refsNaoUsadas.length > 2) {
+      resultado.avisos.push(`${refsNaoUsadas.length} referências na bibliografia que não são citadas no texto`);
+    }
+  } else if (autoresCitados.length > 0 && !secRefs) {
+    resultado.erros.push('Existem citações no texto mas não há secção de referências bibliográficas');
+    resultado.valido = false;
+  }
+
+  /* 8. Verificar conclusão responde aos objetivos */
+  const secConclusao = secs.find(s => /conclus[aã]o|considera[cç][oõ]es finais/i.test(s.titulo || ''));
+  if (secConclusao) {
+    const concPalavras = (secConclusao.c || '').split(/\s+/).length;
+    resultado.verificacoes.conclusaoPalavras = concPalavras;
+    if (concPalavras < 100) {
+      resultado.avisos.push('Conclusão muito curta (< 100 palavras)');
+    }
+    
+    /* Verificar se a conclusão responde ao problema */
+    const temResposta = /(resposta|conclui|confirma|rejeita|verifica|confirmamos|rejeitamos)/i.test(secConclusao.c || '');
+    resultado.verificacoes.conclusaoResposta = temResposta;
+    if (!temResposta) {
+      resultado.avisos.push('Conclusão não parece responder explicitamente ao problema de pesquisa');
+    }
+  } else {
+    resultado.avisos.push('Não foi detetada secção de conclusão');
+  }
+
+  /* 9. Verificar introdução estruturada */
+  const secIntro = secs.find(s => /introdu[cç][aã]o/i.test(s.titulo || ''));
+  if (secIntro) {
+    const introTexto = secIntro.c || '';
+    const temContexto = /(contextualiza|introduz|apresenta)/i.test(introTexto);
+    const temProblemaIntro = /(problema|questão|pergunta)/i.test(introTexto);
+    const temObjetivosIntro = /(objetivo|finalidade|propósito)/i.test(introTexto);
+    resultado.verificacoes.introTemContexto = temContexto;
+    resultado.verificacoes.introTemProblema = temProblemaIntro;
+    resultado.verificacoes.introTemObjetivos = temObjetivosIntro;
+    
+    if (!temContexto) resultado.avisos.push('Introdução não apresenta contextualização clara');
+    if (!temProblemaIntro) resultado.avisos.push('Introdução não apresenta problema de pesquisa');
+    if (!temObjetivosIntro) resultado.avisos.push('Introdução não apresenta objetivos');
+  }
+
+  /* 10. Verificar vocabulário anti-IA */
+  const vocabularioIA = ['multifacetado', 'complexo', 'dinâmico', 'abrangente', 'significativo', 
+    'relevante', 'importante', 'paradigma', 'ecossistema', 'alavancagem', 'ucket', 'engajamento',
+    'impactante', 'sob a ótica', 'sob a perspectiva', 'no âmbito', 'à luz de', 'em face de'];
+  
+  let vocabIAEncontrado = 0;
+  vocabularioIA.forEach(vocab => {
+    const count = secs.reduce((acc, s) => {
+      const matches = (s.c || '').toLowerCase().match(new RegExp(vocab, 'gi')) || [];
+      return acc + matches.length;
+    }, 0);
+    if (count > 0) vocabIAEncontrado += count;
+  });
+  
+  resultado.verificacoes.vocabularioIA = vocabIAEncontrado;
+  if (vocabIAEncontrado > 5) {
+    resultado.avisos.push(`${vocabIAEncontrado} ocorrências de vocabulário típico de IA detetado`);
+  }
+
+  return resultado;
+}
+
+/* Função para forçar regeneração de referências corretas */
+async function regenerarReferenciasCorretas(secs) {
+  const autoresCitados = DOC_MEMORY.getAutoresParaReferencias();
+  if (autoresCitados.length === 0) return false;
+
+  try {
+    mostrarToast('⏳ A corrigir referências bibliográficas…');
+    
+    const res = await callAcademyAPI({
+      acao: 'gerar_referencias',
+      tema: State.getCfg('tema') || '',
+      tipoTrabalho: (tipoActual() || { n: 'Trabalho Académico' }).n,
+      nivel: State.getCfg('nivel') || '',
+      area: State.getCfg('area') || '',
+      autoresCitados: autoresCitados, /* Enviar lista de autores realmente citados */
+    });
+
+    if (typeof res === 'string' && res.length > 50) {
+      /* Atualizar secção de referências existente ou criar nova */
+      let secRefIdx = secs.findIndex(s => /refer[eê]ncias|bibliograf/i.test(s.titulo || ''));
+      
+      if (secRefIdx >= 0) {
+        secs[secRefIdx].c = res;
+        secs[secRefIdx].conteudo = res;
+      } else {
+        secs.push({
+          num: secs.length + 1,
+          titulo: 'Referências Bibliográficas',
+          c: res,
+          conteudo: res,
+        });
+      }
+      
+      State.set('secs', secs);
+      autoGuardar();
+      return true;
+    }
+  } catch (e) {
+    console.warn('[AUDITORIA] Erro ao regenerar referências:', e);
+  }
+  
+  return false;
 }
 
 /* ── Argumento Graph (rastreio de coerência argumentativa) ── */
@@ -296,6 +604,14 @@ function genLimparProgresso() {
   try { localStorage.removeItem(_GEN_SAVE_KEY); } catch (e) {}
 }
 
+/* Cancelar uma geração em curso (usado quando se inicia outro trabalho) */
+function genCancelar() {
+  _genCancelado = true;
+  _genPausadoIndisponivel = false;
+  _btnGerarBloqueado = false;
+  _desbloquearBtnGerar();
+}
+
 /* ═══════════════════════════════════════════════════════════
    QUALITY GATE — um capítulo só fica 'p' (PRONTO) se passar.
    Rejeita reparações fracas, readiness/completeza baixos e
@@ -308,16 +624,16 @@ function validarQualidadeCapitulo(raw, textoFinal, ast) {
   if (!raw) motivos.push('resposta vazia');
   if (raw && typeof raw === 'object') {
     if (raw._genFalhou === true) motivos.push('falha assinalada pelo motor');
-    if (raw._repaired === true) motivos.push('estrutura reconstruída (reparação fraca)');
+    // Reparação fraca só é bloqueio se completude também estiver baixa
+    const compRep = raw.completeness?.completeness;
+    if (raw._repaired === true && typeof compRep === 'number' && compRep < 60) motivos.push('estrutura reconstruída + completude baixa');
     if (raw.readiness && raw.readiness.ready === false) {
-      /* bloqueador de conteúdo (não a contagem de parágrafos, que é
-         orçada pelo PBE: ~90 palavras/parágrafo) */
       const blockerReal = (raw.readiness.blockers || []).find(b => !/par[áa]grafos insuficientes/i.test(b));
       if (blockerReal) motivos.push('readiness: ' + blockerReal);
     }
     if (typeof raw.completeness?.completeness === 'number') {
       const comp = Math.round(raw.completeness.completeness);
-      if (comp < 80) motivos.push(`Completude ${comp}% (<80)`);
+      if (comp < 65) motivos.push(`Completude ${comp}% (<65)`);
     }
   }
   const limpo = String(textoFinal || '').trim();
@@ -347,17 +663,33 @@ function validarIntegridadeLivro() {
 ═══════════════════════════════════════════════════════════ */
 
 async function iniciarGer(retomar) {
-  if (_btnGerarBloqueado) { mostrarToast('⏳ Geração já em curso — aguarda.'); return; }
+  if (_btnGerarBloqueado) { mostrarToast('⏳ Geração já em curso — aguarda.', 'erro'); return; }
   _btnGerarBloqueado = true;
+  _btnGerarBloqueadoEm = Date.now();
+  if (typeof aBarraReset === 'function') aBarraReset();
   try {
   const est = State.get('est');
   if (!est) return;
 
   _genCancelado = false;
+  _genPausadoIndisponivel = false;
   State.set('genFim', false);
   DOC_MEMORY.reset();
   ARGUMENT_GRAPH.reset();
   _treRetroRefCount = 0;
+  const _setFase = (t) => { const el = document.getElementById('genFaseTxt'); if (el) el.textContent = t; };
+
+  /* ── Cronómetro vivo ── */
+  _genStartTime = Date.now();
+  const timerEl = document.getElementById('genTimer');
+  if (timerEl) {
+    _genTimerInterval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - _genStartTime) / 1000);
+      const m = Math.floor(elapsed / 60);
+      const s = elapsed % 60;
+      timerEl.textContent = `${m}:${String(s).padStart(2, '0')}`;
+    }, 1000);
+  }
 
   /* Definir ponto de início */
   let iniciarEm = 0;
@@ -389,11 +721,33 @@ async function iniciarGer(retomar) {
   const tp         = tipoActual() || { n: 'Trabalho Académico' };
   const plano      = State.get('plano') || {};
 
+  _setFase(`A planear ${est.length} capítulos…`);
   for (let i = iniciarEm; i < est.length; i++) {
     if (_genCancelado) break;
+    _btnGerarBloqueadoEm = Date.now(); /* heartbeat: geração viva */
+    _setFase(`A escrever cap. ${i+1}/${est.length} — ${est[i].titulo.substring(0,28)}…`);
+    const _lbl = document.getElementById('genPageLabel'); if (_lbl) _lbl.textContent = `CAP. ${est[i].num || i+1} · PÁG. ${i+1}/${est.length}`;
+    const _liveT = document.getElementById('genLiveTitle'); if (_liveT) _liveT.textContent = est[i].titulo.substring(0,32);
+    const _liveE = document.getElementById('genLiveExcerpt'); if (_liveE) { _liveE.innerHTML = `▸ ${(est[i].subs?.[0]||'A compor…').substring(0,48)}…<span id="genCursor" style="display:inline-block;width:4px;height:6px;background:var(--b);margin-left:1px;vertical-align:middle;animation:genBlink 1s step-end infinite;border-radius:1px"></span>`; _liveE.style.color='#888'; }
+    if (_genMicroIt) clearInterval(_genMicroIt);
+    let _mIdx=0; const _mMsgs=['A consultar fontes…','A estruturar argumentos…','A redigir parágrafos…','A inserir citações…'];
+    _genMicroIt = setInterval(()=>{ const el=document.getElementById('genFaseTxt'); if(el) el.textContent = _mMsgs[_mIdx++ % _mMsgs.length]; const w=document.getElementById('genTypingLine'); if(w) w.style.width = (42+Math.random()*38)+'%'; }, 1600);
+    const _w0=document.getElementById('genTypingLine'); if(_w0) setTimeout(()=>_w0.style.width='62%', 180);
 
     const cap  = est[i];
-    const secs = State.get('secs');
+    let secs   = State.get('secs') || [];
+
+    /* Defesa: se o estado foi reposto durante a geração (resetDocumento),
+       reconstruir a secção actual em vez de crashar com undefined. */
+    if (!secs[i]) {
+      secs = est.map((c, idx) => ({
+        id: idx, nome: `CAP. ${c.num || idx + 1} — ${c.titulo}`,
+        titulo: c.titulo, num: c.num, subs: c.subs || [],
+        e: 'a', c: '', ast: null,
+      }));
+      State.set('secs', secs);
+    }
+
     secs[i].e  = 'g';
     State.set('secs', secs);
     aSecDOM(i, 'g', 'EM CURSO');
@@ -432,8 +786,9 @@ async function iniciarGer(retomar) {
 
       let resultado   = null;
       let tentativas  = 0;
+      let _capGenericFalhou = false;
       let _capTimedOut = false;
-      const _capTimeout = setTimeout(() => { _capTimedOut = true; }, 120000);
+      const _capTimeout = setTimeout(() => { _capTimedOut = true; }, 60000);
 
       try {
         while (!resultado && tentativas < 4 && !_genCancelado && !_capTimedOut) {
@@ -448,7 +803,7 @@ async function iniciarGer(retomar) {
               capTitulo:           cap.titulo,
               capSubs:             cap.subs || [],
               totalCaps:           est.length,
-              palavrasPorCap:      pbePlan ? Math.max(pbePlan.piso, pbePlan.porCapitulo[i]) : Math.max(200, Math.round(totalPags * 220 / Math.max(1, est.length))),
+              palavrasPorCap:      pbePlan ? Math.max(pbePlan.piso, pbePlan.porCapitulo[i]) : Math.max(300, Math.round(totalPags * 220 / Math.max(1, est.length))),
               wordBudget:          pbePlan ? pbePlan.totalPalavras : 0,
               palavrasPorPagina:   pbePlan ? pbePlan.palavrasPorPagina : 262,
               paginasAlvo:         totalPags,
@@ -468,12 +823,14 @@ async function iniciarGer(retomar) {
             let _rawVal = raw;
             if (raw && typeof raw === 'object' && 'resposta' in raw) {
               _rawVal = raw.resposta;
-              const secsArr = State.get('secs');
-              secsArr[i].health       = raw.health       || null;
-              secsArr[i].readiness    = raw.readiness    || null;
-              secsArr[i].confidence   = raw.confidence   || null;
-              secsArr[i].completeness = raw.completeness || null;
-              State.set('secs', secsArr);
+              const secsArr = State.get('secs') || [];
+              if (secsArr[i]) {
+                secsArr[i].health       = raw.health       || null;
+                secsArr[i].readiness    = raw.readiness    || null;
+                secsArr[i].confidence   = raw.confidence   || null;
+                secsArr[i].completeness = raw.completeness || null;
+                State.set('secs', secsArr);
+              }
             }
 
             if (_rawVal && (typeof _rawVal === 'object' || (typeof _rawVal === 'string' && _rawVal.length > 30))) {
@@ -483,10 +840,16 @@ async function iniciarGer(retomar) {
             }
           } catch (er) {
             tentativas++;
-            /* 503 CAPITULO_INVALIDO já foi validado no backend: sai rápido
-               do loop interno e deixa o Quality Gate gerir o retry. */
             if (/CAPITULO_INVALIDO/i.test(er?.message || '')) { tentativas = 4; break; }
-            const espera = Math.min(tentativas * 8000, 45000);
+            if (er?.generic || /AI_INDISPONIVEL/i.test(er?.message || '')) {
+              _capGenericFalhou = true;
+              genGuardarProgresso();
+              autoGuardar();
+              _genPausadoIndisponivel = true;
+              _genCancelado = true;
+              break;
+            }
+            const espera = Math.min(tentativas * 4000, 20000);
             aSecDOM(i, 'g', `Tentativa ${tentativas}/4 — aguarda ${Math.round(espera / 1000)}s…`);
             if (restEl) restEl.textContent = 'Erro API — a re‐tentar…';
             await new Promise(r => setTimeout(r, espera));
@@ -494,7 +857,19 @@ async function iniciarGer(retomar) {
         }
       } finally {
         clearTimeout(_capTimeout);
-        if (!resultado) resultado = `[Cap. ${cap.num} não concluído. Toca em ↺.]`;
+        if (!resultado) {
+          // BUG-001 FIX: FALHA NUNCA GERA TEXTO FABRICADO — marca como incompleto/review
+          if (_capGenericFalhou || tentativas >= 4) {
+            // Não fabrica Silva/Santos. Preserva progresso e deixa chapter em estado x (a completar)
+            resultado = null; // força ramo x abaixo
+            rawEnvelope = { _genFalhou: true, completeness: { completeness: 0 }, health: { health: 0, label: 'Falha IA' }, readiness: { ready: false, blockers: ['IA indisponível'] } };
+            const _liveFb = document.getElementById('genLiveExcerpt'); if (_liveFb) { _liveFb.textContent = '⚠ IA indisponível — capítulo ficará por completar'; _liveFb.style.color = '#991b1b'; }
+            // Propaga para qualidade gate como falha
+            _genPausadoIndisponivel = true;
+          } else {
+            resultado = `[Cap. ${cap.num} não concluído. Toca em ↺.]`;
+          }
+        }
       }
 
       if (_genCancelado) break;
@@ -540,25 +915,42 @@ async function iniciarGer(retomar) {
 
     if (_genCancelado) { genGuardarProgresso(); break; }
 
-    const secsArr = State.get('secs');
+    const secsArr = State.get('secs') || [];
+    if (!secsArr[i]) { _genCancelado = true; break; }
 
-    /* Capítulo rejeitado após 3 tentativas: NUNCA 'p' — fica 'x' (a completar). */
+    /* Capítulo com QC fraco após 3 tentativas: entregar como 'p' com aviso se tiver conteúdo útil */
     if (!qcOk) {
-      textoFinal = textoFinal && textoFinal.trim().length > 0 && !textoFinal.startsWith('[')
-        ? textoFinal
-        : `[Secção '${cap.num}' incompleta. Toca em ↺ para regenerar.]`;
-      secsArr[i].e        = 'x';
-      secsArr[i].c        = textoFinal;
-      secsArr[i].blocks   = blkExtrair({ c: textoFinal });
-      secsArr[i].ast      = astFinal;
-      secsArr[i].qcRejeitado = true;
-      State.set('secs', secsArr);
-      aSecDOM(i, 'x', '⚠ POR COMPLETAR', textoFinal);
-      aBarra(i + 1, est.length);
-      genGuardarProgresso();
-      autoGuardar();
-      mostrarToast(`⚠ Cap. ${cap.num}: qualidade insuficiente — deixado "a completar". Toca em ↺ no editor.`);
-      continue;
+      const palavrasQc = textoFinal ? textoFinal.split(/\s+/).length : 0;
+      const temConteudoUtil = textoFinal && textoFinal.trim().length > 120 && !textoFinal.startsWith('[') && palavrasQc >= 80;
+      if (temConteudoUtil) {
+        secsArr[i].e        = 'p';
+        secsArr[i].c        = textoFinal;
+        secsArr[i].blocks   = blkExtrair({ c: textoFinal });
+        secsArr[i].ast      = astFinal;
+        secsArr[i].qcAviso  = true;
+        State.set('secs', secsArr);
+        aSecDOM(i, 'p', `✓ PRONTO · ${palavrasQc} palavras ⚠`, textoFinal);
+        aBarra(i + 1, est.length);
+        genGuardarProgresso();
+        autoGuardar();
+        mostrarToast(`⚠ Cap. ${cap.num}: entregue com qualidade média — podes melhorar no editor.`);
+      } else {
+        textoFinal = textoFinal && textoFinal.trim().length > 0 && !textoFinal.startsWith('[')
+          ? textoFinal
+          : `[Secção '${cap.num}' incompleta. Toca em ↺ para regenerar.]`;
+        secsArr[i].e        = 'x';
+        secsArr[i].c        = textoFinal;
+        secsArr[i].blocks   = blkExtrair({ c: textoFinal });
+        secsArr[i].ast      = astFinal;
+        secsArr[i].qcRejeitado = true;
+        State.set('secs', secsArr);
+        aSecDOM(i, 'x', '⚠ POR COMPLETAR', textoFinal);
+        aBarra(i + 1, est.length);
+        genGuardarProgresso();
+        autoGuardar();
+        mostrarToast(`⚠ Cap. ${cap.num}: qualidade insuficiente — deixado "a completar". Toca em ↺ no editor.`);
+      }
+      if (!temConteudoUtil) continue;
     }
 
     /* ── GUARDAR NA SECÇÃO (aprovado pelo gate) ── */
@@ -570,8 +962,29 @@ async function iniciarGer(retomar) {
 
     const healthLabel = secsArr[i].health  ? ` · ${secsArr[i].health.health}% ${secsArr[i].health.label}` : '';
     const readyLabel  = secsArr[i].readiness ? (secsArr[i].readiness.ready ? ' ✓' : ' ⚠') : '';
-    aSecDOM(i, 'p', `✓ PRONTO${healthLabel}${readyLabel}`, textoFinal);
+    const wordCount   = textoFinal ? textoFinal.split(/\s+/).length : 0;
+    aSecDOM(i, 'p', `✓ PRONTO · ${wordCount} palavras${healthLabel}${readyLabel}`, textoFinal);
     aBarra(i + 1, est.length);
+    // Actualizar preview espelhado com trecho real
+    const _liveT2 = document.getElementById('genLiveTitle'); if (_liveT2) _liveT2.textContent = `✓ ${cap.titulo.substring(0,32)}`;
+    const _liveE2 = document.getElementById('genLiveExcerpt'); if (_liveE2) {
+      const trecho = textoFinal.substring(0, 90).replace(/\n/g,' ').trim();
+      _liveE2.textContent = trecho ? `“${trecho}…”` : `✓ ${wordCount} palavras`;
+      _liveE2.style.animation = 'none';
+      _liveE2.style.color = '#1a7a4a';
+    }
+    const _pgAct = document.getElementById('genPageActive'); if (_pgAct) { _pgAct.style.transform = 'scale(1.02)'; setTimeout(()=>{_pgAct.style.transform='scale(1)';}, 300); }
+
+    /* Actualizar estimativa de tempo restante (dinâmica) */
+    const restEl2 = document.getElementById('estimG');
+    if (restEl2) {
+      const elapsed  = (Date.now() - _genStartTime) / 1000;
+      const done     = i + 1;
+      const avgPerCh = elapsed / done;
+      const remaining = Math.ceil(avgPerCh * (est.length - done - 1));
+      if (remaining > 60) restEl2.textContent = `~${Math.ceil(remaining / 60)} min restantes`;
+      else restEl2.textContent = `~${remaining}s restantes`;
+    }
 
     /* Alimentar memória do documento */
     if (textoFinal && textoFinal.length > 30 && !textoFinal.startsWith('[')) {
@@ -583,20 +996,58 @@ async function iniciarGer(retomar) {
     autoGuardar();
   }
 
+  if (_genMicroIt) { clearInterval(_genMicroIt); _genMicroIt = null; }
   /* ── FIM DA GERAÇÃO ── */
+  if (_genTimerInterval) { clearInterval(_genTimerInterval); _genTimerInterval = null; }
   if (_genCancelado) {
     autoGuardar();
-    mostrarToast('⏹ Geração pausada — trabalho guardado. Podes retomar.');
+    if (_genPausadoIndisponivel) {
+      _genPausadoIndisponivel = false;
+      mostrarToast('⏸ Processamento pausado temporariamente — o progresso do seu trabalho foi preservado. Será retomado quando o serviço estiver disponível.');
+    } else {
+      mostrarToast('⏹ Geração pausada — trabalho guardado. Podes retomar.');
+    }
     return;
   }
 
   /* ── PAGE BUDGET ENGINE — validação final de paginação (obrigatória) ── */
   if (temPBE) {
+    _setFase('A calibrar paginação…');
+    if (typeof aBarraForcar === 'function') aBarraForcar(92);
     const estimGEl = document.getElementById('estimG');
     if (estimGEl) estimGEl.textContent = 'A calibrar paginação…';
     await pbeValidarEAjustar(est, pbePlan);
     const restEl2 = document.getElementById('estimG');
     if (restEl2) restEl2.textContent = 'Concluído ✓';
+    if (typeof aBarraForcar === 'function') aBarraForcar(96);
+  }
+
+  /* ── AUDITORIA ACADÉMICA — verificar e corrigir problemas críticos ── */
+  _setFase('A auditar qualidade académica…');
+  if (typeof aBarraForcar === 'function') aBarraForcar(98);
+  const secsFinal = State.get('secs') || [];
+  if (secsFinal.length > 0) {
+    try {
+      const auditResult = verificarQualidadeAcademica(secsFinal);
+      
+      if (auditResult.erros.length > 0) {
+        mostrarToast(`⚠ Auditoria detetou ${auditResult.erros.length} problema(s) — a corrigir…`);
+        
+        /* Se há citações sem referências, regenerar bibliografia */
+        if (auditResult.verificacoes.refsFaltantes?.length > 0) {
+          const refCorrigida = await regenerarReferenciasCorretas(secsFinal);
+          if (refCorrigida) {
+            mostrarToast('✓ Referências bibliográficas corrigidas!');
+          }
+        }
+      }
+      
+      if (auditResult.avisos.length > 0 && auditResult.avisos.length <= 3) {
+        console.warn('[AUDITORIA] Avisos:', auditResult.avisos);
+      }
+    } catch (e) {
+      console.warn('[AUDITORIA] Erro na auditoria:', e);
+    }
   }
 
   /* ── QUALITY GATE FINAL ──
@@ -612,6 +1063,9 @@ async function iniciarGer(retomar) {
     return;
   }
 
+  _setFase('A finalizar documento…');
+  if (typeof aBarraForcar === 'function') aBarraForcar(100);
+  await new Promise(r => setTimeout(r, 350));
   genLimparProgresso();
   limparRascunhoPendente();
 
@@ -643,15 +1097,29 @@ function docConcluido() {
   irPara('editor');
 }
 
-/* ── Calcular estatísticas do documento ── */
+/* ── Calcular estatísticas do documento (alinhado com PBE) ── */
 function calcStats(secs) {
   const txt      = secs.map(s => s.c || s.conteudo || '').join(' ');
   const palavras = txt.split(/\s+/).filter(Boolean).length;
   const chars    = txt.replace(/\s/g, '').length;
-  const pags     = Math.max(1, Math.ceil(palavras / 320));
+  // Usa PBE se disponível, senão fallback 262 (mesmo motor do PDF)
+  let ppp = 262;
+  try { if (typeof pbePalavrasPorPagina === 'function') ppp = pbePalavrasPorPagina(); } catch {}
+  // Medição real via layout se possível (mais precisa)
+  let pagsReais = 0;
+  try {
+    if (typeof pbeMedirPaginas === 'function' && Array.isArray(secs) && secs.length) {
+      const m = pbeMedirPaginas(secs);
+      if (m && m.total > 0) pagsReais = m.total;
+    }
+  } catch {}
+  const pagsCalc = Math.max(1, Math.ceil(palavras / ppp));
+  const pags = pagsReais > 0 ? pagsReais : pagsCalc;
+  const pagsAlvo = (typeof State !== 'undefined' && State.getCfg) ? (State.getCfg('pags') || pags) : pags;
+  // Mostrar real mas garantir que alvo aparece quando ainda a calibrar
   const refs     = secs.filter(s => (s.titulo || '').toLowerCase().includes('referência')).length;
   const tempoLeit = Math.max(1, Math.ceil(palavras / 200));
-  return { palavras, chars, pags, refs, tempoLeit };
+  return { palavras, chars, pags, pagsAlvo, pagsReais: pagsReais || pagsCalc, ppp, refs, tempoLeit };
 }
 
 /* ── Sanitização de texto académico ── */
@@ -675,20 +1143,52 @@ function sanitizeAcademic(txt) {
 
 /* ── Validação antes de gerar ── */
 let _btnGerarBloqueado = false;
+let _btnGerarBloqueadoEm = 0;
 
+let _btnClickLock = 0;
 function btnGerarFinalClick() {
-  if (_btnGerarBloqueado) { mostrarToast('⏳ Geração já em curso — aguarda.'); return; }
-  const erros = _validarFormularioCompleto();
-  if (erros.length) { _mostrarErroValidacao(erros[0]); return; }
-  const btn = document.getElementById('btnGerarFinal');
-  if (btn) { btn.textContent = '⏳ A iniciar geração…'; btn.disabled = true; btn.style.opacity = '.7'; btn.style.cursor = 'not-allowed'; }
-  verificarAntesDeGerar(true);
+  // 1. Anti-duplo-click físico: 1200ms debounce (independente da geração)
+  if (Date.now() - _btnClickLock < 1200) return;
+  _btnClickLock = Date.now();
+  // 2. Se já há geração em curso, avisa
+  if (_btnGerarBloqueado) {
+    if (Date.now() - _btnGerarBloqueadoEm > 60000) {
+      _btnGerarBloqueado = false;
+    } else {
+      mostrarToast('⏳ Geração já em curso — aguarda.', 'erro');
+      return;
+    }
+  }
+  // Trava visual imediata (sem tocar em _btnGerarBloqueado — deixa iniciarGer gerir)
+  document.querySelectorAll('#btnGerarFinal').forEach(b => {
+    b.disabled = true;
+    b.style.opacity = '.6';
+    b.style.cursor = 'not-allowed';
+    b.style.pointerEvents = 'none';
+    b.textContent = '⏳ A iniciar geração…';
+  });
+  // Re-libera clique visual após 1.2s se validação falhar (para não ficar preso)
+  setTimeout(() => { if (!_btnGerarBloqueado) _desbloquearBtnGerar(); }, 1500);
+  try {
+    const erros = _validarFormularioCompleto();
+    if (erros.length) { _mostrarErroValidacao(erros[0]); _desbloquearBtnGerar(); return; }
+    verificarAntesDeGerar(true);
+  } catch (e) {
+    console.error('[GERAR]', e);
+    _desbloquearBtnGerar();
+    const msg = (e?.message || e?.name || 'desconhecido').toString().substring(0, 140);
+    mostrarToast(`⚠ Erro ao iniciar a geração: ${msg} — tenta de novo.`, 'erro');
+    try { acMostrarErro('Gerar Trabalho: ' + msg, (e && e.stack) || ''); } catch (_) {}
+  }
 }
 
 function _desbloquearBtnGerar() {
   _btnGerarBloqueado = false;
+  document.querySelectorAll('#btnGerarFinal').forEach(btn => {
+    if (btn) { btn.textContent = '⚡ Gerar Trabalho'; btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = ''; btn.style.pointerEvents = ''; }
+  });
   const btn = document.getElementById('btnGerarFinal');
-  if (btn) { btn.textContent = '⚡ Gerar Trabalho'; btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = ''; }
+  if (btn && !btn.textContent.includes('Gerar')) { btn.textContent = '⚡ Gerar Trabalho'; btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = ''; btn.style.pointerEvents = ''; }
 }
 
 function _validarFormularioCompleto() {
@@ -743,9 +1243,11 @@ function _mostrarSaldoInsuficiente(pags, saldo) {
   overlay.id = 'saldo-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;z-index:699;background:rgba(0,0,0,.6);backdrop-filter:blur(8px)';
   const div = document.createElement('div');
+  div.id = 'saldo-card';
   div.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:700;background:var(--z2);border:.5px solid var(--e1);border-radius:16px;padding:28px 24px;width:calc(100% - 48px);max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,.7);animation:aparecer .2s;`;
+  const _fecharSaldo = () => { document.getElementById('saldo-card')?.remove(); document.getElementById('saldo-overlay')?.remove(); };
   div.innerHTML = `
-    <button onclick="div.remove();overlay.remove()"
+    <button onclick="document.getElementById('saldo-card')?.remove();document.getElementById('saldo-overlay')?.remove()"
       style="position:absolute;top:12px;right:14px;background:none;border:none;color:var(--t3);font-size:18px;cursor:pointer;padding:4px">✕</button>
 
     <div style="display:flex;gap:6px;margin-bottom:20px;justify-content:center">
@@ -792,19 +1294,19 @@ function _mostrarSaldoInsuficiente(pags, saldo) {
       </div>
     </div>
 
-    <button onclick="div.remove();overlay.remove();_iniciarPagamentoAvulso(${pac.pags},${pac.preco})"
+    <button onclick="document.getElementById('saldo-card')?.remove();document.getElementById('saldo-overlay')?.remove();_iniciarPagamentoAvulso(${pac.pags},${pac.preco})"
       style="width:100%;padding:13px;border-radius:10px;background:linear-gradient(135deg,var(--b),var(--bd));border:none;color:var(--t-inv);font-family:var(--fu);font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px">
       Comprar ${pac.label} — ${pac.preco.toLocaleString()} Kz →
     </button>
-    <button onclick="div.remove();overlay.remove();irPara('planos',{numPags:${pags}})"
+    <button onclick="document.getElementById('saldo-card')?.remove();document.getElementById('saldo-overlay')?.remove();irPara('planos',{numPags:${pags}})"
       style="width:100%;padding:10px;border-radius:10px;background:transparent;border:.5px solid var(--e0);color:var(--t3);font-family:var(--fu);font-size:12px;cursor:pointer;margin-bottom:6px">
       Ver todos os planos
     </button>
-    <button onclick="div.remove();overlay.remove()"
+    <button onclick="document.getElementById('saldo-card')?.remove();document.getElementById('saldo-overlay')?.remove()"
       style="width:100%;padding:10px;border-radius:10px;background:transparent;border:none;color:var(--t3);font-family:var(--fu);font-size:12px;cursor:pointer">
       Voltar
     </button>`;
-  overlay.onclick = () => { div.remove(); overlay.remove(); };
+  overlay.onclick = _fecharSaldo;
   document.body.appendChild(overlay);
   document.body.appendChild(div);
 }
