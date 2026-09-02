@@ -842,12 +842,15 @@ async function iniciarGer(retomar) {
             tentativas++;
             if (/CAPITULO_INVALIDO/i.test(er?.message || '')) { tentativas = 4; break; }
             if (er?.generic || /AI_INDISPONIVEL/i.test(er?.message || '')) {
+              // AUTOMÁTICO: não pausa com intervenção manual — aguarda e retenta o mesmo capítulo
               _capGenericFalhou = true;
-              genGuardarProgresso();
-              autoGuardar();
-              _genPausadoIndisponivel = true;
-              _genCancelado = true;
-              break;
+              const esperaAI = Math.min(8000 + tentativas * 6000, 30000);
+              aSecDOM(i, 'g', `IA ocupada — re-tentativa automática ${tentativas}/4 em ${Math.round(esperaAI/1000)}s…`);
+              if (restEl) restEl.textContent = `IA indisponível — aguardando ${Math.round(esperaAI/1000)}s…`;
+              mostrarToast(`⏳ IA temporariamente ocupada — capítulo ${cap.num} será retentado automaticamente.`);
+              await new Promise(r => setTimeout(r, esperaAI));
+              // não cancela global, continua while para retentar mesmo capítulo
+              continue;
             }
             const espera = Math.min(tentativas * 4000, 20000);
             aSecDOM(i, 'g', `Tentativa ${tentativas}/4 — aguarda ${Math.round(espera / 1000)}s…`);
@@ -858,14 +861,13 @@ async function iniciarGer(retomar) {
       } finally {
         clearTimeout(_capTimeout);
         if (!resultado) {
-          // BUG-001 FIX: FALHA NUNCA GERA TEXTO FABRICADO — marca como incompleto/review
           if (_capGenericFalhou || tentativas >= 4) {
-            // Não fabrica Silva/Santos. Preserva progresso e deixa chapter em estado x (a completar)
-            resultado = null; // força ramo x abaixo
-            rawEnvelope = { _genFalhou: true, completeness: { completeness: 0 }, health: { health: 0, label: 'Falha IA' }, readiness: { ready: false, blockers: ['IA indisponível'] } };
-            const _liveFb = document.getElementById('genLiveExcerpt'); if (_liveFb) { _liveFb.textContent = '⚠ IA indisponível — capítulo ficará por completar'; _liveFb.style.color = '#991b1b'; }
-            // Propaga para qualidade gate como falha
-            _genPausadoIndisponivel = true;
+            // AUTOMÁTICO: não deixa em 'x' e avança — mantém retry do capítulo no nível QC
+            // Marca envelope como falha para o QC falhar e forçar nova passagem do for-qcPass
+            resultado = null;
+            rawEnvelope = { _genFalhou: true, completeness: { completeness: 0 }, health: { health: 0, label: 'Falha IA' }, readiness: { ready: false, blockers: ['IA indisponível — retentativa automática'] } };
+            const _liveFb = document.getElementById('genLiveExcerpt'); if (_liveFb) { _liveFb.textContent = `⏳ Cap. ${cap.num} falhou — nova tentativa automática…`; _liveFb.style.color = '#b45309'; }
+            // não seta _genPausadoIndisponivel nem _genCancelado — fluxo continua automático
           } else {
             resultado = `[Cap. ${cap.num} não concluído. Toca em ↺.]`;
           }
@@ -920,37 +922,30 @@ async function iniciarGer(retomar) {
 
     /* Capítulo com QC fraco após 3 tentativas: entregar como 'p' com aviso se tiver conteúdo útil */
     if (!qcOk) {
-      const palavrasQc = textoFinal ? textoFinal.split(/\s+/).length : 0;
-      const temConteudoUtil = textoFinal && textoFinal.trim().length > 120 && !textoFinal.startsWith('[') && palavrasQc >= 80;
-      if (temConteudoUtil) {
-        secsArr[i].e        = 'p';
-        secsArr[i].c        = textoFinal;
-        secsArr[i].blocks   = blkExtrair({ c: textoFinal });
-        secsArr[i].ast      = astFinal;
-        secsArr[i].qcAviso  = true;
-        State.set('secs', secsArr);
-        aSecDOM(i, 'p', `✓ PRONTO · ${palavrasQc} palavras ⚠`, textoFinal);
-        aBarra(i + 1, est.length);
-        genGuardarProgresso();
-        autoGuardar();
-        mostrarToast(`⚠ Cap. ${cap.num}: entregue com qualidade média — podes melhorar no editor.`);
-      } else {
-        textoFinal = textoFinal && textoFinal.trim().length > 0 && !textoFinal.startsWith('[')
-          ? textoFinal
-          : `[Secção '${cap.num}' incompleta. Toca em ↺ para regenerar.]`;
-        secsArr[i].e        = 'x';
-        secsArr[i].c        = textoFinal;
-        secsArr[i].blocks   = blkExtrair({ c: textoFinal });
-        secsArr[i].ast      = astFinal;
-        secsArr[i].qcRejeitado = true;
-        State.set('secs', secsArr);
-        aSecDOM(i, 'x', '⚠ POR COMPLETAR', textoFinal);
-        aBarra(i + 1, est.length);
-        genGuardarProgresso();
-        autoGuardar();
-        mostrarToast(`⚠ Cap. ${cap.num}: qualidade insuficiente — deixado "a completar". Toca em ↺ no editor.`);
-      }
-      if (!temConteudoUtil) continue;
+      // MODO 100% AUTOMÁTICO E BLOQUEANTE: nenhum capítulo avança sem QC ok assertivo
+      // Não entrega com aviso (temConteudoUtil) — exige retentativa até passar
+      textoFinal = textoFinal && textoFinal.trim().length > 0 && !textoFinal.startsWith('[')
+        ? textoFinal
+        : `[Secção '${cap.num}' incompleta — retentativa automática em curso]`;
+      secsArr[i].e        = 'x';
+      secsArr[i].c        = textoFinal;
+      secsArr[i].blocks   = blkExtrair({ c: textoFinal });
+      secsArr[i].ast      = astFinal;
+      secsArr[i].qcRejeitado = true;
+      State.set('secs', secsArr);
+      aSecDOM(i, 'x', `⏳ QC falhou — re-tentativa automática`, textoFinal);
+      // não dá continue aqui — deixa cair no bloco de retry automático abaixo (i-- )
+      // marca qcOk falso para o retry externo detectar
+    }
+
+    // BLOQUEANTE: se QC falhou, NÃO guarda como p — retry automático do mesmo capítulo
+    if (!qcOk && !_genCancelado) {
+      const esperaCap = 10000;
+      aSecDOM(i, 'g', `Cap. ${cap.num} aguardando retry automático…`);
+      mostrarToast(`⏳ Cap. ${cap.num} não concluído assertivamente — nova tentativa automática em ${esperaCap/1000}s.`);
+      await new Promise(r=>setTimeout(r, esperaCap));
+      i--; // repete o mesmo capítulo (for incrementa)
+      continue;
     }
 
     /* ── GUARDAR NA SECÇÃO (aprovado pelo gate) ── */
