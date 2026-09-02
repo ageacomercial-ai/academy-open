@@ -7,6 +7,17 @@
 
 /* ════════════════════════════════════════════════════════════
    SANITIZAÇÃO DE CONTEÚDO ACADÉMICO
+   BUG-005: a versão anterior usava regex "over-greedy" sem âncoras de
+   linha (ex.: /\{\s*"(?:title|...)"\s*:/g SEM ^/$ ) que podia apagar
+   uma substring legítima no MEIO de uma frase (ex. um parágrafo que
+   discute a sintaxe `{"title": ...}` como exemplo). A exportação NÃO
+   deve "corrigir" conteúdo académico (ver secção 15 do prompt mestre)
+   — vestígios de JSON devem ter sido evitados a montante (repararAST/
+   validarAST); aqui só removemos LINHAS INTEIRAS que são,
+   inequivocamente, artefactos de JSON (ancoradas a início/fim de
+   linha), nunca substrings dentro de texto corrido. Qualquer
+   ocorrência residual fica visível (e o Quality Gate deve apanhá-la),
+   em vez de ser apagada silenciosamente.
 ════════════════════════════════════════════════════════════ */
 function sanitizarConteudo(txt) {
   if (!txt || typeof txt !== 'string') return '';
@@ -42,18 +53,26 @@ function sanitizarConteudo(txt) {
   t = t.replace(/^[ \t]+/gm,  '');
   t = t.replace(/[ \t]+$/gm,  '');
 
-  /* 6. Remover vestígios de JSON/AST que possam ter escapado da IA — BUG-005 FIX: regex menos agressiva */
-  // Só remove linhas que são JSON puro, não parágrafos que mencionam "title" literais
-  t = t.replace(/^\s*\{\s*"(?:chapter_id|section_id|title|paragraphs)"\s*:\s*"[^"]*"\s*,?\s*$/gm, '');
-  t = t.replace(/^\s*\{\s*$|^\s*\}\s*$|^\s*\[\s*$|^\s*\]\s*$/gm, '');
-  t = t.replace(/^\s*"[a-z_]+"\s*:\s*"[^"]*"\s*,?\s*$/gm, '');
-  // BUG-005: não fazer \\" -> " globalmente se conteúdo legítimo contém aspas escapadas; só se for resíduo JSON
-  if (/^\s*\{/.test(t.slice(0,200)) || /"paragraphs"\s*:/.test(t.slice(0,500))) {
-    t = t.replace(/\\"/g, '"');
-    t = t.replace(/\\n/g, '\n');
-  }
+  /* 6. Remover LINHAS INTEIRAS que são artefactos de JSON — sempre ancorado
+     a início (^) e fim ($) de linha, NUNCA como substring livre no meio de
+     texto corrido. Isto evita apagar conteúdo académico legítimo que
+     mencione essas palavras-chave em prosa. */
+  t = t
+    .split('\n')
+    .filter(linha => {
+      const l = linha.trim();
+      if (!l) return true; // linhas vazias tratadas no passo 7
+      // Linha é SÓ uma chave JSON: "title": "..."
+      if (/^"[a-z_]+"\s*:\s*(?:"[^"]*"|[\d.\-]+|true|false|null|\[[^\]]*\]),?$/.test(l)) return false;
+      // Linha é SÓ um delimitador estrutural: { } [ ] ,
+      if (/^[\{\}\[\],]+$/.test(l)) return false;
+      // Linha é um objeto JSON completo de chapter/section conhecido, inteiro nessa linha
+      if (/^\{\s*"(?:chapter_id|section_id|title|paragraphs|content|status|generated_at|generated_by|version|sections)"\s*:[\s\S]*\}\s*,?$/.test(l)) return false;
+      return true;
+    })
+    .join('\n');
 
-  /* 6. Remover linhas que ficaram vazias ou só com artefactos */
+  /* 7. Remover linhas que ficaram vazias ou só com artefactos */
   t = t.split('\n').filter(l => l.trim().length > 0).join('\n');
   t = t.replace(/\n{3,}/g, '\n\n');
 
@@ -91,12 +110,11 @@ function refValidar(secs) {
   return temRef && count >= REF_MIN;
 }
 
-function refGerarFallback(tema) {
-  // BUG-004 FIX: ZERO FABRICAÇÃO — fallback nunca retorna refs genéricas falsas
-  // Se não há pipeline real, retorna vazio e deixa gate bloquear FINAL
-  console.warn('[EXPORT] refGerarFallback bloqueado — sem fontes verificadas, não inventar refs');
-  return '';
-}
+/* BUG-004: função refGerarFallback (10 referências fictícias hardcoded —
+   World Bank/UNESCO/Santos 2018/Mbembe 2016 etc, sem DOI/source_id real)
+   foi REMOVIDA. Referências têm de vir de refGerarAPA (fontes reais
+   verificadas via EVIDENCE-FIRST) ou ficar vazias — nunca fabricadas
+   localmente com aparência plausível. Ver academic-engine-audit BUG_MAP. */
 
 async function refGerarAPA(tema, tipo, nivel, area) {
   mostrarToast('📚 A gerar referências bibliográficas APA…');
@@ -109,7 +127,13 @@ async function refGerarAPA(tema, tipo, nivel, area) {
       area:         area || '',
       totalPags:    State.getCfg('pags') || 15,
     });
-    return typeof res === 'string' && res.length > 20 ? res : '';
+    if (typeof res !== 'string' || res.length <= 20) return '';
+    // O motor pode devolver uma mensagem de aviso (strict-empty) em vez de
+    // referências reais quando não encontrou fontes verificadas — nesse caso
+    // NÃO devolver o aviso como se fosse conteúdo da bibliografia (isso
+    // colaria texto de erro no documento do utilizador).
+    if (/bibliografia vazia|nenhuma fonte verificada|bloqueado de inventar/i.test(res)) return '';
+    return res;
   } catch { return ''; }
 }
 
@@ -164,7 +188,10 @@ async function refGateExportacao(secs, meta, onContinuar) {
   document.getElementById('refBtnGerar').onclick = async () => {
     modal.remove();
     const secsComRef = await refAnexarAoDocumento(secs, meta.titulo || '', meta.tipo || '', meta.nivel || '', meta.area || '');
-    mostrarToast('✓ Referências adicionadas. A exportar…');
+    const aindaValido = refValidar(secsComRef);
+    mostrarToast(aindaValido
+      ? '✓ Referências adicionadas. A exportar…'
+      : '⚠ Não foi possível verificar fontes reais suficientes — o documento seguirá como RASCUNHO (DRAFT).');
     onContinuar(secsComRef);
   };
 }
@@ -266,7 +293,14 @@ async function _expPDFExecutar(secs, meta) {
   /* ── VALIDAÇÃO DE INTEGRIDADE STRICT (antes de FINAL) — FONTE ÚNICA ── */
   try {
     if (typeof callAcademyAPI === 'function') {
-      const v = await callAcademyAPI({ acao: 'validar_integridade', secs: secsCopy, metodologia: State.getCfg('metodologia') || '', datasets: [] });
+      // BUG-010: sem 'diagnostic' aqui, o backend nunca via os objetivos
+      // específicos do plano — analisarCobertura() caía sempre em
+      // 'no_objectives' mesmo quando o plano os tinha gerado corretamente.
+      const planoAtual = State.get('plano') || {};
+      const diagnosticAtual = State.get('diagnostic') || {
+        specificObjectives: Array.isArray(planoAtual.objetivos_especificos) ? planoAtual.objetivos_especificos : [],
+      };
+      const v = await callAcademyAPI({ acao: 'validar_integridade', secs: secsCopy, metodologia: State.getCfg('metodologia') || '', datasets: [], diagnostic: diagnosticAtual });
       const rep = v?.report || v;
       // Consome gate unificado do backend (canExportFinal/finalBlocked). Nunca recomputa regra local.
       const mustBlock = rep ? (typeof rep.canExportFinal === 'boolean' ? !rep.canExportFinal : (typeof rep.finalBlocked === 'boolean' ? rep.finalBlocked : !!rep.blocked)) : false;
@@ -285,7 +319,17 @@ async function _expPDFExecutar(secs, meta) {
       // Bloqueio efetivo: se FINAL bloqueado, força watermark mesmo que UI não tenha bloqueado antes
       if (finalBlocked) meta.watermark = true;
     }
-  } catch (e) { console.warn('[INTEGRITY] validação falhou, seguindo sem bloqueio:', e.message); }
+  } catch (e) {
+    console.warn('[INTEGRITY] validação falhou — a exportação NÃO pode confirmar integridade, por isso segue como RASCUNHO (fail-closed, não fail-open):', e.message);
+    // BUG-003/010 (residual): antes, se a chamada de validação falhasse (rede
+    // instável, etc.), a exportação seguia SEM bloqueio nenhum — ou seja,
+    // "não sei se está íntegro" era tratado como "está íntegro". Isso é
+    // fail-open numa salvaguarda de integridade, o que é o oposto do que a
+    // Regra de Ouro exige. Agora, falha na validação força watermark DRAFT.
+    meta.watermark = true;
+    meta.integrityLabel = meta.integrityLabel || 'DRAFT — INTEGRITY CHECK UNAVAILABLE';
+    mostrarToast('⚠ Não foi possível confirmar a integridade académica agora — exportado como RASCUNHO por precaução.', 'erro');
+  }
 
   /* O motor real de PDF está em layout.js — gerarJanelaPDF() */
   try {
