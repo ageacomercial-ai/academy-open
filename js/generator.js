@@ -922,29 +922,13 @@ async function iniciarGer(retomar) {
 
     /* Capítulo com QC fraco após 3 tentativas: entregar como 'p' com aviso se tiver conteúdo útil */
     if (!qcOk) {
-      // MODO 100% AUTOMÁTICO E BLOQUEANTE: nenhum capítulo avança sem QC ok assertivo
-      // Não entrega com aviso (temConteudoUtil) — exige retentativa até passar
-      textoFinal = textoFinal && textoFinal.trim().length > 0 && !textoFinal.startsWith('[')
-        ? textoFinal
-        : `[Secção '${cap.num}' incompleta — retentativa automática em curso]`;
-      secsArr[i].e        = 'x';
-      secsArr[i].c        = textoFinal;
-      secsArr[i].blocks   = blkExtrair({ c: textoFinal });
-      secsArr[i].ast      = astFinal;
-      secsArr[i].qcRejeitado = true;
-      State.set('secs', secsArr);
-      aSecDOM(i, 'x', `⏳ QC falhou — re-tentativa automática`, textoFinal);
-      // não dá continue aqui — deixa cair no bloco de retry automático abaixo (i-- )
-      // marca qcOk falso para o retry externo detectar
-    }
-
-    // BLOQUEANTE: se QC falhou, NÃO guarda como p — retry automático do mesmo capítulo
-    if (!qcOk && !_genCancelado) {
-      const esperaCap = 10000;
-      aSecDOM(i, 'g', `Cap. ${cap.num} aguardando retry automático…`);
-      mostrarToast(`⏳ Cap. ${cap.num} não concluído assertivamente — nova tentativa automática em ${esperaCap/1000}s.`);
+      // 100% AUTOMÁTICO — NUNCA mostra "POR COMPLETAR" nem exige clique ↺
+      // Mantém em 'g' (EM CURSO) e retenta automaticamente até passar
+      aSecDOM(i, 'g', `⏳ Cap. ${cap.num} — re-tentativa automática…`);
+      mostrarToast(`⏳ Cap. ${cap.num} em re-tentativa automática…`);
+      const esperaCap = 6000;
       await new Promise(r=>setTimeout(r, esperaCap));
-      i--; // repete o mesmo capítulo (for incrementa)
+      i--; // repete o mesmo capítulo
       continue;
     }
 
