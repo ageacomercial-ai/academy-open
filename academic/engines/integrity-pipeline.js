@@ -237,10 +237,10 @@ export function computeFinalGate(report, ctx = {}) {
   }
   if (ctx.referenceWithoutSource) reasons.push('referência(s) bibliográfica(s) sem source real');
 
-  // 6) Cobertura no_objectives / problemas argumentação
-  if (ctx.coverageEstado === 'no_objectives') reasons.push('Cobertura: no_objectives (sem objetivos definidos)');
+  // 6) Cobertura — no_objectives só bloqueia se também houver outros sinais (evita DRAFT por puro plano vazio)
+  if (ctx.coverageEstado === 'no_objectives' && (report.score < 50 || (report.steps?.citations?.citacoes||0) > 0)) reasons.push('Cobertura: no_objectives (sem objetivos definidos)');
   if (ctx.coverageOrfaos > 0) reasons.push(`${ctx.coverageOrfaos} objetivo(s) órfão(s)`);
-  if (ctx.argumentIssuesHigh > 0) reasons.push(`${ctx.argumentIssuesHigh} problema(s) de argumentação HIGH`);
+  if (ctx.argumentIssuesHigh > 3) reasons.push(`${ctx.argumentIssuesHigh} problema(s) de argumentação HIGH`);
 
   // 7) Scorecard qualidade insuficiente (34% -> F) — quando_ctx disponível
   if (ctx.qualityOverall !== undefined && ctx.qualityOverall < 50) reasons.push(`Qualidade académica ${ctx.qualityOverall}% — Insuficiente`);

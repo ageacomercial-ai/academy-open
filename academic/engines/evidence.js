@@ -34,8 +34,9 @@ export function extrairCitacao(texto) {
   // BUG-006 FIX: regex unificada para (Autor, Ano) incluindo ORGs uppercase (INE, OMS, MINSA) e anos 1900-2099
   const match = texto.match(/\(([A-ZÀ-Ü]{2,}(?:\s*,\s*[A-ZÀ-Ü][^)]*)?|\s*[A-ZÀ-Ü][A-ZÀ-Üa-zãçáàâéêíóôúõü,.&\s]{2,80}?)\s*,?\s*\b(19|20)\d{2}[a-z]?\b[^)]*\)/);
   if (match) return match[0].slice(1,-1).trim();
-  // Fallback: INE (2024) / OMS (2023)  — org 2-8 letras maiúsculas
-  const mOrg = texto.match(/\b([A-Z]{2,8})\s*\((19|20)\d{2}[a-z]?\)/);
+  // Fallback: só ORGs académicas válidas (INE, OMS, etc) — RTV/RTP/TPA etc NÃO são citação
+  const ORGS_VALIDAS = 'INE|OMS|WHO|UNESCO|UNICEF|MINSA|INEA|BNA|OECD|PNUD|FAO|OMT|BM|FMI';
+  const mOrg = texto.match(new RegExp(`\\b(${ORGS_VALIDAS})\\s*\\((19|20)\\d{2}[a-z]?\\)`));
   if (mOrg) return `${mOrg[1]}, ${mOrg[0].match(/\b(19|20)\d{2}/)[0]}`;
   // Autor (Ano)
   const match2 = texto.match(/([A-ZÀ-Ü][a-zãçáàâéêíóôúõü]+(?:\s+(?:et\s+al\.|&\s*[A-ZÀ-Ü][a-zãçáàâéêíóôúõü]+))?)\s*\(((?:19|20)\d{2}[a-z]?)\)/);
