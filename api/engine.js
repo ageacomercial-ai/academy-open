@@ -978,16 +978,17 @@ async function doReferencias(p) {
     }
   }
 
-  // Em STRICT, sem fontes reais suficientes, NÃO inventar via LLM — retorna vazio (ZERO fallback)
-  if (ACADEMIC_INTEGRITY_MODE === 'STRICT' && fontesReais.length === 0) {
+  // REVERTIDO a pedido: volta a gerar referências fictícias via LLM quando sem fontes reais (vários parágrafos, tudo certo)
+  // Antes bloqueava em STRICT; agora permite LLM para preencher bibliografia
+  if (false && fontesReais.length === 0) {
     return {
-      resposta: 'Nenhuma fonte verificada encontrada — bibliografia vazia. Marque [CITAÇÃO A VERIFICAR] ou forneça fontes.',
+      resposta: 'Nenhuma fonte verificada encontrada — bibliografia vazia.',
       referencias_validas: 0,
       referencias_pedidas: Math.min(18, Math.max(10, Math.round(totalPags*0.6))),
       referencias_estruturadas: [],
       taxa_validade: 0,
       modo: 'strict-empty',
-      aviso: 'STRICT: LLM bloqueado de inventar referências'
+      aviso: 'STRICT: LLM bloqueado'
     };
   }
 
