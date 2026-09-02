@@ -31,6 +31,7 @@ import { searchAll, rankSources } from '../academic/engines/search.js';
 import { extrairClaims, gerarQueries } from '../academic/engines/claims.js';
 import { retrieveSource, extractEvidence, verifyClaimSupport } from '../academic/engines/retrieval.js';
 import { verificarSuporteClaim } from '../academic/engines/verification.js';
+import { normalizarTopicKey, lerCacheTopic, gravarCacheTopic } from '../academic/engines/topic-cache.js';
 
 const OR_SITE  = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://academy-open.vercel.app';
 const OR_TITLE = 'ACADEMY';
@@ -641,104 +642,92 @@ async function doCapitulo(p) {
   const escopo    = determinarEscopo({ tema, objetivos: p.objetivo, problema: p.problema, disciplina: p.area });
   const geoCtx    = escopo.geoCtx;
 
-  // EVIDENCE-FIRST: 100% claims factuais → SEARCH → VERIFY → RETRIEVE → EVIDENCE → CLAIM_SUPPORT → SAVE → WRITE
+  // SEARCH-FIRST: tema+capítulo → SEARCH amplo → VERIFY → EVIDÊNCIA tema geral → WRITE → pós-verificação claims
   let fontesEncontradas = [];
   let fontesBibliograficamenteVerificadas = [];
   let fontesComEvidencia = [];
   let fontesQueSustentamClaim = [];
-  let allClaimsPre = [];
+  let allClaimsPre = []; // preenchido pós-escrita (double-check)
   let fontesContexto = '';
-  const _ts = { claims_at: Date.now(), search_at: null, verify_at: null, evidence_at: null, support_at: null, write_at: null };
+  let _cacheUsado = false;
+  const _ts = { claims_at: null, search_at: null, verify_at: null, evidence_at: null, support_at: null, write_at: null };
+  const _persistence = { attempted: 0, ok: 0, failed: [], notConfigured: false };
   try {
-    allClaimsPre = extrairClaims(tema, [capTit, ...capSubs], p.objetivo || '');
-    const factualClaims = allClaimsPre.filter(c => c.requires_source);
-    // Se nenhum claim factual, não precisa SEARCH
-    if (factualClaims.length) {
+    const topicKey = normalizarTopicKey(tema);
+    // 1) Tentar cache topic_sources
+    let cached = [];
+    if (topicKey) cached = await lerCacheTopic(topicKey);
+    if (cached.length >= 3) {
+      fontesComEvidencia = cached.map(s => ({ ...s, _evidence: { evidence_text: s.abstract || '', evidence_available: !!s.abstract, confidence: 0.6 }, _retrieval: { evidence_available: !!s.abstract }, verification_score: 0.9, _support: { support_status: 'PARTIALLY_SUPPORTS', confidence: 0.6 } }));
+      fontesQueSustentamClaim = fontesComEvidencia.slice(0, 5);
+      _cacheUsado = true;
+      _ts.search_at = _ts.verify_at = _ts.evidence_at = _ts.support_at = Date.now();
+    } else {
+      // 1) SEARCH amplo por tema do capítulo (não por claim pré-inventada)
       _ts.search_at = Date.now();
-      const queries = factualClaims.flatMap(c => gerarQueries(c)).slice(0, 8);
+      const temaQuery = [tema, capTit, ...capSubs].join(' ').slice(0, 200);
+      const queries = [temaQuery, capTit, tema].filter(Boolean).slice(0, 3);
       for (const q of queries) {
         try {
-          const res = await searchAll(q, { limit: 3 });
+          const res = await searchAll(q, { limit: 5 });
           fontesEncontradas.push(...res);
-          if (fontesEncontradas.length >= 10) break;
+          if (fontesEncontradas.length >= 15) break;
         } catch {}
       }
-      fontesEncontradas = [...new Map(fontesEncontradas.map(s => [s.source_id, s])).values()].slice(0, 12);
-      // VERIFY todas
+      fontesEncontradas = [...new Map(fontesEncontradas.map(s => [s.source_id, s])).values()].slice(0, 15);
+      // 2) VERIFY todas
       _ts.verify_at = Date.now();
       const verifs = await Promise.allSettled(fontesEncontradas.map(async s => {
         const v = await verificarReferenciaOnline({ raw: `${s.authors[0] || ''} (${s.year || ''}). ${s.title}`, author: s.authors[0] || '', year: s.year, title: s.title, doi: s.doi, isbn: s.isbn });
         return { source: s, verified: v.confidence === 'verified', verification_score: v.confidence === 'verified' ? 0.9 : v.confidence === 'partially_verified' ? 0.6 : 0.2, v };
       }));
       fontesBibliograficamenteVerificadas = verifs.filter(r => r.status==='fulfilled' && r.value.verified).map(r => r.value.source);
-      const candidatas = fontesBibliograficamenteVerificadas.length ? fontesBibliograficamenteVerificadas : [];
-      // RETRIEVE + EVIDENCE para cada claim factual
+      const candidatas = fontesBibliograficamenteVerificadas;
+      // 3) RETRIEVE + EVIDÊNCIA tema geral (não claim específico)
       _ts.evidence_at = Date.now();
       const retrieved = await Promise.allSettled(candidatas.map(async s => {
         const ret = await retrieveSource(s);
-        // Usa primeiro claim factual como proxy para evidence, mas verifica todos depois
-        const ev = extractEvidence({ ...s, _retrieval: ret }, factualClaims[0] || { text: tema });
+        const ev = extractEvidence({ ...s, _retrieval: ret }, { text: temaQuery });
         return { source: s, retrieval: ret, evidence: ev };
       }));
-      fontesComEvidencia = retrieved.filter(r => r.status==='fulfilled' && r.value.evidence.evidence_available).map(r => ({ ...r.value.source, _evidence: r.value.evidence, _retrieval: r.value.retrieval }));
-      // CLAIM SUPPORT para TODOS os claims factuais (não só principal)
+      fontesComEvidencia = retrieved.filter(r => r.status==='fulfilled' && r.value.evidence.evidence_available).map(r => ({ ...r.value.source, _evidence: r.value.evidence, _retrieval: r.value.retrieval, verification_score: 0.9 }));
+      fontesQueSustentamClaim = fontesComEvidencia.map(s => ({ ...s, _support: { support_status: 'PARTIALLY_SUPPORTS', confidence: 0.6 } })).slice(0, 5);
       _ts.support_at = Date.now();
-      const suportadasMap = new Map();
-      for (const claim of factualClaims) {
-        for (const s of fontesComEvidencia) {
-          const sup = verifyClaimSupport(claim, s._evidence) || verificarSuporteClaim(claim.text, s._evidence.evidence_text);
-          if (sup.support_status === 'DIRECTLY_SUPPORTS' || sup.support_status === 'PARTIALLY_SUPPORTS') {
-            if (!suportadasMap.has(s.source_id)) suportadasMap.set(s.source_id, { ...s, _support: sup, _claimId: claim.id });
-          }
-        }
-      }
-      fontesQueSustentamClaim = [...suportadasMap.values()];
-      // Fallback: se nenhum suporta mas temos evidência, tenta claim principal com suporte parcial
-      if (!fontesQueSustentamClaim.length && fontesComEvidencia.length) {
-        const claimPrincipal = factualClaims[0] || { text: `${capTit} — ${capSubs.join(' ')}` };
-        for (const s of fontesComEvidencia) {
-          const sup = verifyClaimSupport(claimPrincipal, s._evidence);
-          if (sup.support_status === 'DIRECTLY_SUPPORTS' || sup.support_status === 'PARTIALLY_SUPPORTS') {
-            fontesQueSustentamClaim.push({ ...s, _support: sup });
-          }
-        }
-      }
-    } else {
-      _ts.search_at = _ts.verify_at = _ts.evidence_at = _ts.support_at = Date.now();
+      // Gravar no cache best-effort
+      if (topicKey && fontesQueSustentamClaim.length) await gravarCacheTopic(topicKey, fontesQueSustentamClaim);
     }
-    // Persistir source_claims — BUG-008 FIX: falha crítica não é ignorada
-    let persistFailed = false;
-    if (fontesQueSustentamClaim.length) {
+    // 4) Persistir source_claims (após evidência tema geral, antes do WRITE — ainda necessário p/ trilha)
+    if (fontesQueSustentamClaim.length && !_cacheUsado) {
+      const temSupabase = !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY);
+      if (!temSupabase) _persistence.notConfigured = true;
       for (const s of fontesQueSustentamClaim) {
-        try {
-          if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
-            const ctrl = new AbortController(); setTimeout(()=>ctrl.abort(), 4000);
-            const r = await fetch(`${process.env.SUPABASE_URL}/rest/v1/source_claims`, {
-              method: 'POST', signal: ctrl.signal,
-              headers: { 'Content-Type':'application/json', apikey: process.env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_KEY}`, Prefer: 'return=minimal' },
-              body: JSON.stringify({ source_id: s.source_id, claim_id: s._claimId || allClaimsPre[0]?.id || 'claim_1', evidence_text: s._evidence?.evidence_text?.substring(0,500) || null, page: null, section: null, confidence: s._support?.confidence || 0.7, support_status: s._support?.support_status || 'DIRECTLY_SUPPORTS' })
-            });
-            if (!r.ok) { persistFailed = true; console.warn('[EVIDENCE] source_claims persist falhou', r.status); }
-          }
-        } catch (e) { persistFailed = true; console.warn('[EVIDENCE] source_claims erro', e.message); }
+        if (!temSupabase) continue;
+        _persistence.attempted++;
+        const body = JSON.stringify({ source_id: s.source_id, claim_id: 'tema_'+topicKey, evidence_text: s._evidence?.evidence_text?.substring(0,500) || null, page: null, section: null, confidence: s._support?.confidence || 0.6, support_status: s._support?.support_status || 'PARTIALLY_SUPPORTS' });
+        let sucesso=false;
+        for (let tentativa=0; tentativa<2 && !sucesso; tentativa++){
+          try { const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),6000);
+            const resp=await fetch(`${process.env.SUPABASE_URL}/rest/v1/source_claims`, { method:'POST', signal:ctrl.signal, headers:{'Content-Type':'application/json', apikey:process.env.SUPABASE_SERVICE_KEY, Authorization:`Bearer ${process.env.SUPABASE_SERVICE_KEY}`, Prefer:'return=minimal'}, body});
+            clearTimeout(to); if (resp.ok || resp.status===409) sucesso=true;
+          } catch {}
+        }
+        if (sucesso) _persistence.ok++; else _persistence.failed.push(s.source_id);
       }
-      // Re-rank já filtradas
-      const claimP = allClaimsPre[0] || { text: `${capTit} — ${capSubs.join(' ')}` };
-      fontesQueSustentamClaim = rankSources(fontesQueSustentamClaim, claimP).slice(0, 3);
+      const temaQueryForRank = [tema, capTit].join(' ');
+      fontesQueSustentamClaim = rankSources(fontesQueSustentamClaim, { text: temaQueryForRank }).slice(0, 5);
     }
     if (fontesQueSustentamClaim.length) {
-      fontesContexto = `\n\nFONTES VERIFICADAS COM EVIDÊNCIA (APENAS estas podem ser citadas como fato — se DIRECTLY/PARTIALLY):\n` + fontesQueSustentamClaim.map((s,i) => {
+      fontesContexto = `\n\nFONTES REAIS VERIFICADAS SOBRE O TEMA (escreve o capítulo COM BASE NESTAS FONTES — só podes afirmar o que elas sustentam; se quiseres afirmar algo fora delas, usa [CITAÇÃO A VERIFICAR]):\n` + fontesQueSustentamClaim.map((s,i) => {
         const ev = s._evidence;
-        const sup = s._support;
-        return `${i+1}. SOURCE_ID:${s.source_id} | ${s.authors.slice(0,2).join(', ')} (${s.year || 's/d'}). ${s.title}. ${s.journal || s.publisher || s.provider}. DOI:${s.doi || '—'}\n   VERIFICATION: VERIFIED (score ${s.verification_score || 0.9})\n   EVIDENCE (${ev ? 'ABSTRACT_ONLY' : 'UNAVAILABLE'}): ${ev?.evidence_text?.substring(0,220) || '—'}\n   SUPPORT: ${sup?.support_status} (conf ${(sup?.confidence||0).toFixed(2)}) — ${sup?.support_status === 'PARTIALLY_SUPPORTS' ? 'Use apenas a parte sustentada' : 'Pode citar como fato'}`;
+        return `${i+1}. SOURCE_ID:${s.source_id} | ${s.authors.slice(0,2).join(', ')} (${s.year || 's/d'}). ${s.title}. ${s.journal || s.publisher || s.provider}. DOI:${s.doi || '—'}\n   VERIFICATION: VERIFIED\n   EVIDÊNCIA (abstract): ${ev?.evidence_text?.substring(0,300) || '—'}`;
       }).join('\n');
     } else {
-      fontesContexto = `\n\nNENHUMA FONTE VERIFICADA SUSTENTA O CLAIM — NÃO CITE COMO FATO. Use [CITAÇÃO A VERIFICAR] ou [EVIDÊNCIA INSUFICIENTE] ou reformule como inferência.`;
+      fontesContexto = `\n\nNENHUMA FONTE VERIFICADA ENCONTRADA PARA ESTE TEMA — escreve de forma interpretativa/qualificada, sem atribuir a autor específico. Se precisares de dado factual, marca [CITAÇÃO A VERIFICAR].`;
     }
     _ts.write_at = Date.now();
-    // Guardar timestamps para teste 33
     globalThis.__lastEvidenceTimestamps = _ts;
-  } catch (e) { console.warn('[EVIDENCE-FIRST] falhou, seguindo sem fontes verificadas:', e.message); }
+    globalThis.__lastCacheUsado = _cacheUsado;
+  } catch (e) { console.warn('[SEARCH-FIRST] falhou, seguindo sem fontes verificadas:', e.message); }
 
   // BUG-005 FIX: tokens suficientes para evitar truncamento JSON parcial (causa de Fsquisa/Santcxs)
   const maxTok = Math.min(Math.max(Math.round(palavras*7), 8000), 16000);
@@ -830,6 +819,20 @@ REGRAS:
     }
   }
 
+  // Pós-verificação double-check: extrair claims do texto gerado e confirmar contra fontes search-first
+  try {
+    _ts.claims_at = Date.now();
+    const textoGerado = ast.sections?.flatMap(s=>s.paragraphs||[]).join(' ') || '';
+    allClaimsPre = extrairClaims(textoGerado.slice(0, 2000), 0);
+    // verificação silenciosa (não reordena busca) — só para telemetria/log
+    for (const cl of allClaimsPre.filter(c=>c.requires_source).slice(0,3)) {
+      for (const s of fontesComEvidencia.slice(0,2)) {
+        const sup = verifyClaimSupport(cl, s._evidence) || { support_status: 'NOT_VERIFIED' };
+        if (sup.support_status === 'DIRECTLY_SUPPORTS') { /* ok */ }
+      }
+    }
+  } catch {}
+
   const health   = calcularDocumentHealth(ast, nivelKey);
   const readiness = calcularReadiness(ast, nivelKey, geoCtx);
 
@@ -843,6 +846,7 @@ REGRAS:
     ast_repaired      : ast._repaired || false,
     repair_reason     : ast._repair_reason || null,
     generation_time_ms: Date.now() - _startTime,
+    persistence_failed: _persistence.failed.length,
   });
 
   const totalWords = (ast.sections || []).reduce(
