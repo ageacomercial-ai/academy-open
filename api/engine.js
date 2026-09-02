@@ -759,11 +759,11 @@ async function doCapitulo(p) {
      arrays de strings ou JSON truncado → 503). Com system schema + json_object
      o flash-lite e o gpt-4o-mini devolvem sections válidos em ~2s. */
   const systemJSON = `Gera APENAS um objeto JSON com este esquema EXACTO (sem markdown, sem texto adicional):
-{"chapter_id":"${capNum}","title":"${capTit}","total_paragraphs":${Math.max(3, Math.round(palavras / 90))},"sections":[{"section_id":"${capNum}.1","title":"<subtítulo>","paragraphs":["<parágrafo 1>","<parágrafo 2>","<parágrafo 3>"]}]}
+{"chapter_id":"${capNum}","title":"${capTit}","total_paragraphs":${Math.max(6, Math.round(palavras / 60))},"sections":[{"section_id":"${capNum}.1","title":"<subtópico>","paragraphs":["<parágrafo 1 completo 4-5 frases>","<parágrafo 2 completo>","<parágrafo 3 completo>","<parágrafo 4 completo>"]}]}
 REGRAS:
-- sections: UMA entrada por subtópico obrigatório do prompt do utilizador, na mesma ordem e numeração.
-- paragraphs: 3-5 parágrafos completos (3-5 frases cada), texto corrido, sem markdown, sem bullets.
-- Cada parágrafo deve ter pelo menos 1 citação (Autor, Ano) quando for dado factual.
+- sections: UMA entrada por subtópico obrigatório (mesma ordem/numeração). CADA subtópico = 3-5 parágrafos de 4-5 frases (nunca 1-2).
+- total_paragraphs ${Math.max(6, Math.round(palavras / 60))} é MÍNIMO — gere conteúdo completo que preencha ${palavras} palavras, não resumo.
+- Citação (Autor, Ano) SOMENTE se houver SOURCE_ID verificado no bloco FONTES; sem fonte → escreva como interpretação qualificada (Estima-se que...) SEM placeholder e SEM citação inventada.
 - Resposta DEVE ser exclusivamente esse objeto JSON.`;
 
   let r1 = await callAI([
@@ -810,7 +810,8 @@ REGRAS:
           const hasAuthor = [...verifiedAuthors].some(a => authorRaw.includes(a) || a.includes(authorRaw));
           const hasYear = verifiedYears.has(yearRaw) || !yearRaw;
           if (!hasVerified || !hasAuthor) {
-            newPara = newPara.replace(m[0], '[CITAÇÃO A VERIFICAR]');
+            // Sem fonte verificada: remove citação inventada, deixa texto como interpretação (nunca placeholder final)
+            newPara = newPara.replace(m[0], '').replace(/\s{2,}/g,' ').trim();
           }
         }
         // Números: se contém % ou estatística e não está em evidência, já filtrado via verifyClaimSupport, mas reforça marca
