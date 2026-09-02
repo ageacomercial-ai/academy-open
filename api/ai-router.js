@@ -37,12 +37,11 @@ export function estimateCost(model, usage) {
 }
 
 const CFG = {
-  /* Ordem forçada: APENAS o modelo pago barato (openai_direct).
-     Nunca cai para provedores gratuitos — qualidade/fiabilidade
-     do trabalho final tem prioridade sobre custo zero. */
+  /* Ordem: pago primeiro, mas com fallback automático se 503 — evita loop infinito
+     SOMENTE_PAGO puro causava 503 em loop no Cap 2 quando OpenRouter quota 429 */
   primary   : 'openai_direct',
-  secondary : null,
-  tertiary  : null,
+  secondary : 'existing_free_api',
+  tertiary  : 'openrouter',
   timeoutMs : parseInt(process.env.AI_TIMEOUT_MS  || '90000', 10),
   maxRetries: parseInt(process.env.AI_MAX_RETRIES || '1', 10),
   ollamaTimeoutMs : parseInt(process.env.AI_TIMEOUT_OLLAMA_MS || '60000', 10),
@@ -526,10 +525,7 @@ const PROVIDERS = { ollama, openrouter, existing_free_api: existingFreeApi, open
    Prioridade: openai_direct (pago) → existing_free_api (grátis) → openrouter (grátis).
 ═══════════════════════════════════════════════════════════ */
 function ordemProviders() {
-  /* SOMENTE_PAGO: apenas openai_direct. Sem fallback para provedores
-     gratuitos (existing_free_api / openrouter free) — se o pago falhar,
-     o pedido falha (AI_INDISPONIVEL) em vez de degradar a qualidade. */
-  return [CFG.primary].filter(Boolean);
+  return [CFG.primary, CFG.secondary, CFG.tertiary].filter(Boolean);
 }
 
 async function generate(messages, opts = {}) {
