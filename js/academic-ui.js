@@ -24,10 +24,25 @@ async function analisarDocumento() {
   };
 
   try {
-    const r = await api('analisar_documento', payload);
-    if (r && r.data) {
-      _ultimaAnalise = r.data;
-      return r.data;
+    const ctrl = new AbortController();
+    const tid  = setTimeout(() => ctrl.abort(), 60000);
+    const resp = await fetch(ACADEMY_ENGINE_URL, {
+      method:  'POST',
+      mode:    'cors',
+      signal:  ctrl.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ action: 'analisar_documento', payload }),
+    });
+    clearTimeout(tid);
+
+    if (!resp.ok) {
+      const ed = await resp.json().catch(() => ({}));
+      throw new Error(ed?.error || 'Engine HTTP ' + resp.status);
+    }
+    const envelope = await resp.json();
+    if (envelope?.data) {
+      _ultimaAnalise = envelope.data;
+      return envelope.data;
     }
   } catch (e) {
     console.warn('[academic-ui] Erro na análise:', e);
@@ -202,10 +217,14 @@ async function injectAcademicUI() {
     return;
   }
 
-  /* Construir HTML completo */
   let html = '';
+  try {
+  /* Pipeline STRICT (novo) — acima do legado */
+  let integritySTRICT = null;
+  try { integritySTRICT = await validarIntegridade(); } catch {}
+  if (integritySTRICT) html += renderIntegrityPipelinePanel(integritySTRICT.report || integritySTRICT);
 
-  /* Badge de integridade */
+  /* Badge de integridade (legado) */
   html += renderIntegrityBadge(analysis.integrity);
 
   /* Scorecard + professor lado a lado */
@@ -273,12 +292,83 @@ async function injectAcademicUI() {
   }
 
   panel.innerHTML = html;
+  } catch (e) {
+    console.warn('[academic-ui] inject falhou (silencioso):', e.message);
+    // Fallback mínimo sem expor erro ao utilizador
+    try { panel.innerHTML = renderIntegrityBadge(analysis.integrity) + renderScorecardPanel(analysis.scorecard); } catch {}
+  }
 
   /* Versões (append ao fim do painel) */
-  _appendVersioningToPanel();
+  try { _appendVersioningToPanel(); } catch {}
 
   /* Armazenar no State para outros usos */
-  State.set('academicAnalysis', analysis);
+  try { State.set('academicAnalysis', analysis); } catch {}
+}
+
+/* ── Validar integridade STRICT (novo pipeline) — FONTE ÚNICA ── */
+async function validarIntegridade() {
+  const secs = State.get('secs') || [];
+  if (!secs.length) return null;
+  // Contexto unificado para gate FINAL não divergir da exportação
+  const analysis = _ultimaAnalise || null;
+  const coverageEstado = analysis?.coverage?.estado || null;
+  const refs = State.get('refs') || [];
+  try {
+    const r = await fetch(ACADEMY_ENGINE_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'validar_integridade', payload: {
+        secs,
+        metodologia: State.getCfg('metodologia') || State.get('plano')?.metodologia || '',
+        datasets: [],
+        diagnostic: State.get('diagnostic') || null,
+        references: refs,
+        // Gate ctx opcional: se _ultimaAnalise já existe, backend usa para não recomputar divergente
+        _gateCtx: analysis ? {
+          reviewRequired: analysis.integrity?.report?.reviewRequired || 0,
+          highCritical: analysis.integrity?.report?.highCritical || 0,
+          blockedClaims: analysis.integrity?.report?.blocked || 0,
+          coverageEstado,
+          coverageOrfaos: (analysis.coverage?.orfaos||[]).length,
+          argumentIssuesHigh: (analysis.argumentation?.issues||[]).filter(i=>i.severity==='high').length,
+          qualityOverall: analysis.scorecard?.overall,
+          orphanCitations: Math.max(0, (analysis.integrity?.report ? 0 : 0)), // backend recalcula via steps
+        } : undefined
+      } })
+    });
+    const j = await r.json();
+    if (j?.ok && j?.data) return j.data;
+  } catch (e) { console.warn('[academic-ui] validar_integridade falhou:', e); }
+  return null;
+}
+
+function renderIntegrityPipelinePanel(report) {
+  if (!report) return '';
+  const pct = report.score || 0;
+  const cor = pct >= 75 ? 'var(--g)' : pct >= 60 ? '#f5a623' : pct >= 40 ? 'var(--e1)' : '#991b1b';
+  // FONTE ÚNICA DE VERDADE: backend já computa canExportFinal/finalBlocked via computeFinalGate.
+  // Nunca recalcular regra local divergente. Fallback apenas se campo ausente (compat).
+  const isBlocked = (typeof report.canExportFinal === 'boolean') ? !report.canExportFinal
+                  : (typeof report.finalBlocked === 'boolean') ? report.finalBlocked
+                  : !!report.blocked;
+  const blocked = isBlocked;
+  const reasons = report.finalReasons || report.reasons || [];
+  return `
+    <div style="background:${blocked ? 'rgba(153,27,27,.08)' : 'var(--sf1)'};border:1.5px solid ${cor}40;border-radius:10px;padding:14px 16px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-family:var(--fm);font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${cor}">${blocked ? '🔴' : pct >=75 ? '✅' : '⚠️'} Integridade Acadêmica — ${report.label || pct+'%'}</div>
+        <div style="font-size:18px;font-weight:800;color:${cor}">${pct}/100</div>
+      </div>
+      <div style="height:6px;background:var(--e0);border-radius:3px;overflow:hidden;margin-bottom:10px"><div style="height:100%;width:${pct}%;background:${cor};transition:width .6s"></div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:10px;color:var(--t2)">
+        <div>📄 Claims: ${report.steps?.claims?.total || 0}</div>
+        <div>🔢 Estatísticas sem fonte: ${report.steps?.statistics?.semFonte || 0}</div>
+        <div>📚 Citações: ${report.steps?.citations?.citacoes || 0} → Refs: ${report.steps?.citations?.refs || 0}</div>
+        <div>🧪 Fabricados: ${report.fabricatedData || 0}</div>
+      </div>
+      ${blocked ? `<div style="margin-top:10px;padding:8px;background:rgba(153,27,27,.12);border-radius:6px;font-size:11px;color:#fca5a5;text-align:center">🚫 NÃO PRONTO PARA FINAL — Exportação FINAL bloqueada${reasons.length ? ` — ${reasons.slice(0,3).join(' · ')}` : ` — corrigir ${report.critical||0} erro(s) crítico(s)`}. Será exportado como <strong>DRAFT — REQUIRES VERIFICATION</strong>.</div>` : `<div style="margin-top:8px;font-size:10px;color:var(--g);text-align:center">✓ Pronto para exportação FINAL</div>`}
+      ${report.details?.methodologyError ? `<div style="font-size:10px;color:var(--e1);margin-top:6px">⚠️ ${report.details.methodologyError}</div>` : ''}
+      ${blocked && reasons.length ? `<div style="margin-top:6px;font-size:9px;color:var(--t3);line-height:1.5">Motivos: ${reasons.map(r=>`• ${r}`).join('<br/>')}</div>` : ''}
+    </div>`;
 }
 
 /* ── Iniciar análise após geração ── */

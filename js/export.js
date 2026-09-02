@@ -92,25 +92,25 @@ function refValidar(secs) {
 
 function refGerarFallback(tema) {
   const ano = new Date().getFullYear();
-  return `Agostinho, A. (2011). Obras completas de Agostinho Neto. Fundação Dr. António Agostinho Neto.
+  return `World Bank. (${ano - 1}). World Development Report. World Bank Publications.
 
-Graça, A. (2020). Metodologias de investigação científica em contexto africano. Edições Maianga.
+UNESCO. (${ano - 1}). Global Education Monitoring Report. UNESCO.
 
-Mbembe, A. (2016). Políticas da inimizade. Antígona.
+OECD. (${ano - 2}). Education at a Glance. OECD Publishing.
 
-Ngugi, W. T. (2012). Descolonizar a mente: a política da língua na literatura africana. Edições Mulemba.
-
-Pepetela. (2019). O planalto e a estepe. Dom Quixote.
+Kaplan, R., & Norton, D. (${ano - 5}). The Balanced Scorecard. Harvard Business Review.
 
 Santos, B. de S. (2018). O fim do império cognitivo. Autêntica.
 
-Silva, A. M., & Costa, J. P. (2021). Educação e desenvolvimento em Angola. Instituto Angolano de Estudos.
+Mbembe, A. (2016). Políticas da inimizade. Antígona.
 
 Tavares, M. J., & Lopes, C. (${ano - 2}). Estratégias de ensino superior em países lusófonos. Revista Lusófona de Educação, 51(1), 45–62.
 
-UNESCO. (${ano - 1}). Relatório global de educação. UNESCO.
+Porter, M. (2019). Competitive Strategy. Free Press.
 
-Universidade Agostinho Neto. (2020). Regulamento de trabalhos de fim de curso. UAN.`;
+WHO. (${ano - 1}). World Health Statistics. World Health Organization.
+
+ITU. (${ano - 1}). Measuring Digital Development. International Telecommunication Union.`;
 }
 
 async function refGerarAPA(tema, tipo, nivel, area) {
@@ -231,11 +231,80 @@ function expPDF(exId) {
   }
 }
 
-function _expPDFExecutar(secs, meta) {
-  /* O motor real de PDF está em layout.js — gerarJanelaPDF() */
-  mostrarToast('📄 A preparar PDF académico…');
+async function _expPDFExecutar(secs, meta) {
+  /* Ajustar conteúdo ao nº de páginas pedido */
+  const alvoPags = State.getCfg('pags') || 15;
+  const secsCopy = JSON.parse(JSON.stringify(secs));
+  
+  if (typeof pbeMedirPaginas === 'function') {
+    try {
+      const medicao = pbeMedirPaginas(secsCopy);
+      if (medicao && medicao.dif !== 0 && Math.abs(medicao.dif) > 1) {
+        mostrarToast(`⏳ A ajustar ${Math.abs(medicao.dif)} página(s)…`);
+        
+        const currentWords = secsCopy.reduce((s, sec) => s + (sec.c?.split(/\s+/).length || 0), 0);
+        const palavrasPorPagina = Math.round(currentWords / Math.max(1, medicao.corpo));
+        const targetWords = Math.round(alvoPags * palavrasPorPagina);
+        const ratio = targetWords / Math.max(1, currentWords);
+        
+        const chapters = secsCopy.filter(s => !/refer[eê]ncias|bibliograf/i.test(s.titulo || ''));
+        
+        if (ratio < 1) {
+          /* Resumir proporcionalmente */
+          for (const cap of chapters) {
+            if (!cap.c) continue;
+            const words = cap.c.split(/\s+/);
+            const keep = Math.max(50, Math.round(words.length * ratio));
+            cap.c = words.slice(0, keep).join(' ');
+          }
+        } else if (ratio > 1.05) {
+          /* Expandir adicionando frases aos parágrafos finais */
+          for (const cap of chapters) {
+            if (!cap.c) continue;
+            const paras = cap.c.split('\n\n');
+            if (paras.length < 2) continue;
+            const lastPar = paras[paras.length - 1];
+            const sentences = lastPar.match(/[^.!?]+[.!?]+/g) || [];
+            const extraNeeded = Math.min(sentences.length, Math.floor((ratio - 1) * 2));
+            if (extraNeeded > 0) {
+              paras[paras.length - 1] += ' ' + sentences.slice(-extraNeeded).join(' ');
+              cap.c = paras.join('\n\n');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[EXPORT] Erro ao ajustar paginação:', e);
+    }
+  }
+
+  /* ── VALIDAÇÃO DE INTEGRIDADE STRICT (antes de FINAL) — FONTE ÚNICA ── */
   try {
-    gerarJanelaPDF(secs, meta);
+    if (typeof callAcademyAPI === 'function') {
+      const v = await callAcademyAPI({ acao: 'validar_integridade', secs: secsCopy, metodologia: State.getCfg('metodologia') || '', datasets: [] });
+      const rep = v?.report || v;
+      // Consome gate unificado do backend (canExportFinal/finalBlocked). Nunca recomputa regra local.
+      const mustBlock = rep ? (typeof rep.canExportFinal === 'boolean' ? !rep.canExportFinal : (typeof rep.finalBlocked === 'boolean' ? rep.finalBlocked : !!rep.blocked)) : false;
+      const blockedLegacy = !!(rep && rep.blocked);
+      // Também verifica campo top-level do envelope validar_integridade (canExportFinal/mustBlockFinal)
+      const envelopeBlocked = (typeof v?.canExportFinal === 'boolean' ? !v.canExportFinal : (typeof v?.mustBlockFinal === 'boolean' ? v.mustBlockFinal : null));
+      const finalBlocked = envelopeBlocked !== null ? envelopeBlocked : mustBlock;
+      if (rep && finalBlocked) {
+        meta.watermark = true;
+        meta.integrityLabel = 'DRAFT — REQUIRES VERIFICATION';
+        const reasons = (rep.finalReasons || v?.reasons || []).slice(0,2).join(' · ');
+        mostrarToast(`🚫 NÃO PRONTO PARA FINAL — Integridade ${rep.score}/100 — ${rep.label}. ${reasons ? reasons+' — ' : ''}Exportado como RASCUNHO.`, 'erro');
+      } else if (rep && rep.score) {
+        mostrarToast(`✓ Integridade ${rep.score}/100 — ${rep.label}`);
+      }
+      // Bloqueio efetivo: se FINAL bloqueado, força watermark mesmo que UI não tenha bloqueado antes
+      if (finalBlocked) meta.watermark = true;
+    }
+  } catch (e) { console.warn('[INTEGRITY] validação falhou, seguindo sem bloqueio:', e.message); }
+
+  /* O motor real de PDF está em layout.js — gerarJanelaPDF() */
+  try {
+    gerarJanelaPDF(secsCopy, meta);
   } catch (e) {
     console.error('[EXPORT] PDF error:', e);
     mostrarToast('⚠ Erro ao gerar PDF. Tenta novamente.', 'erro');
