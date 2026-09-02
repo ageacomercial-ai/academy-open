@@ -19,13 +19,17 @@ function pwaRegistarSW() {
   navigator.serviceWorker.register('./sw.js', { scope: './' })
     .then(reg => {
       _pwaRegistration = reg;
-      /* Detectar update disponível */
+      /* Forçar check de update a cada navegação */
+      if (reg.update) try { reg.update(); } catch {}
+      /* Detectar update disponível — força reload automático */
       reg.addEventListener('updatefound', () => {
         const novo = reg.installing;
         if (!novo) return;
         novo.addEventListener('statechange', () => {
           if (novo.state === 'installed' && navigator.serviceWorker.controller) {
-            _mostrarUpdateBanner();
+            pwaAplicarUpdate();
+          } else if (novo.state === 'installed') {
+            console.log('[PWA] Cache inicial pronto');
           }
         });
       });
@@ -33,9 +37,13 @@ function pwaRegistarSW() {
     })
     .catch(e => console.warn('[PWA] SW falhou:', e));
 
-  /* Detectar mensagens do SW */
+  /* Mensagem do SW novo → reload imediato */
   navigator.serviceWorker.addEventListener('message', e => {
-    if (e.data?.type === 'SW_UPDATE_READY') _mostrarUpdateBanner();
+    if (e.data?.type === 'SW_UPDATE_READY') pwaAplicarUpdate();
+  });
+  /* Controller mudou (SW novo assumiu) → reload forçado */
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!window._pwaReloaded) { window._pwaReloaded = true; window.location.reload(); }
   });
 }
 
@@ -45,9 +53,29 @@ function _mostrarUpdateBanner() {
 }
 
 function pwaAplicarUpdate() {
-  _pwaRegistration?.waiting?.postMessage({ type: 'SKIP_WAITING' });
-  window.location.reload();
+  if (window._pwaReloaded) return;
+  if (_pwaRegistration?.waiting) {
+    _pwaRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+  }
+  window._pwaReloaded = true;
+  setTimeout(() => window.location.reload(), 400);
 }
+
+/* ── Forçar actualização manual (pode ser chamada na consola: forcarActualizacao()) ── */
+async function forcarActualizacao() {
+  try {
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+  } catch {}
+  window.location.href = window.location.pathname + '?v=' + Date.now();
+}
+if (typeof window !== 'undefined') window.forcarActualizacao = forcarActualizacao;
 
 /* ════════════════════════════════════════════════════════════
    2. INSTALL PROMPT (Add to Home Screen)
@@ -179,8 +207,21 @@ function pwaHandleStartupAction() {
   }
 }
 
+const APP_VERSION = 'academy-v123';
+
+/* Força reload se versão local for antiga */
+try {
+  const vLocal = localStorage.getItem('acy_app_version');
+  if (vLocal && vLocal !== APP_VERSION) {
+    localStorage.setItem('acy_app_version', APP_VERSION);
+    if ('caches' in window) caches.keys().then(ks => ks.forEach(k => { if (k !== APP_VERSION) caches.delete(k); }));
+  } else if (!vLocal) {
+    localStorage.setItem('acy_app_version', APP_VERSION);
+  }
+} catch {}
+
 /* ════════════════════════════════════════════════════════════
-   6. INICIALIZAÇÃO
+    6. INICIALIZAÇÃO
 ════════════════════════════════════════════════════════════ */
 function pwaInit() {
   pwaRegistarSW();

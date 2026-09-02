@@ -95,22 +95,22 @@ async function sbGetPendentes() {
   } catch { return []; }
 }
 
-async function sbAprovar(id) {
+async function sbAprovar(id, pin) {
+  /* Aprovação passa pelo backend (service role) — o cliente não pode
+     definir estado=aprovado via anon key (RLS bloqueia). */
   try {
-    await fetch(SB_URL + '/rest/v1/pagamentos?id=eq.' + encodeURIComponent(id), {
-      method: 'PATCH', headers: SB_H(),
-      body: JSON.stringify({ estado: 'aprovado' }),
-    });
-  } catch (e) { console.warn('[SB] aprovar:', e); }
+    const r = await callAcademyAPI({ acao: 'aprovar_pagamento', id, pin: (pin || window?.__adminPin || '') });
+    return r?.ok === true;
+  } catch (e) { console.warn('[SB] aprovar:', e?.message || e); return false; }
 }
 
-async function sbRejeitar(id) {
+async function sbRejeitar(id, pin) {
+  /* Rejeição passa pelo backend (service role) — o cliente não pode
+     definir estado=rejeitado via anon key (RLS bloqueia). */
   try {
-    await fetch(SB_URL + '/rest/v1/pagamentos?id=eq.' + encodeURIComponent(id), {
-      method: 'PATCH', headers: SB_H(),
-      body: JSON.stringify({ estado: 'rejeitado' }),
-    });
-  } catch (e) { console.warn('[SB] rejeitar:', e); }
+    const r = await callAcademyAPI({ acao: 'rejeitar_pagamento', id, pin: (pin || window?.__adminPin || '') });
+    return r?.ok === true;
+  } catch (e) { console.warn('[SB] rejeitar:', e?.message || e); return false; }
 }
 
 async function sbProcessar(id) {
@@ -139,7 +139,8 @@ async function sbCheckAprovados() {
       );
     }
     if (!r.ok) return;
-    const rows = await r.json();
+    const rows = await r.json().catch(()=>[]);
+    if (!Array.isArray(rows) || rows.length === 0) return;
     for (const row of rows) {
       await sbProcessar(row.id); /* marcar imediatamente para não processar duas vezes */
       if (row.tipo === 'plano' && row.plano) {
@@ -235,12 +236,14 @@ async function _verificarCredenciaisAdmin(email, pin) {
    INSTITUIÇÕES PARCEIRAS
 ═══════════════════════════════════════════════════════════ */
 async function sbCarregarInstituicoes() {
-  if (_instituicoesCache) return _instituicoesCache;
+  if (Array.isArray(_instituicoesCache)) return _instituicoesCache;
   try {
     const r = await fetch(SB_URL + '/rest/v1/instituicoes?select=*&activa=eq.true&order=nome.asc', { headers: SB_H() });
     if (!r.ok) { _instituicoesCache = []; return []; }
-    _instituicoesCache = await r.json();
-    return _instituicoesCache;
+    const dados = await r.json();
+    if (Array.isArray(dados)) { _instituicoesCache = dados; return dados; }
+    _instituicoesCache = [];
+    return [];
   } catch { return []; }
 }
 async function sbCriarInstituicao(nome, sigla, desconto) {

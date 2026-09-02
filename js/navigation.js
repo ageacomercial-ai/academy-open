@@ -184,6 +184,7 @@ function renderizar() {
     config:      sConfig,
     sobre:       sSobre,
     doclivre:    sDocLivre,
+    modelosdoc:  sModelosDoc,
     planos:      sPlanosPrecos,
     admin:       sAdmin,
     cv:          sCv,
@@ -290,15 +291,37 @@ function adminTap() {
   }
 }
 
-/* ── Helper: actualizar barra de progresso da geração ── */
+/* ── Helper: actualizar barra de progresso da geração (monotónica — nunca regride) ── */
+let _genPctMax = 0;
 function aBarra(feitos, total) {
   const pct = total ? Math.round(feitos / total * 100) : 0;
+  _genPctMax = Math.max(_genPctMax, pct);
+  const pctShow = _genPctMax;
   const barra = document.getElementById('barraG');
   const pctN = document.getElementById('pctN');
   const anp = document.getElementById('anp');
-  if (barra) barra.style.width = pct + '%';
-  if (pctN) pctN.textContent = pct + '%';
+  const barra2 = document.getElementById('genBarEspelhada');
+  const pctN2 = document.getElementById('genPctEspelhado');
+  if (barra) barra.style.width = pctShow + '%';
+  if (pctN) pctN.textContent = pctShow + '%';
+  if (barra2) barra2.style.width = pctShow + '%';
+  if (pctN2) pctN2.textContent = pctShow + '%';
   if (anp) anp.textContent = nPags();
+  // Também actualiza fase textual se existir
+  const faseEl = document.getElementById('genFaseTxt');
+  if (faseEl && pctShow >= 85 && pctShow < 100) faseEl.textContent = 'A calibrar e auditar…';
+}
+function aBarraReset() { _genPctMax = 0; }
+function aBarraForcar(pct) {
+  _genPctMax = Math.max(_genPctMax, pct);
+  const barra = document.getElementById('barraG');
+  const pctN = document.getElementById('pctN');
+  const barra2 = document.getElementById('genBarEspelhada');
+  const pctN2 = document.getElementById('genPctEspelhado');
+  if (barra) barra.style.width = _genPctMax + '%';
+  if (pctN) pctN.textContent = _genPctMax + '%';
+  if (barra2) barra2.style.width = _genPctMax + '%';
+  if (pctN2) pctN2.textContent = _genPctMax + '%';
 }
 
 /* ── Helper: actualizar estado de uma secção no DOM durante geração ── */

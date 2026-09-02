@@ -35,6 +35,9 @@
 
 <!-- Bibliotecas externas — SEM defer, carregam antes dos scripts locais -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 
@@ -221,10 +224,34 @@ var prontoParaConexao = false;
 var chatAberto = false;
 var EXEMPLARES = typeof EXEMPLARES !== 'undefined' ? EXEMPLARES : [];
 
-/* Capturar erros globais para debug fácil */
+/* Capturar erros globais — silencioso em produção (só console, não painel) */
 window.onerror = function(msg, src, linha, col, err) {
   console.error('[ACADEMY ERROR]', msg, '|', src, 'L' + linha);
+  // Painel só em localhost para debug, nunca em produção para o utilizador
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+    try { acMostrarErro(msg, (err && err.stack) ? err.stack : (src + ' L' + linha)); } catch (_) {}
+  }
 };
+window.addEventListener('unhandledrejection', function(ev) {
+  console.error('[ACADEMY REJEICAO]', ev && ev.reason);
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+    try { acMostrarErro(String((ev && ev.reason && ev.reason.message) || (ev && ev.reason) || 'promise rejeitada'), (ev && ev.reason && ev.reason.stack) || ''); } catch (_) {}
+  }
+});
+function acMostrarErro(msg, detalhe) {
+  var el = document.getElementById('ac-erro-painel');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'ac-erro-painel';
+    el.style.cssText = 'position:fixed;bottom:10px;left:10px;right:10px;z-index:99998;background:#1a1014;border:1px solid rgba(248,113,113,.6);border-radius:12px;padding:12px 14px;font-family:DM Mono,monospace;font-size:11px;color:#fecaca;box-shadow:0 12px 40px rgba(0,0,0,.6);max-height:42vh;overflow:auto;text-align:left';
+    el.innerHTML = '<div style="font-size:10px;letter-spacing:.1em;color:#f87171;margin-bottom:6px">⚠ ERRO DETECTADO</div><div id="ac-erro-msg"></div><div id="ac-erro-det" style="color:#fdba74;white-space:pre-wrap;margin-top:6px;font-size:10px;line-height:1.5"></div><button onclick="this.parentElement.remove()" style="margin-top:8px;padding:5px 14px;border-radius:8px;background:#f87171;color:#000;border:none;font-weight:700;cursor:pointer">Fechar</button>';
+    document.body.appendChild(el);
+  }
+  var m = document.getElementById('ac-erro-msg');
+  if (m) m.textContent = String(msg).substring(0, 300);
+  var d = document.getElementById('ac-erro-det');
+  if (d && detalhe) d.textContent = String(detalhe).substring(0, 900);
+}
 </script>
 
 <!-- SCRIPTS — ordem de dependência estrita -->
@@ -242,7 +269,9 @@ window.onerror = function(msg, src, linha, col, err) {
 <script src="js/academic-ui.js"></script>
 <script src="js/screens-flow.js"></script>
 <script src="js/screens-secondary.js"></script>
+  <script src="js/modelos-doc.js"></script>
 <script src="js/pwa.js"></script>
+<script src="js/feedback.js"></script>
 <script src="js/chat.js"></script>
 <script src="js/admin.js"></script>
 
@@ -276,6 +305,7 @@ window.addEventListener('load', function() {
     if (pill) { pill.style.display = 'flex'; pill.style.opacity = '1'; pill.style.visibility = 'visible'; }
     var c = getCreditos();
     if (c.plano === 'gratuito') sbRestaurarPlano();
+    if (!c.credito_pags || !c.credito_expiry || Date.now() > c.credito_expiry) sbRestaurarCredito();
     sbCheckAprovados();
     setInterval(function() { sbCheckAprovados(); }, 45000);
     setTimeout(function() { if (typeof sbSincronizarDocs === 'function') sbSincronizarDocs(); }, 1200);

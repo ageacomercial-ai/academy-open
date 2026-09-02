@@ -227,7 +227,7 @@ function sInicio() {
 function sTipo() {
   return `
   <div style="padding-bottom:32px">
-    <div style="font-family:var(--fm);font-size:8px;letter-spacing:.18em;color:var(--t3);margin-bottom:6px">PASSO 1 DE 4</div>
+    <div style="font-family:var(--fm);font-size:8px;letter-spacing:.18em;color:var(--t3);margin-bottom:6px">${_fluxoBarra(1)}</div>
     <div style="font-size:22px;font-weight:800;color:var(--t1);letter-spacing:-.02em;margin-bottom:6px">Que trabalho vamos criar?</div>
     <div style="font-size:13px;color:var(--t2);margin-bottom:22px;line-height:1.6">Selecciona o tipo de trabalho académico.</div>
 
@@ -249,25 +249,114 @@ function sTipo() {
 }
 
 /* ════════════════════════════════════════════════════════════
+   BARRA DE PROGRESSO DO FLUXO (Fase 2 — onboarding)
+   Passos: 1 Trabalho · 2 Tema · 3 Contexto · 4 Identidade
+════════════════════════════════════════════════════════════ */
+function _fluxoBarra(passo, total = 4) {
+  const nomes = ['Trabalho', 'Tema', 'Contexto', 'Identidade'];
+  const pct = Math.round((passo / total) * 100);
+  return `
+  <div style="margin:-2px 0 16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div style="font-family:var(--fm);font-size:8px;letter-spacing:.18em;color:var(--t3)">PASSO ${passo} DE ${total} · ${nomes[passo - 1] || ''}</div>
+      <div style="font-family:var(--fm);font-size:8px;color:var(--b);font-weight:700">${pct}%</div>
+    </div>
+    <div style="display:flex;gap:5px">
+      ${Array.from({ length: total }, (_, i) => `
+      <div style="flex:1;height:4px;border-radius:3px;background:${i + 1 <= passo ? 'linear-gradient(90deg,var(--b),var(--bd))' : 'var(--z4)'};${i + 1 === passo ? 'box-shadow:0 0 8px rgba(67,232,167,.45)' : ''};transition:all .4s"></div>
+      `).join('')}
+    </div>
+  </div>`;
+}
+
+/* Sugestão contextual de extensão por nível académico */
+const _SUG_PAGS_NIVEL = {
+  'Ensino Médio':        15, 'Ensino Secundário': 15,
+  'Licenciatura':        30, 'Pós-Graduação':     40,
+  'Mestrado':            50, 'Doutoramento':      100,
+};
+
+function _dicaPagsNivel() {
+  const niv = State.getCfg('nivel');
+  const pags = State.getCfg('pags');
+  if (!niv) return '';
+  const recom = _SUG_PAGS_NIVEL[niv];
+  if (!recom) return '';
+  const preco = calcPreco(recom);
+  const jaUsado = pags === recom;
+  return `
+  <div style="background:var(--sf3);border:.5px solid var(--eb);border-radius:10px;padding:10px 12px;margin:-8px 0 14px;display:flex;align-items:center;gap:10px;animation:aparecer .25s">
+    <div style="font-size:16px;flex-shrink:0">💡</div>
+    <div style="flex:1;font-size:11.5px;color:var(--t2);line-height:1.55">
+      Para <strong style="color:var(--t1)">${niv}</strong> o mais comum são <strong style="color:var(--b)">${recom} páginas</strong> · ${preco.toLocaleString()} Kz
+    </div>
+    ${jaUsado ? '' : `<button onclick="State.setCfg('pags',${recom});renderizar()" style="padding:6px 12px;border-radius:8px;background:linear-gradient(135deg,var(--b),var(--bd));border:none;color:var(--t-inv);font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0">Usar →</button>`}
+  </div>`;
+}
+
+/* ════════════════════════════════════════════════════════════
    ECRÃ 3 — TEMA
 ════════════════════════════════════════════════════════════ */
 const _SUGESTOES_TEMA = [
-  'Impacto das TIC no rendimento académico em Angola',
-  'Empreendedorismo juvenil e redução do desemprego em Angola',
-  'Gestão de resíduos sólidos urbanos na cidade de Luanda',
-  'Qualidade do ensino superior em Angola: desafios e perspectivas',
-  'Saúde pública em Angola: acesso e qualidade dos serviços',
-  'Microcrédito e empoderamento feminino no meio rural angolano',
-  'Turismo como motor do desenvolvimento económico em Angola',
-  'Mudanças climáticas e impactos na agricultura familiar angolana',
+  'Impacto da inteligência artificial no mercado de trabalho global',
+  'Empreendedorismo digital no Brasil: inovação e competitividade',
+  'Gestão de resíduos sólidos urbanos: estudo comparado Angola–África',
+  'Qualidade do ensino superior em Portugal: desafios e perspectivas',
+  'Saúde pública e acesso a serviços em Moçambique',
+  'Microcrédito e empoderamento feminino no meio rural',
+  'Turismo como motor do desenvolvimento económico',
+  'Mudanças climáticas e impactos na agricultura familiar',
 ];
+
+/* ── Sugestões em modo infinito (geradas localmente, sem repetir) ── */
+const _SUG_P1 = ['A adopção','O impacto','O papel','A implementação','A avaliação','Os desafios','A contribuição','O crescimento','A expansão','As perspectivas','A influência','A regulação'];
+const _SUG_P2 = ['das TIC','da inteligência artificial','das energias renováveis','do microcrédito','da banca digital','do comércio electrónico','da educação à distância','do empreendedorismo juvenil','da gestão de resíduos','do turismo','das redes sociais','do marketing digital','da telemedicina','da agricultura de precisão','da transformação digital','do teletrabalho','da economia informal','das startups locais'];
+const _SUG_P3 = ['no desenvolvimento','na melhoria da qualidade','no crescimento','na redução da pobreza','no acesso aos serviços','na modernização','na inclusão financeira','na sustentabilidade','no fortalecimento','na dinamização','na optimização','na digitalização'];
+const _SUG_P4 = ['económico e social','académico','do sector empresarial','do sector agrário','dos serviços públicos','do ensino superior','do comércio local','da saúde','do ambiente','da juventude','do emprego','das PME'];
+const _SUG_P5 = ['no contexto global','na América Latina','em Angola','no Brasil','em Portugal','em Moçambique','em Cabo Verde','na África Austral','na Europa','na Ásia','em estudo comparado',''];
+
+let _seedSug = 0;
+const _sugUsadas = new Set(_SUGESTOES_TEMA);
+let _sugAtuais = null;
+
+function _mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function _sugestaoPorSeed(seed) {
+  const r = _mulberry32(seed);
+  const p = a => a[Math.floor(r() * a.length)];
+  return `${p(_SUG_P1)} ${p(_SUG_P2)} ${p(_SUG_P3)} ${p(_SUG_P4)} ${p(_SUG_P5)}`;
+}
+
+function _novasSugestoes(n = 3) {
+  const res = [];
+  let tent = 0;
+  while (res.length < n && tent < 300) {
+    tent++;
+    const s = _sugestaoPorSeed(_seedSug++);
+    if (!_sugUsadas.has(s)) { _sugUsadas.add(s); res.push(s); }
+  }
+  return res;
+}
+
+function _maisSugestoesTema() {
+  _sugAtuais = _novasSugestoes();
+  renderizar();
+}
 
 function sTema() {
   const tp = tipoActual() || { n: 'Trabalho Académico' };
   const temaAtual = State.getCfg('tema') || '';
   return `
   <div style="padding-bottom:32px">
-    <div style="font-family:var(--fm);font-size:8px;letter-spacing:.18em;color:var(--t3);margin-bottom:6px">PASSO 2 DE 4</div>
+    <div style="font-family:var(--fm);font-size:8px;letter-spacing:.18em;color:var(--t3);margin-bottom:6px">${_fluxoBarra(2)}</div>
     <div style="font-size:22px;font-weight:800;color:var(--t1);letter-spacing:-.02em;margin-bottom:6px">Qual é o tema?</div>
     <div style="font-size:13px;color:var(--t2);margin-bottom:22px;line-height:1.6">${tp.n} — escreve o tema ou título provisório.</div>
 
@@ -277,9 +366,15 @@ function sTema() {
       oninput="State.setCfg('tema',this.value.trim())">${temaAtual}</textarea>
 
     <!-- Sugestões -->
-    <div style="font-family:var(--fm);font-size:8px;letter-spacing:.1em;color:var(--t3);margin-bottom:8px;text-transform:uppercase">💡 Sugestões de tema</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-family:var(--fm);font-size:8px;letter-spacing:.1em;color:var(--t3);text-transform:uppercase">💡 Sugestões de tema</div>
+      <button onclick="_maisSugestoesTema()"
+        style="background:var(--z2);border:.5px solid var(--e0);color:var(--b);border-radius:var(--r2);padding:5px 10px;font-family:var(--fu);font-size:11px;font-weight:600;cursor:pointer">
+        🎲 Ver outras sugestões
+      </button>
+    </div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px">
-      ${_SUGESTOES_TEMA.map(s => `
+      ${(_sugAtuais || _SUGESTOES_TEMA.slice(0,3)).map(s => `
       <span onclick="document.getElementById('temaInp').value='${s.replace(/'/g, "\\'")}';State.setCfg('tema','${s.replace(/'/g, "\\'")}');renderizar()"
         style="padding:6px 12px;border-radius:var(--r2);background:${s === temaAtual ? 'var(--eb)' : 'var(--z2)'};border:.5px solid ${s === temaAtual ? 'var(--eb)' : 'var(--e0)'};color:${s === temaAtual ? 'var(--b)' : 'var(--t2)'};font-size:11px;cursor:pointer;transition:all .15s">${s}</span>
       `).join('')}
@@ -307,12 +402,12 @@ function sTema() {
 function sNivel() {
   return `
   <div style="padding-bottom:32px">
-    <div style="font-family:var(--fm);font-size:8px;letter-spacing:.18em;color:var(--t3);margin-bottom:6px">PASSO 3 DE 4</div>
+    <div style="font-family:var(--fm);font-size:8px;letter-spacing:.18em;color:var(--t3);margin-bottom:6px">${_fluxoBarra(3)}</div>
     <div style="font-size:22px;font-weight:800;color:var(--t1);letter-spacing:-.02em;margin-bottom:6px">Contexto do trabalho</div>
     <div style="font-size:13px;color:var(--t2);margin-bottom:22px;line-height:1.6">Nível académico, turma, área e extensão.</div>
 
     <label class="lbl">Nível Académico *</label>
-    <select class="inp" id="sNiv" style="margin-bottom:14px" onchange="State.setCfg('nivel',this.value)">
+    <select class="inp" id="sNiv" style="margin-bottom:14px" onchange="State.setCfg('nivel',this.value);renderizar()">
       <option value="">— Selecciona —</option>
       ${NIVEIS.map(n => `<option ${State.getCfg('nivel') === n ? 'selected' : ''}>${n}</option>`).join('')}
     </select>
@@ -333,6 +428,8 @@ function sNivel() {
       ${PAGS.map(p => `<option value="${p}" ${State.getCfg('pags') === p ? 'selected' : ''}>${p} páginas</option>`).join('')}
     </select>
 
+    ${_dicaPagsNivel()}
+
     <button class="btn B w" onclick="
       const niv=document.getElementById('sNiv').value;
       if(!niv){mostrarToast('Selecciona o nível académico.','erro');return;}
@@ -351,7 +448,7 @@ function sIdentidade() {
   const isGrupo = mbs.length > 0;
   return `
   <div style="padding-bottom:32px">
-    <div style="font-family:var(--fm);font-size:8px;letter-spacing:.18em;color:var(--t3);margin-bottom:6px">PASSO 4 DE 4</div>
+    <div style="font-family:var(--fm);font-size:8px;letter-spacing:.18em;color:var(--t3);margin-bottom:6px">${_fluxoBarra(4)}</div>
     <div style="font-size:22px;font-weight:800;color:var(--t1);letter-spacing:-.02em;margin-bottom:6px">Identidade do trabalho</div>
     <div style="font-size:13px;color:var(--t2);margin-bottom:22px;line-height:1.6">Estes dados aparecem na capa e nos cabeçalhos do documento.</div>
 
@@ -578,7 +675,7 @@ function sEst() {
   const load = State.get('load');
   const est  = State.get('est');
 
-  if (load || !est) {
+  if (load || !Array.isArray(est) || !est.length) {
     return `
     <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:20px;text-align:center;padding:28px">
       <div class="pts"><span></span><span></span><span></span></div>
@@ -626,7 +723,9 @@ function sGeracao() {
   const cfg       = State.get('cfg');
   const total     = secs.length || est.length || 0;
   const pron      = secs.filter(s => s.e === 'p').length;
-  const pct       = total ? Math.round(pron / total * 100) : 0;
+  const pctCalc   = total ? Math.round(pron / total * 100) : 0;
+  const pct       = typeof _genPctMax !== 'undefined' ? Math.max(_genPctMax, pctCalc) : pctCalc;
+  if (typeof _genPctMax !== 'undefined') _genPctMax = Math.max(_genPctMax, pct);
   const restantes = total - pron;
   const estimativa = restantes > 0 ? `~${restantes * 8}s` : 'a concluir…';
   const nome      = State.get('u')?.nome?.split(' ')[0] || '';
@@ -643,17 +742,27 @@ function sGeracao() {
   /* ── Ecrã de conclusão ── */
   if (genFim) {
     const stats = calcStats(secs);
+    const totalTime = _genStartTime ? Math.floor((Date.now() - _genStartTime) / 1000) : 0;
+    const tMin = Math.floor(totalTime / 60);
+    const tSec = totalTime % 60;
+    const tempoStr = tMin > 0 ? `${tMin}min ${tSec}s` : `${tSec}s`;
+    const pagsTxt = stats.pagsAlvo && Math.abs(stats.pags - stats.pagsAlvo) > 1
+      ? `${stats.pags} págs <span style="color:var(--t3)">(alvo ${stats.pagsAlvo})</span>`
+      : `${stats.pags} páginas`;
+    const fbHTML = (typeof fbCardHTML === 'function' ? fbCardHTML() : '');
     return `
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;gap:20px;text-align:center;padding:28px">
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;gap:18px;text-align:center;padding:28px">
       <div style="font-size:56px;filter:drop-shadow(0 0 20px var(--b));animation:flutuar 2.5s ease-in-out infinite">🎓</div>
       <div style="font-size:22px;font-weight:700;color:var(--t1)">${nome ? `Trabalho pronto, ${nome}!` : 'Trabalho concluído!'}</div>
-      <div style="font-family:var(--fm);font-size:9px;color:var(--b);letter-spacing:.14em">● ACADEMY · GERADO COM SUCESSO</div>
-      <div style="display:flex;gap:16px;font-family:var(--fm);font-size:10px;color:var(--t3)">
+      <div style="font-family:var(--fm);font-size:9px;color:var(--b);letter-spacing:.14em">● ACADEMY · GERADO COM SUCESSO · ${stats.ppp} palavras/pág</div>
+      <div style="display:flex;gap:16px;font-family:var(--fm);font-size:10px;color:var(--t3);flex-wrap:wrap;justify-content:center">
         <span>${stats.palavras} palavras</span><span>·</span>
-        <span>${stats.pags} páginas</span><span>·</span>
-        <span>~${stats.tempoLeit} min leitura</span>
+        <span>${pagsTxt}</span><span>·</span>
+        <span>~${stats.tempoLeit} min leitura</span><span>·</span>
+        <span>⏱ ${tempoStr}</span>
       </div>
       <button class="btn O w" onclick="docConcluido()" style="max-width:300px;font-size:15px;padding:16px">🎓 Ver o meu Trabalho →</button>
+      ${fbHTML ? fbHTML : ''}
       <div onclick="togChat()" style="cursor:pointer;padding:10px 18px;border:1px solid var(--eo);border-radius:var(--r);background:rgba(56,189,248,.05);color:var(--o);font-family:var(--fm);font-size:9px;letter-spacing:.08em">⚡ Treinar a defesa com o ACADEMY →</div>
     </div>`;
   }
@@ -664,7 +773,7 @@ function sGeracao() {
   <div style="display:flex;flex-direction:column;padding:28px 18px 48px">
     <div class="fase" style="margin-bottom:14px"><div class="fase-p b"></div>ACADEMY · A ESCREVER</div>
     <div style="font-size:17px;font-weight:700;color:var(--t1);margin-bottom:4px;letter-spacing:-.015em">${cfg.tema?.substring(0, 60) || 'O teu trabalho'}</div>
-    <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-bottom:18px" id="estimG">${estimativa}</div>
+    <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-bottom:18px" id="estimG">${estimativa} · ${pron}/${total} capítulos</div>
 
     ${temProg && pron > 0 && pron < total ? `
     <div style="background:rgba(251,191,36,.07);border:.5px solid rgba(251,191,36,.25);border-radius:var(--r);padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
@@ -676,14 +785,52 @@ function sGeracao() {
       <button class="btn B s" onclick="iniciarGer(true)" style="font-size:12px;padding:8px 14px;flex-shrink:0">▶ Continuar</button>
     </div>` : ''}
 
-    <!-- Barra de progresso -->
-    <div class="card-b" style="padding:14px;margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div style="font-family:var(--fm);font-size:9px;color:var(--t2);letter-spacing:.1em">PROGRESSO</div>
-        <div style="font-size:22px;font-weight:700;color:var(--b)" id="pctN">${pct}%</div>
+    <!-- Motor Espelhado Premium -->
+    <div class="card-b" style="padding:16px 14px 14px;margin-bottom:14px;overflow:hidden;position:relative;background:linear-gradient(180deg, var(--z2), var(--z1));border:1px solid var(--e0)">
+      <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg, transparent, var(--b) 50%, transparent);opacity:.5"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:7px;height:7px;border-radius:50%;background:var(--b);box-shadow:0 0 8px var(--b);animation:genPulse 1.4s infinite"></span>
+          <span style="font-family:var(--fm);font-size:8px;letter-spacing:.14em;color:var(--b);font-weight:700">MOTOR ESPELHADO</span>
+          <span id="genFaseTxt" style="font-family:var(--fm);font-size:8px;color:var(--t3);margin-left:6px">A escrever…</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-family:var(--fm);font-size:10px;color:var(--o);font-variant-numeric:tabular-nums" id="genTimer">0:00</div>
+          <div style="font-size:22px;font-weight:800;color:var(--b);letter-spacing:-.02em" id="pctN">${pct}%</div>
+        </div>
       </div>
-      <div class="barra"><div class="barra-az" id="barraG" style="width:${pct}%"></div></div>
-      <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-top:6px">${pron} de ${total} capítulos · <span id="anp">${nPags()}</span> páginas estimadas</div>
+      <!-- Palco de páginas -->
+      <div style="position:relative;height:112px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;perspective:600px">
+        <!-- Página de fundo 1 -->
+        <div style="position:absolute;width:120px;height:84px;background:#fff;border:1px solid #e9ecef;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,.08);transform:rotate(-3deg) translateX(-18px) translateY(4px);opacity:.7"></div>
+        <!-- Página de fundo 2 -->
+        <div style="position:absolute;width:120px;height:84px;background:#fff;border:1px solid #e9ecef;border-radius:4px;box-shadow:0 4px 16px rgba(0,0,0,.1);transform:rotate(2deg) translateX(12px) translateY(2px);opacity:.85"></div>
+        <!-- Página activa — conteúdo real com escrita visível -->
+        <div id="genPageActive" style="position:relative;width:142px;height:98px;background:#fff;border:1px solid #e0e7ff;border-radius:5px;box-shadow:0 8px 24px rgba(0,0,0,.14), 0 0 0 1px rgba(67,232,167,.08) inset;padding:8px 9px 8px;display:flex;flex-direction:column;gap:4px;transform:rotate(0deg);transition:transform .4s;overflow:hidden">
+          <div style="height:3px;background:linear-gradient(90deg, var(--b), var(--o));border-radius:2px;width:68%;flex-shrink:0"></div>
+          <div id="genLiveTitle" style="font-family:Georgia,serif;font-size:6px;font-weight:700;color:var(--b);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:8px">${(secs[pron]?.titulo || est[pron]?.titulo || 'A preparar…').substring(0,32)}</div>
+          <div id="genLiveLines" style="display:flex;flex-direction:column;gap:3px;flex:1;overflow:hidden;position:relative">
+            <div id="genTypingLine" style="height:4px;background:#111;border-radius:2px;width:0%;transition:width 1.2s cubic-bezier(.16,1,.3,1);position:relative;overflow:hidden"><span style="position:absolute;right:-1px;top:50%;transform:translateY(-50%);width:2px;height:6px;background:var(--b);animation:genBlink 1s infinite;border-radius:1px"></span></div>
+            <div class="genLinha" style="height:4px;background:#e5e7eb;border-radius:2px;width:92%;opacity:.7"></div>
+            <div class="genLinha" style="height:4px;background:#e5e7eb;border-radius:2px;width:88%;opacity:.5"></div>
+            <div style="height:1px;background:#eee;margin:1px 0;flex-shrink:0"></div>
+            <div id="genLiveExcerpt" style="font-family:Georgia,serif;font-size:4.5px;color:#888;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:12px;font-style:italic;position:relative">A compor as primeiras linhas…<span id="genCursor" style="display:inline-block;width:4px;height:6px;background:var(--b);margin-left:1px;vertical-align:middle;animation:genBlink 1s step-end infinite;border-radius:1px"></span></div>
+            <!-- Pena a escrever -->
+            <div id="genPen" style="position:absolute;right:8px;bottom:22px;font-size:9px;transform:rotate(-18deg);filter:drop-shadow(0 1px 2px rgba(0,0,0,.2));animation:genPenMove 2.2s ease-in-out infinite">✎</div>
+          </div>
+          <div style="position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);background:var(--b);color:var(--t-inv);font-family:var(--fm);font-size:6px;padding:2px 7px;border-radius:10px;letter-spacing:.06em;white-space:nowrap" id="genPageLabel">PÁG. ${pron || 1} · CAP. ${(secs[pron]?.num || pron+1)}</div>
+        </div>
+        <!-- Reflexo espelhado -->
+        <div style="position:absolute;bottom:-10px;left:50%;transform:translateX(-50%) scaleY(-1);opacity:.14;filter:blur(.7px);width:132px;height:34px;overflow:hidden;pointer-events:none;mask-image:linear-gradient(180deg, rgba(0,0,0,.6), transparent 85%);-webkit-mask-image:linear-gradient(180deg, rgba(0,0,0,.6), transparent 85%);background:#fff;border:1px solid #e9ecef;border-radius:5px"></div>
+      </div>
+      <div class="barra" style="height:6px;border-radius:10px;background:rgba(0,0,0,.06);border:1px solid rgba(255,255,255,.06);overflow:hidden"><div class="barra-az" id="barraG" style="width:${pct}%;height:100%;background:linear-gradient(90deg, var(--b), var(--o), #FFD700);box-shadow:0 0 10px var(--b);transition:width .5s cubic-bezier(.16,1,.3,1)"></div></div>
+      <!-- Barra espelhada reflexo -->
+      <div style="height:4px;margin-top:3px;transform:scaleY(-1);opacity:.18;filter:blur(.5px);background:rgba(0,0,0,.04);border-radius:10px;overflow:hidden;mask-image:linear-gradient(180deg, rgba(0,0,0,.5), transparent);-webkit-mask-image:linear-gradient(180deg, rgba(0,0,0,.5), transparent)"><div id="genBarEspelhada" style="height:100%;width:${pct}%;background:linear-gradient(90deg, var(--b), var(--o));transition:width .5s"></div></div>
+      <div style="display:flex;justify-content:space-between;margin-top:8px;align-items:center">
+        <div style="font-family:var(--fm);font-size:8px;color:var(--t3);letter-spacing:.06em"><span id="genPctEspelhado" style="color:var(--b);font-weight:700">${pct}%</span> · ${pron} de ${total} capítulos</div>
+        <div style="font-family:var(--fm);font-size:8px;color:var(--t3)"><span id="anp">${nPags()}</span> págs estimadas</div>
+      </div>
+      <style>@keyframes genPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(.85)}}@keyframes genWrite{0%{opacity:.7}50%{opacity:1}100%{opacity:.7}}@keyframes genBlink{0%,50%{opacity:1}51%,100%{opacity:0}}@keyframes genPenMove{0%,100%{transform:rotate(-18deg) translateX(0)}50%{transform:rotate(-18deg) translateX(2px) translateY(-1px)}}</style>
     </div>
 
     <!-- Lista de capítulos -->

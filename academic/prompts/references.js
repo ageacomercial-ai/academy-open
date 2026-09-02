@@ -1,12 +1,13 @@
 /* academic/prompts/references.js
    Geração e validação de referências bibliográficas
-============================================================================= */
+ ============================================================================= */
 
 import { detectarNivel, detectarArea, detectarContextoGeo, PERFIL_NIVEL, PERFIL_AREA } from './system.js';
+import { isStrict } from '../policies/integrity.js';
 
 /* ── Montar prompt de referências ── */
 export function montarPromptReferencias({
-  tema, tipo, nivel, area, pais, totalPags, refStyle = 'APA',
+  tema, tipo, nivel, area, pais, totalPags, refStyle = 'APA', autoresCitados = [],
 }) {
   const areaKey  = detectarArea(tema, area);
   const pNivel   = PERFIL_NIVEL[detectarNivel(nivel)];
@@ -18,14 +19,22 @@ export function montarPromptReferencias({
     ? `O tema é sobre Angola. Inclui fontes relevantes combinadas com literatura internacional.`
     : `As referências devem ser de revistas académicas internacionais. Evita fontes específicas de qualquer país a menos que o tema o exija.`;
 
+  /* Instrução crítica: garantir correspondência citações ↔ referências */
+  const instrucaoAutoresCitados = autoresCitados.length > 0
+    ? `\n🔴 OBRIGATÓRIO — LISTA DE AUTORES CITADOS NO TEXTO (DEVEM APARECER NA BIBLIOGRAFIA):\n${autoresCitados.map(a => `   - ${a.autor} (${a.ano})`).join('\n')}
+
+   TODOS estes autores DEVEM aparecer nas referências geradas. Se um autor está citado no texto, a respetiva referência TEM de estar na lista. Isto é uma regra acadêmica não negociável.`
+    : '';
+
+  const strictRef = isStrict() ? `\nMODO STRICT: Nunca invente DOI, URL, autores ou títulos. Se não conseguir verificar uma referência, não a apresente como real. Não crie DOI/URL. Não atribua estatística sem fonte. Preferir lista menor verificável a lista cheia fictícia.` : '';
   return {
     numRefs,
     MIN_VALIDAS: Math.max(6, Math.round(numRefs * 0.6)),
     promptPadrao: (reforcar) => `És um bibliotecário académico especialista em ${pArea.label}, a preparar a lista de referências bibliográficas de um ${tipo} de nível ${nivel} sobre "${tema}".
+${strictRef}
+TAREFA: gera exactamente ${numRefs} referências bibliográficas ${isStrict() ? 'verificáveis (apenas fontes que existem)' : 'reais e plausíveis'}, em formato ${refStyle}.
 
-TAREFA: gera exactamente ${numRefs} referências bibliográficas reais e plausíveis, em formato ${refStyle}.
-
-${geoRefsInstrucao}
+${geoRefsInstrucao}${instrucaoAutoresCitados}
 ${pNivel.citacoes}
 
 FORMATO OBRIGATÓRIO — uma referência por bloco, cada bloco separado por LINHA EM BRANCO:
@@ -40,7 +49,7 @@ REGRAS RÍGIDAS:
 - Português formal, normas ${refStyle}
 ${reforcar ? '\nATENÇÃO: a tentativa anterior teve referências inválidas. Confirma que TODAS têm autor, ano entre parêntesis, título e editora.' : ''}
 
-Escreve as ${numRefs} referências agora.`,
+ESCREVE AS ${numRefs} REFERÊNCIAS AGORA.`,
   };
 }
 

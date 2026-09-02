@@ -4,12 +4,28 @@
   "buildCommand": null,
   "functions": {
     "api/engine.js": {
-      "maxDuration": 60,
-      "memory": 512
+      "maxDuration": 300
+    },
+    "api/webhooks.js": {
+      "maxDuration": 60
+    },
+    "api/ebook/outline.js": {
+      "maxDuration": 60
+    },
+    "api/ebook/chapter.js": {
+      "maxDuration": 120
     }
   },
   "rewrites": [
+    { "source": "/api/ebook/outline", "destination": "/api/ebook/outline" },
+    { "source": "/api/ebook/chapter", "destination": "/api/ebook/chapter" },
+    { "source": "/api/webhooks/payment", "destination": "/api/webhooks" },
+    { "source": "/health", "destination": "/api/health" },
+    { "source": "/api/health", "destination": "/api/health" },
     { "source": "/api/(.*)", "destination": "/api/engine" },
     { "source": "/((?!api/|.*\\..*).*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    { "source": "/sw.js", "headers": [ { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" } ] }
   ]
 }

@@ -1,9 +1,25 @@
 /* academic/policies/integrity.js
-   Estados de integridade do documento e transições
-   DRAFT → REVIEW_REQUIRED → ACADEMICALLY_READY | BLOCKED
+    Estados de integridade + ACADEMIC_INTEGRITY_MODE STRICT
+    DRAFT → REVIEW_REQUIRED → ACADEMICALLY_READY | BLOCKED
 ============================================================================= */
 
 import { gerarRelatorioIntegridade } from './confidence-policy.js';
+
+/* ── Política central — STRICT admite não saber a inventar ── */
+export const ACADEMIC_INTEGRITY_MODE = (typeof process !== 'undefined' && process.env?.ACADEMIC_INTEGRITY_MODE) || 'STRICT';
+export const isStrict = () => ACADEMIC_INTEGRITY_MODE === 'STRICT';
+
+/* ── O que o modelo NÃO pode inventar em STRICT ── */
+export const STRICT_FORBIDDEN = [
+  'autores','livros','artigos','DOI','URL','instituições','pesquisas','questionários',
+  'entrevistados','amostra','percentagens','estatísticas','resultados','datas de coleta','tabelas','gráficos','referências'
+];
+
+/* ── Helper: deve bloquear export FINAL se crítico ── */
+export function deveMarcarDraft(validationResult) {
+  if (!isStrict()) return false;
+  return validationResult?.critical > 0 || validationResult?.fabricatedData > 0;
+}
 
 /* ── Estados ── */
 export const INTEGRITY_STATE = {

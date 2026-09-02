@@ -16,8 +16,8 @@ function sDocs() {
   const emCurso  = cfg.tema && !genFim && secs.length === 0 && cfg.tipo;
 
   return `
-  <div class="fase"><div class="fase-p b"></div>ARQUIVO PESSOAL</div>
-  <div class="T1">Os teus<br/><strong>documentos</strong></div>
+  <div class="fase"><div class="fase-p b"></div>MEUS TRABALHOS</div>
+  <div class="T1">Meus<br/><strong>trabalhos</strong></div>
 
   ${emCurso ? `
   <div style="padding:14px;margin-bottom:14px;border-radius:var(--r);border:1px solid var(--eo);background:rgba(56,189,248,.06);cursor:pointer;display:flex;align-items:center;gap:10px" onclick="irPara('tema_')">
@@ -32,9 +32,9 @@ function sDocs() {
   ${lista.length === 0 ? `
   <div style="text-align:center;padding:50px 20px">
     <div style="font-size:44px;margin-bottom:16px;opacity:.3">◈</div>
-    <div style="font-family:var(--fd);font-size:20px;font-style:italic;color:var(--t2);margin-bottom:8px">Arquivo vazio</div>
+    <div style="font-family:var(--fd);font-size:20px;font-style:italic;color:var(--t2);margin-bottom:8px">Ainda não tens trabalhos</div>
     <div class="desc" style="margin-bottom:24px">Cria o teu primeiro trabalho académico.</div>
-    <button class="btn B" onclick="State.resetDocumento();irPara('tipo')">Criar trabalho →</button>
+    <button class="btn B" onclick="genCancelar();State.resetDocumento();irPara('tipo')">Criar trabalho →</button>
   </div>` : lista.map(d => {
     const emCursoDoc = d.secs?.length > 0 && d.secs.some(s => !s.c || s.c.length < 50);
     const estado     = d.exportado ? 'Exportado' : d.qual && d.secs?.length > 0 ? 'Gerado' : d.secs?.length > 0 ? 'Em curso' : 'Incompleto';
@@ -124,7 +124,13 @@ function sExemplares() {
     ${tipos.map(t => `<div class="etq ${filtro === t ? 'etq-v' : 'etq-b'}" style="padding:7px 14px;font-size:11px;cursor:pointer;border-radius:20px" onclick="window._exFiltro='${t}';irPara('exemplares')">${t}</div>`).join('')}
   </div>
 
-  ${lista.map(ex => `
+  ${lista.length === 0 ? `
+  <div style="text-align:center;padding:44px 20px">
+    <div style="font-size:40px;margin-bottom:14px;opacity:.35">📂</div>
+    <div style="font-family:var(--fd);font-size:18px;font-style:italic;color:var(--t2);margin-bottom:6px">Nada por aqui ainda</div>
+    <div class="desc" style="margin-bottom:18px">${filtro === 'todos' ? 'Os exemplares oficiais aparecerão aqui.' : `Não existem exemplares de ${filtro} por agora.`}</div>
+    <button class="btn B" onclick="window._exFiltro='todos';irPara('exemplares')">Ver todos</button>
+  </div>` : lista.map(ex => `
   <div class="dc ex" style="margin-bottom:12px">
     <div class="dc-tipo">${ex.sigla} · ${ex.pags} PÁG · ${(ex.area || '').toUpperCase()}</div>
     <div class="dc-titulo">${ex.titulo}</div>
@@ -223,16 +229,13 @@ function sConfig() {
       <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--z3);border-radius:var(--r2);border:.5px solid var(--e0)">
         <div>
           <div style="font-size:13px;font-weight:600;color:var(--t1)">Motor de IA</div>
-          <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-top:2px">${_engineAtual()}</div>
+          <div style="font-family:var(--fm);font-size:9px;color:var(--t3);margin-top:2px">Automático · recomendado</div>
         </div>
         <div style="font-family:var(--fm);font-size:8px;padding:4px 9px;border-radius:20px;background:var(--eb);border:1px solid var(--eb);color:var(--b)">✓ ACTIVO</div>
       </div>
-      <select class="inp" id="engineSelect" onchange="mudarEngine(this.value)" style="margin-top:4px">
-        <option value="openrouter/google/gemini-2.5-flash-lite" ${_enginePref()==='openrouter/google/gemini-2.5-flash-lite'?'selected':''}>💰 OpenRouter · Gemini 2.5 Flash Lite (mais barato)</option>
-        <option value="openrouter/meta-llama/llama-3.1-8b-instruct" ${_enginePref()==='openrouter/meta-llama/llama-3.1-8b-instruct'?'selected':''}>OpenRouter · LLaMA 3.1 8B</option>
-        <option value="openrouter/mistralai/mistral-nemo" ${_enginePref()==='openrouter/mistralai/mistral-nemo'?'selected':''}>OpenRouter · Mistral Nemo</option>
-
-      </select>
+      <div style="font-size:12px;color:var(--t2);line-height:1.6;padding:0 2px">
+        A plataforma selecciona automaticamente o melhor motor disponível. Nenhuma configuração necessária.
+      </div>
     </div>
     <button class="btn G w" onclick="testarAPI()" style="margin-top:12px;font-size:13px">⚡ Testar ligação ao servidor</button>
     <div id="cfgMsg" style="margin-top:8px"></div>
@@ -246,24 +249,13 @@ function sConfig() {
   ${RODAPE_HTML}`;
 }
 
-/* ── Engine / modelo seleccionado ── */
-const _ENGINE_DEFAULT = 'openrouter/google/gemini-2.5-flash-lite';
-const _ENGINE_OLD     = 'openrouter/google/gemini-2.0-flash-001';
-function _enginePref() {
-  let p = LS.get('engine_pref');
-  if (p === _ENGINE_OLD) { LS.set('engine_pref', _ENGINE_DEFAULT); p = _ENGINE_DEFAULT; }
-  return p || _ENGINE_DEFAULT;
-}
-function _engineAtual() {
-  const p = _enginePref().split('/');
-  const e = 'OpenRouter';
-  const m = p.slice(1).join('/').split('-').slice(0, 3).join(' ');
-  return `${e} · ${m}`;
-}
-function mudarEngine(val) {
-  LS.set('engine_pref', val);
-  mostrarToast(`✓ Motor alterado para ${_engineAtual()}`);
-}
+/* ── Engine / modelo — selecção automática (AI Router) ── */
+/* A infraestrutura é transparente: o utilizador não escolhe nem vê
+   provedores/modelos. O router decide a prioridade internamente. */
+const _ENGINE_DEFAULT = 'auto';
+function _enginePref() { return 'auto'; }
+function _engineAtual() { return 'Automático'; }
+function mudarEngine(_val) { mostrarToast('✓ Motor em modo automático — a plataforma escolhe o melhor disponível.'); }
 
 /* ── Testar API ── */
 async function testarAPI() {
@@ -276,7 +268,7 @@ async function testarAPI() {
       signal: AbortSignal.timeout(8000),
     });
     const d = await r.json();
-    if (el) el.innerHTML = `<div style="font-family:var(--fm);font-size:10px;color:var(--b)">✓ Ligação OK · ${d?.data?.model || 'engine activo'}</div>`;
+    if (el) el.innerHTML = `<div style="font-family:var(--fm);font-size:10px;color:var(--b)">✓ Ligação OK · Serviço activo</div>`;
   } catch (e) {
     if (el) el.innerHTML = `<div style="font-family:var(--fm);font-size:10px;color:#f87171">✕ Falha — ${e.message || 'sem resposta'}</div>`;
   }
@@ -395,7 +387,46 @@ function sSobre() {
 ════════════════════════════════════════════════════════════ */
 let _planoPagamento = null; /* { ref, valor, numPags } após compra */
 
+/* ── Checkout Vanqir por pacote (num_pags → link directo do painel Vanqir).
+   Pacotes sem link mantêm o fluxo manual (IBAN/WhatsApp). Quando o link
+   existe, "Comprar" abre o checkout — o pagamento é registado pelo webhook
+   assim que a Vanqir confirma (nunca criar pagamento manual em duplicado). */
+const VANQIR_CHECKOUT_POR_PACOTE = {
+  15:   'https://pay.vanqir.com/checkout/ec9a7ee3-d690-4511-a84f-505f2eb49ca2',
+  30:   'https://pay.vanqir.com/checkout/a4a637eb-a056-4c15-95fe-41d410d0e265',
+  50:   '',
+  200:  'https://pay.vanqir.com/checkout/df53558f-5e3a-42c6-8adf-9c8865fa3001',
+  500:  '',
+  1000: '',
+  150:  '',
+  300:  '',
+};
+
+function vanqirPrefill() {
+  const u = State.get('u') || {};
+  const q = new URLSearchParams();
+  if (u.email)    q.set('email', u.email);
+  if (u.nome)     q.set('name', u.nome);
+  if (u.whatsapp || u.telefone) q.set('phone', u.whatsapp || u.telefone);
+  const s = q.toString();
+  return s ? '?' + s : '';
+}
+
+function _abrirCheckoutVanqir(pags) {
+  const url = VANQIR_CHECKOUT_POR_PACOTE[pags];
+  if (!url) { mostrarToast('Checkout ainda indisponível para este pacote.', 'erro'); return; }
+  let win = null;
+  try { win = window.open(url + vanqirPrefill(), '_blank', 'noopener,noreferrer'); } catch (e) { win = null; }
+  if (!win) mostrarToast('Bloqueador de popups: abre diretamente ' + url, 'erro');
+}
+
 async function _comprarPacote(pags, preco) {
+  const checkout = VANQIR_CHECKOUT_POR_PACOTE[pags];
+  if (checkout) {
+    mostrarToast('A abrir checkout Vanqir…');
+    _abrirCheckoutVanqir(pags);
+    return;
+  }
   const ref = 'ACY-' + Date.now().toString(36).toUpperCase();
   const ok  = await sbInsertPagamento({
     ref, uid: sbUserId(), utilizador_id: sbUserId(),
@@ -468,6 +499,7 @@ function sPlanosPrecos(opts) {
           return `
           <div style="background:${sugerido || popular ? 'var(--sf3)' : 'var(--z2)'};border:.5px solid ${sugerido ? 'var(--eb)' : popular ? 'var(--eb)' : 'var(--e0)'};border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:4px;position:relative;${sugerido || popular ? 'box-shadow:0 0 0 1px rgba(67,232,167,.12);' : ''}">
             ${popular ? '<div style="position:absolute;top:-1px;right:8px;font-family:var(--fm);font-size:7px;background:var(--b);color:var(--t-inv);padding:1px 7px;border-radius:0 0 6px 6px;font-weight:700">POPULAR</div>' : ''}
+            ${popular ? '<div style="position:absolute;top:-1px;left:8px;font-family:var(--fm);font-size:7px;background:var(--o);color:var(--t-inv);padding:1px 7px;border-radius:0 0 6px 6px;font-weight:700">PROMOÇÃO</div>' : ''}
             ${sugerido ? '<div style="position:absolute;top:-1px;right:8px;font-family:var(--fm);font-size:7px;background:var(--o);color:var(--t-inv);padding:1px 7px;border-radius:0 0 6px 6px;font-weight:700">RECOMENDADO</div>' : ''}
             <div style="font-size:11px;color:var(--t3)">${f.label || `${f.faixa_inicio}-${f.faixa_fim} págs`}</div>
             <div style="font-size:18px;font-weight:800;color:var(--b)">${preco.toLocaleString()} <span style="font-size:10px;font-weight:400;color:var(--t3)">Kz</span></div>
@@ -512,6 +544,15 @@ function sPlanosPrecos(opts) {
             <div style="font-size:18px;font-weight:800;color:var(--b)">${pag.valor.toLocaleString()} Kz</div>
           </div>
         </div>
+
+        <!-- Vanqir (se o pacote tiver checkout) -->
+        ${VANQIR_CHECKOUT_POR_PACOTE[pag.numPags] ? `
+        <div style="background:var(--sf3);border:.5px solid var(--eb);border-radius:10px;padding:14px;margin-bottom:14px">
+          <div style="font-size:13px;font-weight:700;color:var(--b);margin-bottom:4px">💳 Pagamento seguro via Vanqir</div>
+          <div style="font-size:11px;color:var(--t2);line-height:1.5;margin-bottom:10px">Checkout online (Multicaixa Express / referência). <strong>Activação automática</strong> assim que o pagamento for confirmado.</div>
+          <button onclick="_abrirCheckoutVanqir(${pag.numPags})" style="width:100%;padding:11px;border-radius:10px;background:linear-gradient(135deg,var(--b),var(--bd));border:none;color:var(--t-inv);font-size:13px;font-weight:800;cursor:pointer">Continuar para o checkout →</button>
+        </div>
+        <div style="display:none">` : ''}
 
         <!-- Passos didáticos -->
         <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
@@ -567,13 +608,14 @@ function sPlanosPrecos(opts) {
       <button onclick="_cancelarPagamento()" style="width:100%;padding:8px;border-radius:8px;background:transparent;border:.5px solid var(--e0);color:var(--t3);font-size:12px;cursor:pointer;margin-bottom:10px">
         ← Escolher outro pacote
       </button>
+      ${VANQIR_CHECKOUT_POR_PACOTE[pag.numPags] ? `</div>` : ''}
     </div>` : ''}
 
     <!-- ═══ SENHA (sempre visível) ═══ -->
     <div style="margin-bottom:16px">
       <div style="font-family:var(--fm);font-size:9px;letter-spacing:.05em;color:var(--t3);padding:4px 0;margin-bottom:6px">🔑 Tens uma senha de activação?</div>
       <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:10px;padding:14px">
-        <div style="font-size:12px;color:var(--t2);margin-bottom:10px;line-height:1.5">Insere abaixo para activar créditos de imediato.</div>
+        <div style="font-size:12px;color:var(--t2);margin-bottom:10px;line-height:1.5">Insere abaixo para activar plano ou créditos de imediato.</div>
         <div style="display:flex;gap:8px">
           <input class="inp" id="senhaInp" placeholder="ACAD-XXXX-XXX-XXXX" style="flex:1;text-transform:uppercase;letter-spacing:.05em;font-family:var(--fm);font-size:12px"
             oninput="this.value=this.value.toUpperCase()"
@@ -614,6 +656,12 @@ async function activarSenhaUI() {
 
 /* ── Iniciar pagamento avulso via Supabase ── */
 async function _iniciarPagamentoAvulso(numPags, valor) {
+  const checkout = VANQIR_CHECKOUT_POR_PACOTE[numPags];
+  if (checkout) {
+    mostrarToast('A abrir checkout Vanqir…');
+    _abrirCheckoutVanqir(numPags);
+    return;
+  }
   const ref = 'ACY-' + Date.now().toString(36).toUpperCase();
   const ok  = await sbInsertPagamento({
     ref,
@@ -753,6 +801,25 @@ const TIPOS_DOC_LIVRE = [
 ];
 
 const _docLivre = { tipo: '', descricao: '', resultado: null, loading: false };
+
+/* Exportação do documento livre (botões PDF/DOCX do resultado) */
+function _docLivreExportarPDF() {
+  if (!_docLivre.resultado) { mostrarToast('Ainda não há documento para exportar.'); return; }
+  const tp = TIPOS_DOC_LIVRE.find(t => t.id === _docLivre.tipo) || TIPOS_DOC_LIVRE[0];
+  gerarJanelaPDF(
+    [{ num: 1, titulo: tp.n, c: _docLivre.resultado }],
+    { titulo: tp.n, tipo: 'Documento Livre', sigla: 'DOC LIVRE', inst: '', prof: '', nivel: '', autor: State.getCfg('autor') || '' }
+  );
+}
+
+function _docLivreExportarDocx() {
+  if (!_docLivre.resultado) { mostrarToast('Ainda não há documento para exportar.'); return; }
+  const tp = TIPOS_DOC_LIVRE.find(t => t.id === _docLivre.tipo) || TIPOS_DOC_LIVRE[0];
+  _expDocxExecutar(
+    [{ num: 1, titulo: tp.n, c: _docLivre.resultado }],
+    { titulo: tp.n, tipo: 'Documento Livre', sigla: 'DOC LIVRE', inst: '', prof: '', nivel: '', autor: State.getCfg('autor') || '', isEx: true }
+  );
+}
 
 function sDocLivre() {
   const tp = TIPOS_DOC_LIVRE.find(t => t.id === _docLivre.tipo) || TIPOS_DOC_LIVRE[0];

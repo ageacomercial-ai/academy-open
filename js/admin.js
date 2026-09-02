@@ -104,7 +104,37 @@ function _adminSecPagamentos() {
 }
 
 function _adminSecSenhas(historico) {
+  const _tiposArr = Object.entries(SENHA_TIPOS).filter(([,v]) => v.plano);
+  const _credArr  = Object.entries(SENHA_TIPOS).filter(([,v]) => v.tipo === 'credito');
   return `
+  <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:12px;padding:18px;margin-bottom:14px">
+    <div style="font-size:13px;font-weight:700;color:var(--b);margin-bottom:12px">⚡ Código de Plano (equivalente a pagamento)</div>
+    <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Quem tiver este código activa o plano directamente — equivale a pagar.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      ${_tiposArr.map(([k,v]) => `
+        <button class="btn B s" onclick="adminGerarTipo('${k}')" style="font-size:12px;padding:9px 14px;flex:1;min-width:0">${v.desc.split('—')[0].trim()}</button>
+      `).join('')}
+    </div>
+    <div id="adminTipoResult" style="display:none;background:var(--z3);border:.5px solid var(--eb);border-radius:8px;padding:14px;margin-top:10px;text-align:center">
+      <div style="font-size:10px;font-family:var(--fm);color:var(--t3);margin-bottom:6px">CÓDIGO DE PLANO</div>
+      <div id="adminTipoTexto" style="font-size:18px;font-weight:800;color:var(--b);letter-spacing:.08em;font-family:var(--fm);margin-bottom:10px;word-break:break-all"></div>
+      <div style="display:flex;gap:10px;justify-content:center">
+        <button class="btn B s" onclick="adminCopiarTipo()" style="font-size:12px;padding:8px 16px">📋 Copiar</button>
+        <button class="btn G s" onclick="adminWATipo()" style="font-size:12px;padding:8px 16px">💬 WhatsApp</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:12px;padding:18px;margin-bottom:14px">
+    <div style="font-size:13px;font-weight:700;color:var(--o);margin-bottom:12px">📄 Código de Crédito (páginas)</div>
+    <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Adiciona páginas de saldo ao utilizador — válido 30 dias.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      ${_credArr.map(([k,v]) => `
+        <button class="btn B s" onclick="adminGerarTipo('${k}')" style="font-size:12px;padding:9px 14px;flex:1;min-width:0">${v.pags}p</button>
+      `).join('')}
+    </div>
+  </div>
+
   <div style="background:var(--z2);border:.5px solid var(--e0);border-radius:12px;padding:18px;margin-bottom:14px">
     <div style="font-size:13px;font-weight:700;color:#FBBF24;margin-bottom:12px">🎁 Código Promocional (páginas bónus)</div>
     <div style="display:flex;gap:10px;margin-bottom:10px">
@@ -298,6 +328,37 @@ function adminWAPromo() {
   window.open(`https://wa.me/?text=${msg}`, '_blank');
 }
 
+/* ── Gerar código de plano/crédito ── */
+let _adminTipoActual2 = '';
+function adminGerarTipo(tipo) {
+  const def = SENHA_TIPOS[tipo];
+  if (!def) return;
+  const senha = gerarSenha(tipo);
+  if (!senha) return;
+  _adminTipoActual2 = senha;
+  const el = document.getElementById('adminTipoResult');
+  const txt = document.getElementById('adminTipoTexto');
+  if (el) el.style.display = 'block';
+  if (txt) txt.textContent = senha;
+  const hist = LS.get('senhas_geradas') || [];
+  hist.unshift({ senha, desc: def.desc, data: new Date().toLocaleDateString('pt-PT'), usada: false });
+  LS.set('senhas_geradas', hist.slice(0, 50));
+  mostrarToast(`✓ Código "${def.desc}" gerado!`);
+}
+function adminCopiarTipo() {
+  navigator.clipboard?.writeText(_adminTipoActual2).then(() => mostrarToast('✓ Código copiado!'));
+}
+function adminWATipo() {
+  const def = SENHA_TIPOS[(_adminTipoActual2.split('-')[2] || '').replace(/^(MENSAL|CREDITO)\d+/, m => m)] || {};
+  const msg = encodeURIComponent(
+    `⚡ Olá! Aqui está o teu código ACADEMY:\n\n*${_adminTipoActual2}*\n\n` +
+    `✓ ${def.desc || 'Acesso activado'} — equivale a pagamento!\n\n` +
+    `Como activar:\n1. Abre o ACADEMY\n2. Vai a Planos → "Activar com Senha"\n3. Insere o código\n\n` +
+    `Grupo AGEA Comercial`
+  );
+  window.open(`https://wa.me/?text=${msg}`, '_blank');
+}
+
 function adminWhatsApp() {
   const msg  = encodeURIComponent(
     `Olá! Aqui está o teu código de acesso ao ACADEMY:\n\n*${_adminSenhaActual}*\n\n` +
@@ -363,7 +424,13 @@ async function loadAdminPendentes() {
 async function adminAprovar(id, tipo, plano, numPags, meses, nome, wa) {
   const card = document.getElementById(`pag-${id}`);
   if (card) card.style.opacity = '.5';
-  await sbAprovar(id);
+
+  const aprovado = await sbAprovar(id);
+  if (!aprovado) {
+    mostrarToast('❌ Falha ao aprovar — verifica o PIN e o servidor.');
+    if (card) { card.style.opacity = '1'; setTimeout(() => { card.style.opacity; }, 0); card.style.background = ''; }
+    return;
+  }
 
   const pagsFinal = numPags || 15;
   const senhaGerada = gerarSenhaPromo(pagsFinal, `Compra aprovada: ${pagsFinal} páginas`);
@@ -401,7 +468,12 @@ async function adminRejeitar(id) {
   if (!confirm('Rejeitar este pagamento?')) return;
   const card = document.getElementById(`pag-${id}`);
   if (card) card.style.opacity = '.4';
-  await sbRejeitar(id);
+  const rejeitado = await sbRejeitar(id);
+  if (!rejeitado) {
+    mostrarToast('❌ Falha ao rejeitar — verifica o PIN e o servidor.');
+    if (card) { card.style.opacity = '1'; }
+    return;
+  }
   mostrarToast('Pagamento rejeitado.');
   if (card) setTimeout(() => card.remove(), 800);
 }
@@ -768,6 +840,7 @@ async function _verificarAdminPin() {
   const ok = await _verificarCredenciaisAdmin('', pin);
 
   if (ok) {
+    window.__adminPin = pin; /* guardado só em memória, para aprovações via backend */
     document.getElementById('adminAuthModal')?.remove();
     irPara('admin');
   } else {

@@ -84,7 +84,7 @@
   will-change: scroll-position;
   -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
 }
-.ecra.com-animacao { animation: entrar .26s var(--expo) both; }
+.ecra.com-animacao { animation: entrar .28s var(--expo) both; }
 .ecra.semrodape { bottom: 0; }
 .ecra::-webkit-scrollbar { width: 2px; }
 .ecra::-webkit-scrollbar-thumb { background: var(--eb); border-radius: 2px; }

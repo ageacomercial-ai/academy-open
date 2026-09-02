@@ -22,7 +22,7 @@ const PBE = {
   OVERHEAD_TITULOS:    0.92, /* linhas dedicadas a títulos/subtítulos */
   MAX_TENTATIVAS:      5,    /* iterações máx. do ciclo de calibração */
   TOLERANCIA_PCT:      0.02, /* ±2% do número de páginas pedido */
-  PALAVRAS_MIN_CAP:    200,  /* piso de qualidade por capítulo */
+  PALAVRAS_MIN_CAP:    300,  /* piso de qualidade por capítulo */
   FALLBACK:            { area: 827, pxPorLinha: 24, charsPorLinha: 68 },
 };
 
@@ -65,9 +65,9 @@ function pbePaginasFrontais() {
 
 /* ── 4. Plano de orçamento de palavras (Word Budget) ── */
 
-/* Vocabulário realista pt (comprimento médio ≈ 6 caracteres/palavra) */
+/* Vocabulário realista pt (comprimento médio ≈ 6 caracteres/palavra) — sem viés geográfico */
 const _PBE_POOL = ('o de que e em para com uma os da no se por mais como das não mas sua tema estudo análise ' +
-  'contexto angola resultado processo educação desenvolvimento social investigação metodologia contemporâneo ' +
+  'contexto resultado processo educação desenvolvimento social investigação metodologia contemporâneo ' +
   'bibliografia instituição económico política tecnologia informação estudantes universidade').split(' ');
 
 /* Conteúdo de teste sintético com a estrutura real (subtítulo + parágrafos) */
@@ -118,11 +118,14 @@ function pbePlanear(est, alvoPags) {
   const alvoPaginasCorpo = Math.max(1, corpoAlvo + 1);
   const modeloPalavras = Math.round(alvoPaginasCorpo * palavrasPorPagina);
 
-  /* Piso de qualidade dinâmico: para documentos grandes usa 200;
-     para documentos pequenos encolhe (permite cumprir o orçamento). */
-  const piso = Math.min(
-    PBE.PALAVRAS_MIN_CAP,
-    Math.max(24, Math.round((modeloPalavras / Math.max(1, lista.length)) * 0.3))
+  /* Piso de qualidade dinâmico: mínimo 300 palavras por capítulo.
+     Para documentos pequenos, ajusta proporcionalmente mas nunca abaixo de 200. */
+  const piso = Math.max(
+    200,
+    Math.min(
+      PBE.PALAVRAS_MIN_CAP,
+      Math.max(200, Math.round((modeloPalavras / Math.max(1, lista.length)) * 0.4))
+    )
   );
 
   /* Calibração numérica contra o motor real de paginação (layout.js):
@@ -348,11 +351,12 @@ async function pbeValidarEAjustar(est, plan) {
     if (m.dif > 0) {
       const rem = pbeResumir(secs, m.dif);
       resumiu += rem;
-      if (rem === 0) { motivo = 'minimo-estrutural'; break; } /* já nada a cortar */
+      if (rem === 0) { motivo = 'minimo-estrutural'; break; }
     } else {
-      const n = await pbeExpandir(secs, est, plan, -m.dif);
-      expandiu += n;
-      if (n === 0) { motivo = 'expansao-impossivel'; break; } /* sem regenerações possíveis */
+      // Expandir via IA foi removido para velocidade — documento entrega com páginas reais (sem chamada extra)
+      // Se faltam páginas, aceita o total real em vez de esperar regeneração (+8s por cap)
+      motivo = 'aceite-como-esta';
+      break;
     }
   }
 

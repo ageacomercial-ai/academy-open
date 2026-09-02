@@ -709,38 +709,97 @@ async function _ecEnviarPedido() {
 
   try {
     const tp = tipoActual() || { n: 'Trabalho Académico' };
+    const cfg = State.get('cfg') || {};
+    const secs = State.get('secs') || [];
+    const capa = State.get('capa') || {};
 
-    /* Detectar capítulos mencionados no pedido */
-    const caps = ecState.capitulos;
-    const mencionados = caps.filter((c, i) => {
-      const num = (c.num || i + 1).toString();
-      return pedido.includes(num) || pedido.toLowerCase().includes((c.titulo || '').toLowerCase().substring(0, 15));
-    });
-    const alvo = mencionados.length > 0 ? mencionados : caps.slice(0, 2);
+    /* Construir contexto completo: metadados + capa + TODOS os capítulos */
+    const contextoCompleto = `TÍTULO: ${cfg.tema || ''}
+TIPO: ${tp.n}
+SIGLA: ${tp.s}
+INSTITUIÇÃO: ${cfg.inst || ''}
+PROFESSOR: ${cfg.prof || ''}
+NÍVEL: ${cfg.nivel || ''}
+AUTORES: ${(cfg.mbs?.map(m => m.nome)?.join(', ') || cfg.autor || '')}
+TEMA: ${cfg.tema || ''}
+AREA: ${cfg.area || ''}
 
-    const contextoCaps = alvo.map(c =>
-      `Cap.${c.num} — ${c.titulo}:\n${(c.conteudo || '').substring(0, 600)}`
-    ).join('\n\n---\n\n');
+CAPÍTULOS:
+${secs.map((s, i) => `Cap.${s.num || i+1} — ${s.titulo}:
+${s.c || s.conteudo || '(vazio)'}`).join('\n\n---\n\n')}
+
+CAPA:
+${JSON.stringify(capa, null, 2)}`;
 
     if (status) status.textContent = 'A gerar edição com IA…';
 
     const res = await callAcademyAPI({
       acao:         'editar_texto',
-      texto:        contextoCaps,
-      subacao:      'editar_conversacional',
+      texto:        contextoCompleto,
+      subacao:      'editar_conversacional_completa',
       pedido,
       tipoTrabalho: tp.n,
-      tema:         State.getCfg('tema') || '',
+      tema:         cfg.tema || '',
+      nivel:        cfg.nivel || '',
+      area:         cfg.area || '',
     });
 
     const novoTexto = typeof res === 'string' ? res : null;
     if (!novoTexto) throw new Error('Resposta vazia da IA.');
 
-    /* Aplicar ao primeiro capítulo alvo */
-    const idxAlvo = caps.indexOf(alvo[0]);
-    if (idxAlvo >= 0) {
-      ecState.capitulos[idxAlvo].conteudo = novoTexto;
-      ecState.seccoesModificadas.add(idxAlvo);
+    /* Tentar parsear JSON de resposta estruturada */
+    let changed = false;
+    try {
+      const parsed = JSON.parse(novoTexto);
+      
+      if (parsed.titulo) {
+        cfg.tema = parsed.titulo;
+        changed = true;
+      }
+      if (parsed.inst) { cfg.inst = parsed.inst; changed = true; }
+      if (parsed.prof) { cfg.prof = parsed.prof; changed = true; }
+      if (parsed.nivel) { cfg.nivel = parsed.nivel; changed = true; }
+      if (parsed.capas) {
+        Object.assign(capa, parsed.capas);
+        State.set('capa', capa);
+        changed = true;
+      }
+      if (parsed.capitulos && Array.isArray(parsed.capitulos)) {
+        parsed.capitulos.forEach(cap => {
+          const idx = parseInt(cap.num) - 1;
+          if (idx >= 0 && idx < secs.length && cap.conteudo) {
+            secs[idx].c = cap.conteudo;
+            secs[idx].blocks = blkExtrair({ c: cap.conteudo });
+            changed = true;
+          }
+        });
+      }
+    } catch (e) {
+      /* Se não for JSON válido, aplicar ao primeiro capítulo como fallback */
+      const caps = ecState.capitulos;
+      const mencionados = caps.filter((c, i) => {
+        const num = (c.num || i + 1).toString();
+        return pedido.includes(num) || pedido.toLowerCase().includes((c.titulo || '').toLowerCase().substring(0, 15));
+      });
+      const alvo = mencionados.length > 0 ? mencionados : caps.slice(0, 1);
+      if (alvo.length > 0) {
+        const idxAlvo = caps.indexOf(alvo[0]);
+        if (idxAlvo >= 0) {
+          ecState.capitulos[idxAlvo].conteudo = novoTexto;
+          const secIdx = idxAlvo;
+          if (secs[secIdx]) {
+            secs[secIdx].c = novoTexto;
+            secs[secIdx].blocks = blkExtrair({ c: novoTexto });
+            changed = true;
+          }
+        }
+      }
+    }
+
+    if (changed) {
+      State.set('cfg', cfg);
+      State.set('secs', secs);
+      autoGuardar();
     }
 
     /* Registar no histórico */
@@ -749,26 +808,15 @@ async function _ecEnviarPedido() {
       const item = document.createElement('div');
       item.style.cssText = 'background:var(--z2);border:.5px solid var(--e1);border-radius:var(--r2);padding:12px';
       item.innerHTML = `
-        <div style="font-family:var(--fm);font-size:8px;color:var(--b);margin-bottom:4px">✓ EDITADO · Cap.${alvo[0]?.num}</div>
+        <div style="font-family:var(--fm);font-size:8px;color:var(--b);margin-bottom:4px">✓ EDITADO · Documento inteiro</div>
         <div style="font-size:12px;color:var(--t2);margin-bottom:6px;font-style:italic">"${pedido.substring(0, 60)}"</div>
         <button onclick="this.closest('div').remove()" style="font-family:var(--fm);font-size:8px;color:var(--t3);background:none;border:none;cursor:pointer">Dispensar</button>`;
       hist.insertBefore(item, hist.firstChild);
     }
 
-    if (status) { status.style.color = 'var(--b)'; status.textContent = `✓ Cap.${alvo[0]?.num} editado com sucesso.`; }
+    if (status) { status.style.color = 'var(--b)'; status.textContent = `✓ Alterações aplicadas!`; }
     if (inp) inp.value = '';
     mostrarToast('✓ Edição aplicada!');
-
-    /* Guardar automaticamente */
-    ecState.capitulos.forEach((cap, i) => {
-      const secs = State.get('secs');
-      if (secs[i]) {
-        secs[i].c = cap.conteudo;
-        secs[i].blocks = blkExtrair({ c: cap.conteudo });
-      }
-      State.set('secs', secs);
-    });
-    autoGuardar();
 
   } catch (e) {
     if (status) { status.style.color = '#f87171'; status.textContent = '✗ Erro: ' + (e.message || 'sem resposta'); }

@@ -101,9 +101,30 @@ CREATE TABLE IF NOT EXISTS academy_history (
 );
 ALTER TABLE academy_history ENABLE ROW LEVEL SECURITY;
 
+-- 6. AVALIACOES (feedback pós-geração)
+CREATE TABLE IF NOT EXISTS avaliacoes (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  uid         TEXT NOT NULL DEFAULT '',
+  doc_id      TEXT,
+  nota        INTEGER NOT NULL CHECK (nota BETWEEN 1 AND 5),
+  comentario  TEXT,
+  tags        TEXT[] DEFAULT '{}',
+  contexto    TEXT DEFAULT 'pos_geracao',
+  meta        JSONB DEFAULT '{}',
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE avaliacoes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "anon_insert_avaliacoes" ON avaliacoes
+  FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "anon_select_avaliacoes" ON avaliacoes
+  FOR SELECT TO anon USING (true);
+
 -- Índices
 CREATE INDEX IF NOT EXISTS idx_pagamentos_utilizador ON pagamentos(utilizador_id);
 CREATE INDEX IF NOT EXISTS idx_pagamentos_estado ON pagamentos(estado);
 CREATE INDEX IF NOT EXISTS idx_documentos_uid ON documentos(uid);
 CREATE INDEX IF NOT EXISTS idx_academy_history_user ON academy_history(user_id);
 CREATE INDEX IF NOT EXISTS idx_academy_ai_logs_created ON academy_ai_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_avaliacoes_uid ON avaliacoes(uid);
+CREATE INDEX IF NOT EXISTS idx_avaliacoes_nota ON avaliacoes(nota);
+CREATE INDEX IF NOT EXISTS idx_avaliacoes_created ON avaliacoes(created_at);

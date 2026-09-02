@@ -7,27 +7,29 @@
 /* ── Chave de validação offline (nunca partilhar o código-fonte) ── */
 const _SK = (()=>{ const p = ['AGEA','26','SCOS','_ADL']; return p.join(''); })();
 
-/* Tipos de senha — apenas promoções personalizadas (P####) */
-const SENHA_TIPOS = {};
+/* Tipos de senha — planos mensais e pacotes de crédito */
+const SENHA_TIPOS = {
+  MENSAL1:  { desc: 'Plano Pro — 1 mês',          plano: 'pro',     meses: 1  },
+  MENSAL3:  { desc: 'Plano Pro — 3 meses',         plano: 'pro',     meses: 3  },
+  MENSAL6:  { desc: 'Plano Pro — 6 meses',         plano: 'pro',     meses: 6  },
+  MENSAL12: { desc: 'Plano Pro — 12 meses',        plano: 'pro',     meses: 12 },
+  CREDITO15:  { desc: '15 páginas de crédito',     tipo: 'credito',  pags: 15  },
+  CREDITO30:  { desc: '30 páginas de crédito',     tipo: 'credito',  pags: 30  },
+  CREDITO50:  { desc: '50 páginas de crédito',     tipo: 'credito',  pags: 50  },
+  CREDITO100: { desc: '100 páginas de crédito',    tipo: 'credito',  pags: 100 },
+};
 
 /* ── Cache dinâmico de preços (carregado do Supabase) ── */
 let _precosCache = null;
 let _planosGraficaCache = null;
 
-/* Preços padrão (fallback se Supabase offline) */
+/* Preços padrão (fallback se Supabase offline) — só os planos activos */
 const _PRECOS_DEFAULT = [
   { faixa_inicio: 0,   faixa_fim: 15,   preco: 1850, label: '0-15 páginas' },
   { faixa_inicio: 16,  faixa_fim: 30,   preco: 2850, label: '16-30 páginas' },
-  { faixa_inicio: 31,  faixa_fim: 50,   preco: 5500, label: '31-50 páginas' },
   { faixa_inicio: 51,  faixa_fim: 200,  preco: 16000, label: '51-200 páginas' },
-  { faixa_inicio: 201, faixa_fim: 500,  preco: 40000, label: '201-500 páginas' },
-  { faixa_inicio: 501, faixa_fim: 1000, preco: 80000, label: '501-1000 páginas' },
 ];
-const _PLANOS_GRAFICA_DEFAULT = [
-  { nome: 'Gráfica 150',     paginas: 150, preco: 15000 },
-  { nome: 'Gráfica 300',     paginas: 300, preco: 25000 },
-  { nome: 'Gráfica 500',     paginas: 500, preco: 40000 },
-];
+const _PLANOS_GRAFICA_DEFAULT = [];
 
 async function carregarPrecos() {
   try {
@@ -52,16 +54,20 @@ async function carregarPrecos() {
   try {
     const r = await fetch(SB_URL + '/rest/v1/instituicoes?activa=eq.true&order=nome.asc',
       { headers: SB_H(), signal: AbortSignal.timeout(5000) });
-    if (r.ok) _instituicoesCache = await r.json();
+    if (r.ok) {
+      const dados = await r.json();
+      if (Array.isArray(dados)) _instituicoesCache = dados;
+    }
   } catch {}
-  if (!_instituicoesCache) _instituicoesCache = [];
+  if (!Array.isArray(_instituicoesCache)) _instituicoesCache = [];
 }
 
 /* Desconto institucional */
 function getDescontoInst() {
   const inst = State.getCfg('inst');
   if (!inst) return 0;
-  const found = (_instituicoesCache||[]).find(i => i.nome === inst);
+  const lista = Array.isArray(_instituicoesCache) ? _instituicoesCache : [];
+  const found = lista.find(i => i && i.nome === inst);
   return found?.desconto_porcentagem || 0;
 }
 
@@ -193,11 +199,16 @@ function _semanaKey() {
 function getCreditos() {
   const mes = new Date().toISOString().slice(0, 7);
   const sem = _semanaKey();
-  let c = LS.get('creditos') || {
+  let c = null;
+  try {
+    const bruto = LS.get('creditos');
+    if (bruto && typeof bruto === 'object' && !Array.isArray(bruto)) c = bruto;
+  } catch (_) {}
+  c = c || {
     plano: 'gratuito', plano_expiry: null,
     mes, sem,
     pags: 0,           /* págs geradas este mês (planos pro) */
-    gen_usada: 0,      /* geração gratuita usada (0 ou 1, vitalício) */
+    gen_usada: 0,      /* legado (não usado no modelo §4 — sem geração gratuita) */
     credito_pags: 0,   /* págs de crédito disponíveis */
     credito_expiry: null,
     pagos: [],
@@ -215,12 +226,14 @@ function getCreditos() {
 
 function setCreditos(c) { LS.set('creditos', c); }
 
-/* ── Saldo disponível para geração ── */
+/* ── Saldo disponível para geração (§4: SEM créditos gratuitos) ──
+   Todos os créditos originam de uma compra válida (pagamento aprovado)
+   ou de uma ação administrativa autorizada (senha/promoção). */
 function getSaldoDisponivel() {
   const c = getCreditos();
-  const plano = planoActivo();
-  if (plano === 'gratuito') return c.gen_usada >= 1 ? 0 : 9999;
   if (temCreditoActivo()) return getCreditosPags();
+  const plano = planoActivo();
+  if (plano === 'gratuito') return 0;
   return 0;
 }
 
@@ -272,12 +285,7 @@ function verificarExportacao(numPags) {
     return { ok: true, wm: false };
   }
 
-  /* 2. Gratuito — 1 geração real por utilizador (vitalício) */
-  if (plano === 'gratuito') {
-    if (c.gen_usada >= 1) return { ok: false, motivo: 'gratuito_esgotado', plano, c, numPags };
-    return { ok: true, wm: true };
-  }
-
+  /* 2. §4: modelo oficial SEM geração gratuita — sem crédito = bloqueado */
   return { ok: false, motivo: 'sem_credito', plano, c, numPags };
 }
 
@@ -286,9 +294,8 @@ function registarExportacao(numPags, pago) {
   const c     = getCreditos();
   if (temCreditoActivo()) {
     c.credito_pags = Math.max(0, (c.credito_pags || 0) - numPags);
-  } else {
-    c.gen_usada = 1;
   }
+  /* §4: sem geração gratuita — sem crédito activo nada é descontado */
   if (pago) c.pagos.push({ data: new Date().toISOString(), pags: numPags, valor: pago });
   setCreditos(c);
 }
@@ -316,10 +323,10 @@ function activarCredito(numPags, redirect = true) {
   if (redirect) irPara('inicio');
 }
 
-/* ── Guardar plano no Supabase (backup remoto) ── */
+/* ── Guardar plano no Supabase (backup remoto — upsert por uid) ── */
 async function sbGuardarPlano(plano, expiryMs) {
   try {
-    await fetch(SB_URL + '/rest/v1/planos_utilizadores', {
+    await fetch(SB_URL + '/rest/v1/planos_utilizadores?on_conflict=uid', {
       method: 'POST',
       headers: { ...SB_H(), 'Prefer': 'resolution=merge-duplicates' },
       body: JSON.stringify({
@@ -355,6 +362,48 @@ async function sbRestaurarPlano() {
   } catch (e) { console.warn('[AUTH] restaurarPlano:', e); }
 }
 
+/* ── Guardar créditos no Supabase (backup remoto — usa plano=credito) ── */
+async function sbGuardarCredito() {
+  try {
+    const c = getCreditos();
+    await fetch(SB_URL + '/rest/v1/planos_utilizadores?on_conflict=uid', {
+      method: 'POST',
+      headers: { ...SB_H(), 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify({
+        uid:     sbUserId(),
+        plano:   'credito_' + (c.credito_pags || 0),
+        expiry:  c.credito_expiry ? new Date(c.credito_expiry).toISOString() : null,
+        updated: new Date().toISOString(),
+      }),
+    });
+  } catch (e) { console.warn('[AUTH] guardarCredito:', e); }
+}
+
+/* ── Restaurar créditos do Supabase ── */
+async function sbRestaurarCredito() {
+  try {
+    const r = await fetch(
+      SB_URL + '/rest/v1/planos_utilizadores?uid=eq.' + sbUserId() + '&order=updated.desc&limit=1',
+      { headers: SB_H() }
+    );
+    if (!r.ok) return;
+    const rows = await r.json();
+    if (!rows.length) return;
+    const row = rows[0];
+    if (!row.plano || !row.plano.startsWith('credito_')) return;
+    const pags = parseInt(row.plano.replace('credito_', ''), 10);
+    if (!pags || pags <= 0) return;
+    const expiry = row.expiry ? new Date(row.expiry).getTime() : null;
+    if (expiry && Date.now() > expiry) return;
+    const c = getCreditos();
+    /* Só restaurar se local estiver vazio/expirado */
+    if (c.credito_pags > 0 && c.credito_expiry && Date.now() < c.credito_expiry) return;
+    c.credito_pags   = pags;
+    c.credito_expiry = expiry;
+    setCreditos(c);
+  } catch (e) { console.warn('[AUTH] restaurarCredito:', e); }
+}
+
 /* ── Aplicar senha digitada pelo utilizador ── */
 async function aplicarSenha(resultado, { redirect = true } = {}) {
   const def = resultado;
@@ -373,6 +422,7 @@ async function aplicarSenha(resultado, { redirect = true } = {}) {
   } else if (def.tipo === 'credito' || def._promo) {
     /* É um pacote de créditos ou código promocional */
     activarCredito(def.pags, redirect);
+    await sbGuardarCredito();
   }
   return true;
 }

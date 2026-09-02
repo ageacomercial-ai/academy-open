@@ -261,6 +261,13 @@
 .capa-logo-zone:hover { background: var(--eb); border-color: var(--b); }
 
 /* ════════════════════════════════════════════════════════════
-   BARRA DE GERAÇÃO
+    FEEDBACK — CAIXA DE AVALIAÇÃO PÓS-GERAÇÃO
+════════════════════════════════════════════════════════════ */
+.fb-star:hover { border-color: var(--eb) !important; background: var(--eb) !important; color: var(--b) !important; transform: scale(1.08); }
+.fb-star:active { transform: scale(.95); }
+.fb-chip:hover { border-color: var(--eb); color: var(--b); }
+
+/* ════════════════════════════════════════════════════════════
+    BARRA DE GERAÇÃO
 ════════════════════════════════════════════════════════════ */
 .gen-fase { display: flex; align-items: center; gap: 8px; padding: 8px 0; font-family: var(--fm); font-size: 9px; color: var(--t3); letter-spacing: .1em; }

@@ -210,13 +210,14 @@ const PAGS     = [5, 8, 10, 15, 20, 25, 30, 40, 50, 80, 100];
 
 const PLANOS_DEF = {
   gratuito:  { n: 'Gratuito',  pags_mes: 9999, wm: true,  preco: 0,     cor: 'var(--t3)', ic: '🎁' },
+  pro:       { n: 'Pro',       pags_mes: 9999, wm: true,  preco: 9500,  cor: 'var(--b)',  ic: '⚡' },
 };
 
 /* Helpers rápidos usados em vários módulos */
 const tipoActual   = () => TIPOS.find(t => t.id === State.getCfg('tipo'));
 const getEstruturaTipo = (tipoId) => ESTRUTURAS_TIPO[tipoId] || ESTRUTURAS_TIPO['out'];
 const nPags = () => {
-  const secs = State.get('secs');
-  if (!secs.length) return State.getCfg('pags') || 15;
-  return Math.max(1, Math.ceil(secs.reduce((s, x) => s + (x.c?.split(' ').length || 0), 0) / 320));
+  const secs = State.get('secs') || [];
+  if (!Array.isArray(secs) || !secs.length) return State.getCfg('pags') || 15;
+  return Math.max(1, Math.ceil(secs.reduce((s, x) => s + ((x?.c || '').split(' ').length || 0), 0) / 320));
 };
