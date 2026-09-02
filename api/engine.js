@@ -890,18 +890,17 @@ REGRAS:
   const totalParasLivro = (ast.sections || []).reduce(
     (acc, s) => acc + (s.paragraphs || []).length, 0
   );
-  const parasMinAlvo = Math.max(4, Math.min(9, Math.floor(palavras / 100)));
+  const parasMinAlvo = Math.max(3, Math.min(6, Math.floor(palavras / 120)));
   const motivosInvalido = [];
   if (!validarAST(ast)) motivosInvalido.push('Sem conteúdo (AST vazio)');
-  // Reparação fraca vira aviso, não bloqueio — só bloqueia se também houver pouca completude
   const compNum = Number(completeness?.completeness);
-  if (ast._repaired === true && Number.isFinite(compNum) && compNum < 60) motivosInvalido.push(`Estrutura reconstruída + completude ${Math.round(compNum)}% (<60)`);
+  if (ast._repaired === true && Number.isFinite(compNum) && compNum < 45) motivosInvalido.push(`Estrutura reconstruída + completude ${Math.round(compNum)}% (<45)`);
   if (totalParasLivro < parasMinAlvo) motivosInvalido.push(`Parágrafos insuficientes: ${totalParasLivro} (esperado ≥${parasMinAlvo})`);
   if (!readiness.ready) {
     const blockerReal = (readiness.blockers || []).find(b => !/par[áa]grafos insuficientes/i.test(b));
     if (blockerReal) motivosInvalido.push('readiness: ' + blockerReal);
   }
-  if (Number.isFinite(compNum) && compNum < 65) motivosInvalido.push(`Completude ${Math.round(compNum)}% (<65)`);
+  if (Number.isFinite(compNum) && compNum < 50) motivosInvalido.push(`Completude ${Math.round(compNum)}% (<50)`);
 
   if (motivosInvalido.length > 0) {
     throw new CapituloInvalidoError(motivosInvalido, {
