@@ -694,8 +694,9 @@ REGRAS:
   if (!validarAST(ast)) motivosInvalido.push('Sem conteúdo (AST vazio)');
   if (ast._repaired === true) motivosInvalido.push(`Estrutura reconstruída (${ast._repair_reason || 'reparação fraca'})`);
   if (totalParasLivro < parasMinAlvo) motivosInvalido.push(`Parágrafos insuficientes: ${totalParasLivro} (esperado ≥${parasMinAlvo})`);
-  // DENSIDADE BALANCED 350-650 — só libera BALANCED
-  if (totalWords < 350) motivosInvalido.push(`Densidade VERY_EMPTY: ${totalWords} palavras (<350 mínimo BALANCED)`);
+  // DENSIDADE BALANCED 350-650 — só libera BALANCED (referências isentas)
+  const isRefBackend = /refer[eê]ncia|bibliograf/i.test(capTit);
+  if (!isRefBackend && totalWords < 350) motivosInvalido.push(`Densidade VERY_EMPTY: ${totalWords} palavras (<350 mínimo BALANCED)`);
   if (!readiness.ready) {
     const blockerReal = (readiness.blockers || []).find(b => !/par[áa]grafos insuficientes/i.test(b));
     if (blockerReal) motivosInvalido.push('readiness: ' + blockerReal);
