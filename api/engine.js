@@ -141,20 +141,7 @@ function repararAST(raw, capNum, capTit, subs) {
       sec.paragraphs = sec.paragraphs
         .map(p => typeof p === 'string' ? p.trim() : '')
         .filter(p => p.length > 15 && !REGEX_LIXO_JSON.test(p))
-        .filter(p => !/n[aã]o se dissocia das condi[cç][oõ]es materiais/i.test(p))
-        .filter(p => !/\[DADO A VERIFICAR COM FONTE PRIM[ÁA]RIA/i.test(p))
-        // Quebrar muro gigante (>900 chars) em frases para evitar página vazia + muro
-        .flatMap(p => {
-          if (p.length > 900 && (p.match(/\.\s+[A-ZÁÉÍÓÚÂÊ]/g)||[]).length >= 4) {
-            const frases = p.split(/(?<=\.)\s+(?=[A-ZÁÉÍÓÚÂÊ])/).map(s=>s.trim()).filter(s=>s.length>40);
-            if (frases.length >= 3) {
-              const grupos = [];
-              for (let i=0;i<frases.length;i+=2) grupos.push(frases.slice(i,i+2).join(' '));
-              return grupos;
-            }
-          }
-          return [p];
-        });
+        .filter(p => !/n[aã]o se dissocia das condi[cç][oõ]es materiais/i.test(p));
       return sec;
     });
   }
