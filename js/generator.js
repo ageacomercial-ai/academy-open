@@ -689,6 +689,7 @@ async function iniciarGer(retomar) {
   DOC_MEMORY.reset();
   ARGUMENT_GRAPH.reset();
   _treRetroRefCount = 0;
+  const _capRetryInfinito = new Map();
   const _setFase = (t) => { const el = document.getElementById('genFaseTxt'); if (el) el.textContent = t; };
 
   /* ── Cronómetro vivo ── */
@@ -852,7 +853,17 @@ async function iniciarGer(retomar) {
             }
           } catch (er) {
             tentativas++;
-            if (/CAPITULO_INVALIDO/i.test(er?.message || '')) { tentativas = 4; break; }
+            if (/CAPITULO_INVALIDO/i.test(er?.message || '')) {
+              // Gate backend rejeitou por densidade/completude baixa — não é falha de IA.
+              // Propagar dados reais ao QC (em vez de cair no fallback 15w) para retry correto.
+              rawEnvelope = er.details || { _genFalhou: false, completeness: er.details?.completeness || { completeness: 0 } };
+              if (er.details?.ast) {
+                resultado = er.details.ast;
+                astFinal = er.details.ast;
+                textoFinal = astParaTexto(er.details.ast);
+              }
+              tentativas = 4; break;
+            }
             if (er?.generic || /AI_INDISPONIVEL/i.test(er?.message || '')) {
               _capGenericFalhou = true;
               genGuardarProgresso();
@@ -932,12 +943,29 @@ async function iniciarGer(retomar) {
     const secsArr = State.get('secs') || [];
     if (!secsArr[i]) { _genCancelado = true; break; }
 
-    /* 100% AUTOMÁTICO — nunca POR COMPLETAR, nunca exige clique ↺ */
+    /* 100% AUTOMÁTICO — nunca POR COMPLETAR, nunca exige clique ↺
+       Circuit-breaker: após 3 falhas consecutivas no mesmo cap (IA realmente
+       indisponível ou modelo bloqueado), pausa em vez de spam infinito 503. */
     if (!qcOk) {
-      aSecDOM(i, 'g', `⏳ Cap. ${cap.num} — densidade baixa, re-tentativa automática em 3s…`);
+      const key = String(cap.num);
+      const cnt = (_capRetryInfinito.get(key) || 0) + 1;
+      _capRetryInfinito.set(key, cnt);
+      const isFalhaIA = rawEnvelope?._genFalhou === true;
+      // Falha de IA (15w): pausa após 2 tentativas; densidade baixa: dá 3 tentativas
+      const limite = isFalhaIA ? 2 : 3;
+      if (cnt >= limite) {
+        const secsP = State.get('secs') || [];
+        if (secsP[i]) { secsP[i].e = 'x'; secsP[i].c = textoFinal; State.set('secs', secsP); }
+        genGuardarProgresso(); autoGuardar();
+        aSecDOM(i, 'x', isFalhaIA ? '⚠ IA indisponível — tente novamente em 2 min' : '⚠ Conteúdo abaixo do mínimo — toque ↺ para regenerar');
+        mostrarToast(isFalhaIA ? '⏸ IA temporariamente indisponível — progresso guardado. Tente novamente em 2 minutos.' : '⚠ Cap. ' + cap.num + ' não atingiu densidade mínima após 3 tentativas — verifique conexão e tente ↺.');
+        _genCancelado = true; break;
+      }
+      aSecDOM(i, 'g', `⏳ Cap. ${cap.num} — ${isFalhaIA ? 'IA falhou' : 'densidade baixa'} — re-tentativa ${cnt}/${limite} em 3s…`);
       await new Promise(r=>setTimeout(r, 3000));
       i--; continue;
     }
+    _capRetryInfinito.set(String(cap.num), 0);
 
     /* ── GUARDAR NA SECÇÃO (aprovado pelo gate) ── */
     secsArr[i].e   = 'p';
