@@ -1,0 +1,32 @@
+[
+ {
+  "id": "3a77a31d-7240-4d4e-b619-93ae98547bc6",
+  "nome": "Gráfica 500",
+  "paginas": 500,
+  "preco": 40000,
+  "ativo": true,
+  "product_id": null,
+  "created_at": "2026-08-16T18:58:34.234854+00:00",
+  "updated_at": "2026-08-16T18:58:34.234854+00:00"
+ },
+ {
+  "id": "3ddd2bfa-2f04-4f06-bde8-11162612079d",
+  "nome": "Gráfica 300",
+  "paginas": 300,
+  "preco": 25000,
+  "ativo": true,
+  "product_id": null,
+  "created_at": "2026-08-16T18:58:34.234854+00:00",
+  "updated_at": "2026-08-16T18:58:34.234854+00:00"
+ },
+ {
+  "id": "3efdafef-d86e-43cd-b92a-073a6093ca10",
+  "nome": "Gráfica 150",
+  "paginas": 150,
+  "preco": 15000,
+  "ativo": true,
+  "product_id": null,
+  "created_at": "2026-08-16T18:58:34.234854+00:00",
+  "updated_at": "2026-08-16T18:58:34.234854+00:00"
+ }
+]

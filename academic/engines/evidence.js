@@ -31,32 +31,51 @@ export function extrairFonte(texto) {
 }
 
 export function extrairCitacao(texto) {
-  // BUG-006 FIX: regex unificada para (Autor, Ano) incluindo ORGs uppercase (INE, OMS, MINSA) e anos 1900-2099
-  const match = texto.match(/\(([A-ZÀ-Ü]{2,}(?:\s*,\s*[A-ZÀ-Ü][^)]*)?|\s*[A-ZÀ-Ü][A-ZÀ-Üa-zãçáàâéêíóôúõü,.&\s]{2,80}?)\s*,?\s*\b(19|20)\d{2}[a-z]?\b[^)]*\)/);
-  if (match) return match[0].slice(1,-1).trim();
-  // Fallback: só ORGs académicas válidas (INE, OMS, etc) — RTV/RTP/TPA etc NÃO são citação
-  const ORGS_VALIDAS = 'INE|OMS|WHO|UNESCO|UNICEF|MINSA|INEA|BNA|OECD|PNUD|FAO|OMT|BM|FMI';
-  const mOrg = texto.match(new RegExp(`\\b(${ORGS_VALIDAS})\\s*\\((19|20)\\d{2}[a-z]?\\)`));
-  if (mOrg) return `${mOrg[1]}, ${mOrg[0].match(/\b(19|20)\d{2}/)[0]}`;
-  // Autor (Ano)
-  const match2 = texto.match(/([A-ZÀ-Ü][a-zãçáàâéêíóôúõü]+(?:\s+(?:et\s+al\.|&\s*[A-ZÀ-Ü][a-zãçáàâéêíóôúõü]+))?)\s*\(((?:19|20)\d{2}[a-z]?)\)/);
-  if (match2) return `${match2[1]}, ${match2[2]}`;
+  /* (Autor, Ano) ou (ORG, Ano) — uppercase orgs como INE, OMS.
+     Também aceita 19xx completo (não só 1900-1999 truncado) e anos com
+     sufixo de letra (2020a, 2020b) — BUG-006. */
+  const match = texto.match(/\(([A-ZÀ-Ü][A-ZÀ-Üa-zãçáàâéêíóôúõü,.&;\s]+(?:19|20)\d{2}[a-z]?[^)]*)\)/);
+  if (match) return match[1];
+
+  /* Autor (Ano) afirma — inclui SIGLAS maiúsculas (INE, OMS, ONU) que antes
+     falhavam por a regex só aceitar minúsculas após a inicial (BUG-006). */
+  const match2 = texto.match(/([A-ZÀ-Ü][A-Za-zà-ÿ]*(?:\s+(?:et\s+al\.|&\s*[A-ZÀ-Ü][A-Za-zà-ÿ]*))?)\s*\((19|20)(\d{2}[a-z]?)\)/);
+  if (match2) return `${match2[1]}, ${match2[2]}${match2[3]}`;
+
   return null;
 }
 
 export function classificarAfirmacao(texto) {
   const lower = texto.toLowerCase().trim();
-  const hasNum = /\b\d+(?:[.,]\d+)?\s*(%|por cento|toneladas|habitantes|milhões)/i.test(texto);
-  const hasYear = /\(\s*(19|20)\d{2}\s*\)/.test(texto) || /\b(19|20)\d{2}\b/.test(texto);
-  if (/^recomenda[^-]/i.test(texto) || /^sugere[-se]/i.test(texto) || /^prop[ôo]e[-se]/i.test(texto) || /^recomenda-se/i.test(texto) || /^aconselha-se/i.test(texto)) return CLAIM_TYPES.RECOMMENDATION;
-  if (/^hip[óo]tese/i.test(texto) || /^sup[oó]e-se/i.test(texto) || /^admite-se/i.test(texto) || /\bhipoteticamente\b/i.test(texto)) return CLAIM_TYPES.HYPOTHESIS;
-  if (hasNum) return CLAIM_TYPES.FACT; // estatístico também é factual com fonte obrigatória
-  if (/^segundo\s+(o\s+)?(dados|estat[ií]sticas|estudos)/i.test(texto) || /\b\d{3,}\b/.test(texto)) return CLAIM_TYPES.FACT;
-  if (hasYear && /(história|histórico|em \d{4}|desde \d{4})/i.test(texto)) return CLAIM_TYPES.FACT; // histórico
-  if (/^na\s+minha\s+opini[ãa]o|^ao\s+meu\s+ver|^eu\s+(acho|penso|acredito|considero)/i.test(texto)) return CLAIM_TYPES.OPINION;
-  if (lower.includes('isto significa que') || lower.includes('isso implica que') || lower.includes('interpreta-se') || lower.includes('pode-se inferir')) return CLAIM_TYPES.INTERPRETATION;
-  if (/em comparação|comparado a|versus|enquanto|ao passo que/i.test(texto)) return CLAIM_TYPES.INTERPRETATION; // comparação
-  if (/define-se|entende-se por|conceito de/i.test(texto)) return CLAIM_TYPES.INTERPRETATION; // definição
+
+  if (/^recomenda[^-]/i.test(texto) || /^sugere[-se]/i.test(texto) || /^prop[ôo]e[-se]/i.test(texto) || /^recomenda-se/i.test(texto) || /^aconselha-se/i.test(texto)) {
+    return CLAIM_TYPES.RECOMMENDATION;
+  }
+  if (/^hip[óo]tese/i.test(texto) || /^sup[oó]e-se/i.test(texto) || /^admite-se/i.test(texto) || /\bhipoteticamente\b/i.test(texto)) {
+    return CLAIM_TYPES.HYPOTHESIS;
+  }
+  // BUG-011: taxonomia de 9 tipos (claims.js, pré-geração) marca qualquer
+  // percentagem/estatística como STATISTICAL (requires_numeric_evidence=true),
+  // mas esta taxonomia de 5 tipos (pós-geração) só apanhava números com 3+
+  // dígitos (\d{3,}) — "15%"/"37%" (2 dígitos) escapavam para INTERPRETATION,
+  // que na matriz de decisão tem severidade muito mais branda (MEDIUM,
+  // CAN_KEEP_IF_IDENTIFIED) do que FACT (HIGH, REVIEW_REQUIRED). Mapeado aqui
+  // para que qualquer claim com número/percentagem/unidade quantitativa seja
+  // sempre tratado como FACT, alinhado com a taxonomia pré-geração.
+  if (/\d+(?:[.,]\d+)?\s*%|\b\d{3,}\b|\b\d+(?:[.,]\d+)?\s*(toneladas|habitantes|pessoas|entrevistados|amostra|kz|usd|aoa)\b/i.test(texto)) {
+    return CLAIM_TYPES.FACT;
+  }
+  if (/^segundo\s+(o\s+)?(dados|estat[ií]sticas|estudos)/i.test(texto)) {
+    return CLAIM_TYPES.FACT;
+  }
+  if (/^na\s+minha\s+opini[ãa]o|^ao\s+meu\s+ver|^eu\s+(acho|penso|acredito|considero)/i.test(texto)) {
+    return CLAIM_TYPES.OPINION;
+  }
+
+  if (lower.includes('isto significa que') || lower.includes('isso implica que') || lower.includes('interpreta-se')) {
+    return CLAIM_TYPES.INTERPRETATION;
+  }
+
   return CLAIM_TYPES.INTERPRETATION;
 }
 

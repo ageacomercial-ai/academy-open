@@ -1,0 +1,68 @@
+[
+ {
+  "id": "5b968ddc-e62d-47c3-ac67-79b14356e50b",
+  "faixa_inicio": 51,
+  "faixa_fim": 200,
+  "preco": 16000,
+  "label": "51-200 páginas",
+  "ativo": true,
+  "product_id": null,
+  "created_at": "2026-08-16T18:58:34.234854+00:00",
+  "updated_at": "2026-08-16T18:58:34.234854+00:00"
+ },
+ {
+  "id": "6a22325f-0d3e-4a4b-90a2-5504fabbe771",
+  "faixa_inicio": 31,
+  "faixa_fim": 50,
+  "preco": 5500,
+  "label": "31-50 páginas",
+  "ativo": true,
+  "product_id": null,
+  "created_at": "2026-08-16T18:58:34.234854+00:00",
+  "updated_at": "2026-08-16T18:58:34.234854+00:00"
+ },
+ {
+  "id": "b462f139-bf0a-43b8-9afa-dec63706296a",
+  "faixa_inicio": 0,
+  "faixa_fim": 15,
+  "preco": 1850,
+  "label": "0-15 páginas",
+  "ativo": true,
+  "product_id": null,
+  "created_at": "2026-08-16T18:58:34.234854+00:00",
+  "updated_at": "2026-08-16T18:58:34.234854+00:00"
+ },
+ {
+  "id": "c05ea32e-a77c-47a9-a4e6-bdbb59a5712e",
+  "faixa_inicio": 201,
+  "faixa_fim": 500,
+  "preco": 40000,
+  "label": "201-500 páginas",
+  "ativo": true,
+  "product_id": null,
+  "created_at": "2026-08-16T18:58:34.234854+00:00",
+  "updated_at": "2026-08-16T18:58:34.234854+00:00"
+ },
+ {
+  "id": "c255621b-ef8b-4eaa-b6f8-d154f914e031",
+  "faixa_inicio": 16,
+  "faixa_fim": 30,
+  "preco": 2850,
+  "label": "16-30 páginas",
+  "ativo": true,
+  "product_id": null,
+  "created_at": "2026-08-16T18:58:34.234854+00:00",
+  "updated_at": "2026-08-16T18:58:34.234854+00:00"
+ },
+ {
+  "id": "f0717b99-e656-47bf-a579-90bf7ceca5d3",
+  "faixa_inicio": 501,
+  "faixa_fim": 1000,
+  "preco": 80000,
+  "label": "501-1000 páginas",
+  "ativo": true,
+  "product_id": null,
+  "created_at": "2026-08-16T18:58:34.234854+00:00",
+  "updated_at": "2026-08-16T18:58:34.234854+00:00"
+ }
+]

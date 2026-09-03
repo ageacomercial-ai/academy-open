@@ -26,7 +26,7 @@ export async function verificarReferenciaOnline(ref, opts = {}) {
   /* 1. CrossRef por DOI (mais preciso) */
   if (doi) {
     try {
-      const resp = await fetchWithTimeout(`${CROSSREF_API}/${encodeURIComponent(doi)}`, TIMEOUT_MS);
+      const resp = await fetchWithRetry(`${CROSSREF_API}/${encodeURIComponent(doi)}`, TIMEOUT_MS);
       if (resp.ok) {
         const data = await resp.json();
         resultado.attempts.push('doi_crossref');
@@ -44,7 +44,7 @@ export async function verificarReferenciaOnline(ref, opts = {}) {
   if (title && title.length > 10) {
     try {
       const query = encodeURIComponent(`${title} ${auth}`);
-      const resp = await fetchWithTimeout(`${CROSSREF_API}?query=${query}&rows=3`, TIMEOUT_MS);
+      const resp = await fetchWithRetry(`${CROSSREF_API}?query=${query}&rows=3`, TIMEOUT_MS);
       if (resp.ok) {
         const data = await resp.json();
         const items = data.message?.items || [];
@@ -90,16 +90,20 @@ export async function verificarReferenciaOnline(ref, opts = {}) {
     }
   }
 
-  /* 4. Fallback: SEM verificação externa não inflar */
+  /* 4. Fallback — NUNCA promover a partially_verified/verified apenas por a
+     referência "ter forma" (título+autor+ano). Isso permitia que qualquer
+     referência inventada com formato plausível passasse como verificada
+     (BUG-007 / BUG_MAP P0-3). A presença de erros de rede/timeout nas
+     tentativas anteriores indica que NÃO sabemos se a fonte existe — nesse
+     caso o estado correto é 'unverified' (não confundir com 'confirmámos que
+     não existe'). Se as tentativas correram sem erro mas simplesmente não
+     encontraram nada, o estado é 'needs_review' (revisão humana). Em nenhum
+     caso o fallback estrutural sozinho pode gerar 'verified' ou
+     'partially_verified'. */
   resultado.attempts.push('structural_only');
-  // BUG-007 FIX: existência de título+autor+ano NÃO é evidência de existência da fonte
-  if (title && auth && year) {
-    resultado.confidence = 'needs_review';
-    resultado.error = 'Sem confirmação externa (CrossRef/OpenLibrary indisponível) — requer revisão manual';
-  } else {
-    resultado.confidence = 'unverified';
-    resultado.error = 'Metadados incompletos + sem confirmação externa';
-  }
+  const houveErroRede = resultado.attempts.some(a => /_error$/.test(a));
+  resultado.confidence = houveErroRede ? 'unverified' : 'needs_review';
+
   return resultado;
 }
 
@@ -208,6 +212,27 @@ async function fetchWithTimeout(url, ms) {
   } finally {
     clearTimeout(id);
   }
+}
+
+/* Retry com backoff apenas para falhas transitórias (429/502/503/504/timeout).
+   Erros definitivos (404, etc.) não são reintentados — significam "não encontrado",
+   não "não sabemos". Usado pelas chamadas CrossRef para evitar que um 429
+   momentâneo degrade uma referência real para 'needs_review'/'unverified'. */
+async function fetchWithRetry(url, ms, maxRetries = 2) {
+  let lastResp = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const resp = await fetchWithTimeout(url, ms);
+      lastResp = resp;
+      if (resp.ok) return resp;
+      const transiente = resp.status === 429 || (resp.status >= 500 && resp.status < 600);
+      if (!transiente || attempt === maxRetries) return resp;
+    } catch (e) {
+      if (attempt === maxRetries) throw e;
+    }
+    await new Promise(r => setTimeout(r, 500 * Math.pow(2, attempt)));
+  }
+  return lastResp;
 }
 
 /* ── Verificação de suporte claim vs evidência (EVIDENCE-FIRST) ── */

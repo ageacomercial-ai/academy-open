@@ -422,6 +422,25 @@ function _calcularHealthGlobal() {
   if (!temIntro) todosIssues.push({ severity: 'warning', code: 'NO_INTRODUCTION', message: 'Introdução não detectada',             cap: null });
   if (!temConcl) todosIssues.push({ severity: 'warning', code: 'NO_CONCLUSION',   message: 'Conclusão não detectada',             cap: null });
 
+  /* BUG-012: este painel é um heurístico LOCAL/síncrono calculado a partir de
+     s.health/s.readiness — não consultava placeholders nem falhas de
+     persistência, podendo dizer "Pronto para entrega" enquanto o painel
+     STRICT (validarIntegridade/computeFinalGate, fonte única de verdade real)
+     dizia REVISAR. Não elimina a divergência por completo (esse painel é
+     síncrono, o STRICT é assíncrono), mas aproxima bastante ao incluir os
+     mesmos sinais determinísticos, e o rótulo deixa de afirmar uma conclusão
+     definitiva — ver nota no rodapé do painel. */
+  const PLACEHOLDER_RE_LOCAL = /\[CITA[ÇC][ÃA]O A VERIFICAR\]|\[DADO (?:A VERIFICAR|N[ÃA]O VERIFICADO)[^\]]*\]|\[EVID[ÊE]NCIA INSUFICIENTE\]|\[RESULTADO SEM DATASET\]/i;
+  geradas.forEach(s => {
+    const txt = s.c || s.conteudo || '';
+    if (PLACEHOLDER_RE_LOCAL.test(txt)) {
+      todosIssues.push({ severity: 'blocker', code: 'PLACEHOLDER', message: 'Contém placeholder não resolvido ([CITAÇÃO A VERIFICAR] etc.)', cap: `Cap. ${s.num}` });
+    }
+    if (s.persistence?.failed?.length) {
+      todosIssues.push({ severity: 'blocker', code: 'PERSISTENCE_FAILED', message: `Persistência de ${s.persistence.failed.length} fonte(s) falhou`, cap: `Cap. ${s.num}` });
+    }
+  });
+
   geradas.forEach(s => {
     (s.health?.issues || []).forEach(iss => todosIssues.push({ ...iss, cap: `Cap. ${s.num}` }));
     if (s.readiness && !s.readiness.ready)
@@ -446,7 +465,11 @@ function _calcularHealthGlobal() {
     label:     healthMedio >= 85 ? 'Saudável' : healthMedio >= 60 ? 'Aceitável' : 'Necessita revisão',
     readiness: {
       ready:   blockers.length === 0,
-      verdict: blockers.length === 0 ? 'Pronto para entrega' : 'Requer atenção antes de entregar',
+      // Rótulo suavizado deliberadamente: este é um heurístico LOCAL, não a
+      // decisão final (essa vem de computeFinalGate/canExportFinal, mostrada
+      // no painel STRICT acima). "Pronto para entrega" era uma afirmação
+      // definitiva que podia contradizer o gate real (BUG-012).
+      verdict: blockers.length === 0 ? 'Sem bloqueios locais detectados' : 'Requer atenção antes de entregar',
       blockers: blockers.map(b => b.cap ? `${b.cap}: ${b.message}` : b.message),
       warnings: warnings.map(w => w.cap ? `${w.cap}: ${w.message}` : w.message),
     },

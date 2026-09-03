@@ -1,0 +1,42 @@
+[
+ {
+  "id": 1,
+  "nome": "Universidade Agostinho Neto",
+  "sigla": "UAN",
+  "desconto_porcentagem": 10,
+  "activa": true,
+  "criado_em": "2026-08-16T18:58:34.234854+00:00"
+ },
+ {
+  "id": 2,
+  "nome": "Universidade Independente de Angola",
+  "sigla": "UNIA",
+  "desconto_porcentagem": 10,
+  "activa": true,
+  "criado_em": "2026-08-16T18:58:34.234854+00:00"
+ },
+ {
+  "id": 3,
+  "nome": "Universidade Católica de Angola",
+  "sigla": "UCAN",
+  "desconto_porcentagem": 10,
+  "activa": true,
+  "criado_em": "2026-08-16T18:58:34.234854+00:00"
+ },
+ {
+  "id": 4,
+  "nome": "Universidade Lusíada de Angola",
+  "sigla": "ULA",
+  "desconto_porcentagem": 10,
+  "activa": true,
+  "criado_em": "2026-08-16T18:58:34.234854+00:00"
+ },
+ {
+  "id": 5,
+  "nome": "Instituto Superior Politécnico de Angola",
+  "sigla": "ISPA",
+  "desconto_porcentagem": 10,
+  "activa": true,
+  "criado_em": "2026-08-16T18:58:34.234854+00:00"
+ }
+]

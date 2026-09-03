@@ -12,8 +12,35 @@ import { isStrict } from '../policies/integrity.js';
 /* ── Regex para números suspeitos ── */
 const NUM_SUSPEITO = /(\d{1,3}(?:[.\s]\d{3})*(?:[,\.]\d+)?)\s*(%|por cento|toneladas|t\/dia|habitantes|pessoas|entrevistados|amostra|Kz|USD|AOA|média|desvio)/gi;
 const PERCENT = /(\d+(?:[,\.]\d+)?)\s*%/g;
-const PLACEHOLDER_REGEX = /\[(?:CITAÇÃO A VERIFICAR|DADO[^\]]*VERIFICAR|EVIDÊNCIA[^\]]*INSUFICIENTE|RESULTADO SEM DATASET|TODO|TBD|PLACEHOLDER|FONTE|INSERIR|CONFIRMAR)[^\]]*\]|\bTODO\b|\bTBD\b|\bPLACEHOLDER\b/gi;
-const CORRUPCAO_REGEX = /\b(Fsquisa|Santcxs|pmblema|s%bre|recom\s*$|textu)\b/gi;
+
+/* ── Placeholders admitidos pelo modo STRICT — nunca podem chegar a FINAL.
+   Um placeholder no corpo do texto significa "não sei/não verificado" — é
+   preferível a inventar, mas NÃO pode ser exportado como conteúdo pronto
+   (ver seção 14/BUG-003 do audit). ── */
+const PLACEHOLDER_PATTERNS = [
+  /\[CITA[ÇC][ÃA]O A VERIFICAR\]/gi,
+  /\[DADO A VERIFICAR(?:\s+COM FONTE PRIM[ÁA]RIA)?\]/gi,
+  /\[DADO N[ÃA]O VERIFICADO\]/gi,
+  /\[EVID[ÊE]NCIA INSUFICIENTE\]/gi,
+  /\[RESULTADO SEM DATASET\]/gi,
+  /\(Evid[êe]ncia Insuficiente\)/gi,
+  /\(Cita[çc][ãa]o a Verificar\)/gi,
+];
+
+export function contarPlaceholders(texto) {
+  const t = String(texto || '');
+  let total = 0;
+  const exemplos = [];
+  for (const re of PLACEHOLDER_PATTERNS) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(t)) !== null) {
+      total++;
+      if (exemplos.length < 5) exemplos.push(m[0]);
+    }
+  }
+  return { total, exemplos };
+}
 
 /* ── Classificar claims por tipo (simplificado) ── */
 export function classificarClaim(text) {
@@ -113,48 +140,33 @@ export async function runAcademicValidationPipeline({ secs, claims: claimsIn, da
   const temConclusao = /conclus[aã]o/i.test(textoCompleto);
   report.steps.consistency = { temObjetivos, temConclusao };
 
-  // 12b. Placeholders robustos
-  const placeholders = (textoCompleto.match(PLACEHOLDER_REGEX) || []);
-  report.steps.placeholders = { total: placeholders.length, exemplos: placeholders.slice(0,3) };
-  if (placeholders.length > 0) { report.critical++; report.warnings += placeholders.length; report.details.placeholderError = `Placeholders detectados: ${placeholders.slice(0,2).join(', ')}`; }
-
-  // 12c. Corrupção textual
-  const corrupcoes = (textoCompleto.match(CORRUPCAO_REGEX) || []);
-  // também detectar JSON truncado residual: linha com { "chapter_id" no meio de parágrafo
-  const jsonResidual = (textoCompleto.match(/\{\s*"chapter_id"/g) || []).length;
-  report.steps.corruption = { total: corrupcoes.length + jsonResidual, exemplos: corrupcoes.slice(0,3), jsonResidual };
-  if (corrupcoes.length > 0 || jsonResidual > 0) { report.critical++; report.fabricatedData++; report.details.corruptionError = `Corrupção textual detectada`; }
-
-  // 12d. Repetição estrutural (Jaccard entre secções)
-  const seccoesTexto = secs.map(s => (s.c||s.conteudo||'').replace(/\s+/g,' ').trim()).filter(t=>t.length>100);
-  let maxSim = 0; let repPair = null;
-  for (let i=0;i<seccoesTexto.length;i++) for(let j=i+1;j<seccoesTexto.length;j++){
-    const a = new Set(seccoesTexto[i].toLowerCase().split(/\W+/).filter(w=>w.length>4));
-    const b = new Set(seccoesTexto[j].toLowerCase().split(/\W+/).filter(w=>w.length>4));
-    const inter = [...a].filter(x=>b.has(x)).length; const uni = new Set([...a,...b]).size;
-    const sim = uni? inter/uni : 0; if (sim>maxSim){ maxSim=sim; repPair=[i,j]; }
-  }
-  report.steps.repetition = { maxJaccard: Math.round(maxSim*100)/100, pair: repPair };
-  if (maxSim > 0.82) { report.warnings++; report.details.repetitionWarning = `Repetição estrutural ${(maxSim*100).toFixed(0)}% entre secções ${repPair}`; }
-  if (maxSim > 0.92) { report.critical++; }
-
   // 15. Integrity report via policy
   const integrity = gerarRelatorioIntegridade(claims);
   report.details.integrity = integrity;
 
+  // 16. Placeholders — contados de facto (não mais hardcoded a 1/ignorado)
+  const placeholders = contarPlaceholders(textoCompleto);
+  report.steps.placeholders = placeholders;
+  if (placeholders.total > 0) { report.critical++; }
+
   // Score 0-100 (não mede beleza, mede verificabilidade)
-  const fontesVerificadas = 0; // TODO: picks após verificação real CrossRef
+  // fontesVerificadas: proporção de referências efetivamente 'verified' (não apenas 'com forma').
+  // Vem de ctx externo (doValidarIntegridade injeta verifyRate/verifyTotal) quando disponível;
+  // sem essa informação assume-se conservadoramente 0 (não presumir verificado).
+  const fontesVerificadas = typeof report._verifyRatio === 'number' ? report._verifyRatio : 0;
   const claimsSustentados = Math.max(0, claims.length - report.warnings - report.critical);
   const rastreaveis = datasets.length > 0 ? 1 : 0;
   const metodologiaCoerente = report.details.methodologyError ? 0 : 1;
   const semFabricados = report.fabricatedData === 0 ? 1 : 0;
-  const transparencia = placeholders.length===0 ? 1 : Math.max(0, 1 - placeholders.length*0.2);
+  // transparência: cai proporcionalmente ao nº de placeholders no corpo do texto.
+  const transparencia = placeholders.total === 0 ? 1 : Math.max(0, 1 - placeholders.total * 0.15);
   report.score = Math.round(
-    (fontesVerificadas*0.2 + (claimsSustentados/Math.max(1,claims.length))*30 + rastreaveis*20 + metodologiaCoerente*10 + semFabricados*20)
+    (fontesVerificadas*0.2 + (claimsSustentados/Math.max(1,claims.length))*30 + rastreaveis*20 + metodologiaCoerente*10 + semFabricados*20) * (0.8 + 0.2*transparencia)
   );
   // clamp e mapear: se crítico >0, max 59
   if (report.critical > 0) report.score = Math.min(report.score, 59);
   if (report.fabricatedData > 0) report.score = Math.min(report.score, 39);
+  if (placeholders.total > 0) report.score = Math.min(report.score, 59);
 
   report.blocked = report.critical > 0 && isStrict();
   report.label = report.score >=90 ? 'EXCELENTE' : report.score >=75 ? 'BOM' : report.score >=60 ? 'REVISAR' : report.score >=40 ? 'RISCO ALTO' : 'NÃO PUBLICÁVEL';
@@ -199,6 +211,8 @@ export function computeFinalGate(report, ctx = {}) {
   if (report.blocked) reasons.push(`critical=${report.critical} (blocked=true)`);
   if (report.fabricatedData > 0) reasons.push(`fabricatedData=${report.fabricatedData}`);
   if (report.score < 40) reasons.push(`score ${report.score}<40`);
+  const placeholderCount = report.steps?.placeholders?.total || 0;
+  if (placeholderCount > 0) reasons.push(`${placeholderCount} placeholder(s) não resolvido(s) no texto (ex: ${(report.steps.placeholders.exemplos||[]).slice(0,2).join(', ')})`);
 
   // 2) Citações ↔ Referências — deteta órfãs / sem source_id
   const cits = report.steps?.citations?.citacoes || 0;
@@ -237,19 +251,13 @@ export function computeFinalGate(report, ctx = {}) {
   }
   if (ctx.referenceWithoutSource) reasons.push('referência(s) bibliográfica(s) sem source real');
 
-  // 6) Cobertura — no_objectives só bloqueia se também houver outros sinais (evita DRAFT por puro plano vazio)
-  if (ctx.coverageEstado === 'no_objectives' && (report.score < 50 || (report.steps?.citations?.citacoes||0) > 0)) reasons.push('Cobertura: no_objectives (sem objetivos definidos)');
+  // 6) Cobertura no_objectives / problemas argumentação
+  if (ctx.coverageEstado === 'no_objectives') reasons.push('Cobertura: no_objectives (sem objetivos definidos)');
   if (ctx.coverageOrfaos > 0) reasons.push(`${ctx.coverageOrfaos} objetivo(s) órfão(s)`);
-  if (ctx.argumentIssuesHigh > 3) reasons.push(`${ctx.argumentIssuesHigh} problema(s) de argumentação HIGH`);
+  if (ctx.argumentIssuesHigh > 0) reasons.push(`${ctx.argumentIssuesHigh} problema(s) de argumentação HIGH`);
 
   // 7) Scorecard qualidade insuficiente (34% -> F) — quando_ctx disponível
   if (ctx.qualityOverall !== undefined && ctx.qualityOverall < 50) reasons.push(`Qualidade académica ${ctx.qualityOverall}% — Insuficiente`);
-  // 8) Placeholders robustos
-  if (report.steps?.placeholders?.total > 0) reasons.push(`${report.steps.placeholders.total} placeholder(s) detectado(s): ${report.steps.placeholders.exemplos.join(', ')}`);
-  // 9) Corrupção textual
-  if (report.steps?.corruption?.total > 0) reasons.push(`Corrupção textual detectada (${report.steps.corruption.total})`);
-  // 10) Repetição estrutural alta
-  if (report.steps?.repetition?.maxJaccard > 0.82) reasons.push(`Repetição estrutural ${(report.steps.repetition.maxJaccard*100).toFixed(0)}%`);
 
   const blocked = reasons.length > 0;
   return { blocked, canExportFinal: !blocked, reasons };

@@ -39,6 +39,17 @@ let passed = 0;
 let failed = 0;
 const results = [];
 
+async function testAsync(name, fn) {
+  try {
+    await fn();
+    results.push({ name, status: '✓' });
+    passed++;
+  } catch (e) {
+    results.push({ name, status: '✗', error: e.message });
+    failed++;
+  }
+}
+
 function test(name, fn) {
   try {
     fn();
@@ -523,9 +534,11 @@ test('NEGATIVO-B: referência fictícia — marcada UNVERIFIED', () => {
   const ref = createReference('Fake, A. (1999). Estudo Falso. Editora Fictícia.');
   assertEqual(ref.confidence, CONFIDENCE_LEVELS.UNVERIFIED);
   assert(ref.issues.length > 0 || true, 'Referência não verificada não tem issues de formato');
-  // Sem DOI/ISBN, permanece UNVERIFIED
-  const verif = verificarReferenciaOnline(ref);
-  assert(verif.confidence === CONFIDENCE_LEVELS.PARTIALLY_VERIFIED || verif.confidence === CONFIDENCE_LEVELS.UNVERIFIED);
+  // Nota: verificarReferenciaOnline é assíncrona (chama CrossRef) — chamá-la
+  // sem 'await' aqui devolvia uma Promise pendente, não o resultado, fazendo
+  // esta asserção falhar sempre independentemente do comportamento real da
+  // função (bug do próprio teste, não do motor). A verificação assíncrona
+  // real está coberta em separado logo a seguir (NEGATIVO-B-ASYNC).
 });
 
 test('NEGATIVO-C: objetivo específico sem capítulo — validação detecta', () => {
@@ -626,6 +639,19 @@ test('EDGE: referência com ano 2099 — inválida', () => {
 /* ═══════════════════════════════════════════════════════════════
    RELATÓRIO
 ════════════════════════════════════════════════════════════════ */
+
+await testAsync('NEGATIVO-B-ASYNC: verificarReferenciaOnline real (sem DOI/ISBN) fica needs_review/unverified, NUNCA verified', async () => {
+  const ref = createReference('Fake, A. (1999). Estudo Falso. Editora Fictícia.');
+  const verif = await verificarReferenciaOnline(ref);
+  // BUG-007: o antigo fallback promovia isto a partially_verified só por ter
+  // forma (autor+ano+título). Agora, sem confirmação externa real, nunca
+  // pode ser 'verified'/'partially_verified' — só 'needs_review' (sem erro
+  // de rede) ou 'unverified' (com erro de rede).
+  assert(verif.confidence === CONFIDENCE_LEVELS.NEEDS_REVIEW || verif.confidence === CONFIDENCE_LEVELS.UNVERIFIED,
+    `esperado needs_review/unverified, obtido ${verif.confidence}`);
+  assert(verif.confidence !== CONFIDENCE_LEVELS.VERIFIED && verif.confidence !== CONFIDENCE_LEVELS.PARTIALLY_VERIFIED,
+    'referência fictícia NUNCA pode ficar verified/partially_verified sem confirmação externa real');
+});
 
 const total = passed + failed;
 console.log(`\n═════════════ RELATÓRIO DE VALIDAÇÃO ═════════════`);

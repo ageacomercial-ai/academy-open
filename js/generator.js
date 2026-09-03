@@ -263,9 +263,16 @@ const DOC_MEMORY = {
 
   extrairAutoresCitados(texto) {
     if (!texto) return;
-    
-    // BUG-006 FIX: regex correta com ano completo (sem split m[2]+m[3]), suporta ORGs e & e et al.
-    const padraoParenteses = /\(([A-ZÀ-Ü][A-Za-zÀ-Üà-ÿ]+(?:\s*&\s*[A-ZÀ-Ü][A-Za-zÀ-Üà-ÿ]+)*(?:\s+et\s+al\.)?)\s*,\s*((?:19|20)\d{2}[a-z]?)\s*\)/g;
+
+    /* BUG-006/P1-4: as 3 regex originais tinham grupos de captura errados
+       (o ano nunca ficava completo num único grupo — ex. m[2]+m[3] com
+       m[3]=undefined → "20undefined"), e a classe de caracteres do autor
+       só aceitava minúsculas após a inicial, falhando em siglas como
+       INE/OMS/ONU. Reescritas com o ano completo num único grupo e
+       aceitando siglas maiúsculas. */
+
+    /* Padrão 1: (Autor, Ano) ou (Autor & Autor, Ano) */
+    const padraoParenteses = /\(([A-ZÀ-Ü][A-Za-zà-ÿ]*(?:\s*&\s*[A-ZÀ-Ü][A-Za-zà-ÿ]*)*),\s*((?:19|20)\d{2}[a-z]?)\)/g;
     let m;
     while ((m = padraoParenteses.exec(texto)) !== null) {
       const autor = m[1].trim();
@@ -276,10 +283,9 @@ const DOC_MEMORY = {
         this._autoresDetalhados.push({ autor, ano, contexto: texto.substring(Math.max(0, m.index - 80), m.index + m[0].length + 80) });
       }
     }
-    // ORG uppercase: (INE, 2024) (OMS, 2023)
-    const padraoOrg = /\b([A-Z]{2,8})\s*,\s*((?:19|20)\d{2}[a-z]?)\b/g;
-    // Nota: só captura se dentro de parênteses já tratada acima; este é fallback para INE 2024 sem parên
-    const padraoAutorInicio = /(?:^|[.!?]\s+)([A-ZÀ-Ü][a-zà-ÿ]+(?:\s+[A-ZÀ-Ü][a-zà-ÿ]+){0,2})\s*\(((?:19|20)\d{2}[a-z]?)\)/g;
+
+    /* Padrão 2: Autor (Ano) no início da frase ou após ponto */
+    const padraoAutorInicio = /(?:^|[.!?]\s+)([A-ZÀ-Ü][A-Za-zà-ÿ]*(?:\s+[a-zà-ÿ]+){0,3})\s*\(((?:19|20)\d{2}[a-z]?)\)/g;
     while ((m = padraoAutorInicio.exec(texto)) !== null) {
       const autor = m[1].trim();
       const ano = m[2];
@@ -289,7 +295,9 @@ const DOC_MEMORY = {
         this._autoresDetalhados.push({ autor, ano, contexto: '' });
       }
     }
-    const padraoSegundo = /(segundo|conforme|de acordo com|citado por|apud)\s+([A-ZÀ-Ü][a-zà-ÿ]+(?:\s+[A-ZÀ-Ü][a-zà-ÿ]+){0,2})\s*\(((?:19|20)\d{2}[a-z]?)\)/gi;
+
+    /* Padrão 3: "segundo Autor (Ano)" ou "conforme Autor (Ano)" */
+    const padraoSegundo = /(segundo|conforme|de acordo com|citado por|apud)\s+([A-ZÀ-Ü][A-Za-zà-ÿ]*(?:\s+[a-zà-ÿ]+){0,3})\s*\(((?:19|20)\d{2}[a-z]?)\)/gi;
     while ((m = padraoSegundo.exec(texto)) !== null) {
       const autor = m[2].trim();
       const ano = m[3];
@@ -842,15 +850,12 @@ async function iniciarGer(retomar) {
             tentativas++;
             if (/CAPITULO_INVALIDO/i.test(er?.message || '')) { tentativas = 4; break; }
             if (er?.generic || /AI_INDISPONIVEL/i.test(er?.message || '')) {
-              // AUTOMÁTICO: não pausa com intervenção manual — aguarda e retenta o mesmo capítulo
               _capGenericFalhou = true;
-              const esperaAI = Math.min(8000 + tentativas * 6000, 30000);
-              aSecDOM(i, 'g', `IA ocupada — re-tentativa automática ${tentativas}/4 em ${Math.round(esperaAI/1000)}s…`);
-              if (restEl) restEl.textContent = `IA indisponível — aguardando ${Math.round(esperaAI/1000)}s…`;
-              mostrarToast(`⏳ IA temporariamente ocupada — capítulo ${cap.num} será retentado automaticamente.`);
-              await new Promise(r => setTimeout(r, esperaAI));
-              // não cancela global, continua while para retentar mesmo capítulo
-              continue;
+              genGuardarProgresso();
+              autoGuardar();
+              _genPausadoIndisponivel = true;
+              _genCancelado = true;
+              break;
             }
             const espera = Math.min(tentativas * 4000, 20000);
             aSecDOM(i, 'g', `Tentativa ${tentativas}/4 — aguarda ${Math.round(espera / 1000)}s…`);
@@ -861,16 +866,19 @@ async function iniciarGer(retomar) {
       } finally {
         clearTimeout(_capTimeout);
         if (!resultado) {
-          if (_capGenericFalhou || tentativas >= 4) {
-            // AUTOMÁTICO: não deixa em 'x' e avança — mantém retry do capítulo no nível QC
-            // Marca envelope como falha para o QC falhar e forçar nova passagem do for-qcPass
-            resultado = null;
-            rawEnvelope = { _genFalhou: true, completeness: { completeness: 0 }, health: { health: 0, label: 'Falha IA' }, readiness: { ready: false, blockers: ['IA indisponível — retentativa automática'] } };
-            const _liveFb = document.getElementById('genLiveExcerpt'); if (_liveFb) { _liveFb.textContent = `⏳ Cap. ${cap.num} falhou — nova tentativa automática…`; _liveFb.style.color = '#b45309'; }
-            // não seta _genPausadoIndisponivel nem _genCancelado — fluxo continua automático
-          } else {
-            resultado = `[Cap. ${cap.num} não concluído. Toca em ↺.]`;
-          }
+          // A IA falhou (indisponível ou 4 tentativas esgotadas). NUNCA fabricar
+          // conteúdo académico local (citações "Silva (2020)"/"Santos (2019)" fictícias
+          // não têm source_id nem passaram por verificação — ver BUG-001/BUG_MAP).
+          // O capítulo fica marcado como POR COMPLETAR ('x'), nunca 'p'/FINAL.
+          resultado = `[Cap. ${cap.num} não concluído — falha da IA (${_capGenericFalhou ? 'AI_INDISPONIVEL' : `${tentativas} tentativas`}). Toca em ↺ para regenerar.]`;
+          rawEnvelope = {
+            _genFalhou: true,
+            completeness: { completeness: 0 },
+            health: { health: 0, label: 'Falhou' },
+            readiness: { ready: false, blockers: ['geração falhou — sem fabricação local permitida'] },
+          };
+          const _liveFb = document.getElementById('genLiveExcerpt');
+          if (_liveFb) { _liveFb.textContent = '⚠ Falha na IA — capítulo por completar (sem conteúdo fabricado)'; _liveFb.style.color = '#b45309'; }
         }
       }
 
@@ -922,14 +930,37 @@ async function iniciarGer(retomar) {
 
     /* Capítulo com QC fraco após 3 tentativas: entregar como 'p' com aviso se tiver conteúdo útil */
     if (!qcOk) {
-      // 100% AUTOMÁTICO — NUNCA mostra "POR COMPLETAR" nem exige clique ↺
-      // Mantém em 'g' (EM CURSO) e retenta automaticamente até passar
-      aSecDOM(i, 'g', `⏳ Cap. ${cap.num} — re-tentativa automática…`);
-      mostrarToast(`⏳ Cap. ${cap.num} em re-tentativa automática…`);
-      const esperaCap = 6000;
-      await new Promise(r=>setTimeout(r, esperaCap));
-      i--; // repete o mesmo capítulo
-      continue;
+      const palavrasQc = textoFinal ? textoFinal.split(/\s+/).length : 0;
+      const temConteudoUtil = textoFinal && textoFinal.trim().length > 120 && !textoFinal.startsWith('[') && palavrasQc >= 80;
+      if (temConteudoUtil) {
+        secsArr[i].e        = 'p';
+        secsArr[i].c        = textoFinal;
+        secsArr[i].blocks   = blkExtrair({ c: textoFinal });
+        secsArr[i].ast      = astFinal;
+        secsArr[i].qcAviso  = true;
+        State.set('secs', secsArr);
+        aSecDOM(i, 'p', `✓ PRONTO · ${palavrasQc} palavras ⚠`, textoFinal);
+        aBarra(i + 1, est.length);
+        genGuardarProgresso();
+        autoGuardar();
+        mostrarToast(`⚠ Cap. ${cap.num}: entregue com qualidade média — podes melhorar no editor.`);
+      } else {
+        textoFinal = textoFinal && textoFinal.trim().length > 0 && !textoFinal.startsWith('[')
+          ? textoFinal
+          : `[Secção '${cap.num}' incompleta. Toca em ↺ para regenerar.]`;
+        secsArr[i].e        = 'x';
+        secsArr[i].c        = textoFinal;
+        secsArr[i].blocks   = blkExtrair({ c: textoFinal });
+        secsArr[i].ast      = astFinal;
+        secsArr[i].qcRejeitado = true;
+        State.set('secs', secsArr);
+        aSecDOM(i, 'x', '⚠ POR COMPLETAR', textoFinal);
+        aBarra(i + 1, est.length);
+        genGuardarProgresso();
+        autoGuardar();
+        mostrarToast(`⚠ Cap. ${cap.num}: qualidade insuficiente — deixado "a completar". Toca em ↺ no editor.`);
+      }
+      if (!temConteudoUtil) continue;
     }
 
     /* ── GUARDAR NA SECÇÃO (aprovado pelo gate) ── */

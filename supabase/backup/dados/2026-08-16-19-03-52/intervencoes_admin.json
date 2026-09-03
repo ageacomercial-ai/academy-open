@@ -1,0 +1,17 @@
+[
+ {
+  "id": "941627ff-4438-45fe-93bc-9e8e91745d51",
+  "tipo": "REVOGACAO_ACESSO_PENDENTE",
+  "ref": "ord-VMSW69ZJG-ref",
+  "contexto": {
+   "order_id": "ord-VMSW69ZJG-ref",
+   "pagamento_id": "23cba31c-9a58-4c00-a8e4-3f4b99b5c43c",
+   "total_amount": 42500,
+   "utilizador_id": "UVMSW69ZJG-ref"
+  },
+  "estado": "pendente",
+  "nota": null,
+  "criado_em": "2026-08-16T19:55:15.212986+00:00",
+  "resolvido_em": null
+ }
+]

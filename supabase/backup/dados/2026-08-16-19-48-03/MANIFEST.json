@@ -1,0 +1,102 @@
+{
+  "criado_em": "2026-08-16T19:48:03.166Z",
+  "url": "ehxikqozopibzfqulteg.supabase.co",
+  "tabelas": {
+    "utilizadores": {
+      "ok": true,
+      "linhas": 0,
+      "ficheiro": "utilizadores.json",
+      "sha256": "4f53cda18c2baa0c"
+    },
+    "pagamentos": {
+      "ok": true,
+      "linhas": 0,
+      "ficheiro": "pagamentos.json",
+      "sha256": "4f53cda18c2baa0c"
+    },
+    "documentos": {
+      "ok": true,
+      "linhas": 0,
+      "ficheiro": "documentos.json",
+      "sha256": "4f53cda18c2baa0c"
+    },
+    "senhas_usadas": {
+      "ok": true,
+      "linhas": 0,
+      "ficheiro": "senhas_usadas.json",
+      "sha256": "4f53cda18c2baa0c"
+    },
+    "planos_utilizadores": {
+      "ok": true,
+      "linhas": 0,
+      "ficheiro": "planos_utilizadores.json",
+      "sha256": "4f53cda18c2baa0c"
+    },
+    "precos": {
+      "ok": true,
+      "linhas": 6,
+      "ficheiro": "precos.json",
+      "sha256": "a7ca4e2928b307d6"
+    },
+    "planos_grafica": {
+      "ok": true,
+      "linhas": 3,
+      "ficheiro": "planos_grafica.json",
+      "sha256": "7ba32cdd9eb228af"
+    },
+    "academy_ai_logs": {
+      "ok": true,
+      "linhas": 0,
+      "ficheiro": "academy_ai_logs.json",
+      "sha256": "4f53cda18c2baa0c"
+    },
+    "academy_history": {
+      "ok": true,
+      "linhas": 0,
+      "ficheiro": "academy_history.json",
+      "sha256": "4f53cda18c2baa0c"
+    },
+    "instituicoes": {
+      "ok": true,
+      "linhas": 5,
+      "ficheiro": "instituicoes.json",
+      "sha256": "1c5871869531ffad"
+    },
+    "comissoes": {
+      "ok": true,
+      "linhas": 0,
+      "ficheiro": "comissoes.json",
+      "sha256": "4f53cda18c2baa0c"
+    },
+    "parceiros": {
+      "ok": true,
+      "linhas": 0,
+      "ficheiro": "parceiros.json",
+      "sha256": "4f53cda18c2baa0c"
+    },
+    "webhook_logs": {
+      "ok": true,
+      "linhas": 0,
+      "ficheiro": "webhook_logs.json",
+      "sha256": "4f53cda18c2baa0c"
+    },
+    "transacoes": {
+      "ok": true,
+      "linhas": 0,
+      "ficheiro": "transacoes.json",
+      "sha256": "4f53cda18c2baa0c"
+    },
+    "intervencoes_admin": {
+      "ok": true,
+      "linhas": 0,
+      "ficheiro": "intervencoes_admin.json",
+      "sha256": "4f53cda18c2baa0c"
+    },
+    "audit_log": {
+      "ok": true,
+      "linhas": 14,
+      "ficheiro": "audit_log.json",
+      "sha256": "4c6035645a78854d"
+    }
+  }
+}

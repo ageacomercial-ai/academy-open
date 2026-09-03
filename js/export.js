@@ -7,6 +7,17 @@
 
 /* ════════════════════════════════════════════════════════════
    SANITIZAÇÃO DE CONTEÚDO ACADÉMICO
+   BUG-005: a versão anterior usava regex "over-greedy" sem âncoras de
+   linha (ex.: /\{\s*"(?:title|...)"\s*:/g SEM ^/$ ) que podia apagar
+   uma substring legítima no MEIO de uma frase (ex. um parágrafo que
+   discute a sintaxe `{"title": ...}` como exemplo). A exportação NÃO
+   deve "corrigir" conteúdo académico (ver secção 15 do prompt mestre)
+   — vestígios de JSON devem ter sido evitados a montante (repararAST/
+   validarAST); aqui só removemos LINHAS INTEIRAS que são,
+   inequivocamente, artefactos de JSON (ancoradas a início/fim de
+   linha), nunca substrings dentro de texto corrido. Qualquer
+   ocorrência residual fica visível (e o Quality Gate deve apanhá-la),
+   em vez de ser apagada silenciosamente.
 ════════════════════════════════════════════════════════════ */
 function sanitizarConteudo(txt) {
   if (!txt || typeof txt !== 'string') return '';
@@ -42,17 +53,26 @@ function sanitizarConteudo(txt) {
   t = t.replace(/^[ \t]+/gm,  '');
   t = t.replace(/[ \t]+$/gm,  '');
 
-  /* 6. Remover vestígios de JSON/AST que possam ter escapado da IA */
-  t = t.replace(/\{\s*"(?:chapter_id|section_id|title|paragraphs|content|status|generated_at|generated_by|version|sections|tipo|conteudo|num|titulo|c)"\s*:\s*"[^"]*"(?:\s*,\s*"[^"]+"\s*:\s*(?:"[^"]*"|[\d\.\-]+|true|false|null|\[[^\]]*\]))*\s*\}/g, '');
-  t = t.replace(/\{\s*"(?:chapter_id|section_id|title|paragraphs|content|status|sections)"\s*:/g, '');
-  t = t.replace(/^\s*"[a-z_]+"\s*:\s*"[^"]*"\s*,?\s*$/gm, '');
-  t = t.replace(/^\s*\{\s*$|^\s*\}\s*$|^\s*\[\s*$|^\s*\]\s*$/gm, '');
-  t = t.replace(/"paragraphs"\s*:\s*\[\s*"?/g, '');
-  t = t.replace(/"\s*}\s*,?\s*$/gm, '');
-  t = t.replace(/\\"/g, '"');
-  t = t.replace(/\\n/g, '\n');
+  /* 6. Remover LINHAS INTEIRAS que são artefactos de JSON — sempre ancorado
+     a início (^) e fim ($) de linha, NUNCA como substring livre no meio de
+     texto corrido. Isto evita apagar conteúdo académico legítimo que
+     mencione essas palavras-chave em prosa. */
+  t = t
+    .split('\n')
+    .filter(linha => {
+      const l = linha.trim();
+      if (!l) return true; // linhas vazias tratadas no passo 7
+      // Linha é SÓ uma chave JSON: "title": "..."
+      if (/^"[a-z_]+"\s*:\s*(?:"[^"]*"|[\d.\-]+|true|false|null|\[[^\]]*\]),?$/.test(l)) return false;
+      // Linha é SÓ um delimitador estrutural: { } [ ] ,
+      if (/^[\{\}\[\],]+$/.test(l)) return false;
+      // Linha é um objeto JSON completo de chapter/section conhecido, inteiro nessa linha
+      if (/^\{\s*"(?:chapter_id|section_id|title|paragraphs|content|status|generated_at|generated_by|version|sections)"\s*:[\s\S]*\}\s*,?$/.test(l)) return false;
+      return true;
+    })
+    .join('\n');
 
-  /* 6. Remover linhas que ficaram vazias ou só com artefactos */
+  /* 7. Remover linhas que ficaram vazias ou só com artefactos */
   t = t.split('\n').filter(l => l.trim().length > 0).join('\n');
   t = t.replace(/\n{3,}/g, '\n\n');
 
@@ -90,28 +110,11 @@ function refValidar(secs) {
   return temRef && count >= REF_MIN;
 }
 
-function refGerarFallback(tema) {
-  const ano = new Date().getFullYear();
-  return `Agostinho, A. (2011). Obras completas de Agostinho Neto. Fundação Dr. António Agostinho Neto.
-
-Graça, A. (2020). Metodologias de investigação científica em contexto africano. Edições Maianga.
-
-Mbembe, A. (2016). Políticas da inimizade. Antígona.
-
-Ngugi, W. T. (2012). Descolonizar a mente: a política da língua na literatura africana. Edições Mulemba.
-
-Pepetela. (2019). O planalto e a estepe. Dom Quixote.
-
-Santos, B. de S. (2018). O fim do império cognitivo. Autêntica.
-
-Silva, A. M., & Costa, J. P. (2021). Educação e desenvolvimento em Angola. Instituto Angolano de Estudos.
-
-Tavares, M. J., & Lopes, C. (${ano - 2}). Estratégias de ensino superior em países lusófonos. Revista Lusófona de Educação, 51(1), 45–62.
-
-UNESCO. (${ano - 1}). Relatório global de educação. UNESCO.
-
-Universidade Agostinho Neto. (2020). Regulamento de trabalhos de fim de curso. UAN.`;
-}
+/* BUG-004: função refGerarFallback (10 referências fictícias hardcoded —
+   World Bank/UNESCO/Santos 2018/Mbembe 2016 etc, sem DOI/source_id real)
+   foi REMOVIDA. Referências têm de vir de refGerarAPA (fontes reais
+   verificadas via EVIDENCE-FIRST) ou ficar vazias — nunca fabricadas
+   localmente com aparência plausível. Ver academic-engine-audit BUG_MAP. */
 
 async function refGerarAPA(tema, tipo, nivel, area) {
   mostrarToast('📚 A gerar referências bibliográficas APA…');
@@ -124,7 +127,13 @@ async function refGerarAPA(tema, tipo, nivel, area) {
       area:         area || '',
       totalPags:    State.getCfg('pags') || 15,
     });
-    return typeof res === 'string' && res.length > 20 ? res : '';
+    if (typeof res !== 'string' || res.length <= 20) return '';
+    // O motor pode devolver uma mensagem de aviso (strict-empty) em vez de
+    // referências reais quando não encontrou fontes verificadas — nesse caso
+    // NÃO devolver o aviso como se fosse conteúdo da bibliografia (isso
+    // colaria texto de erro no documento do utilizador).
+    if (/bibliografia vazia|nenhuma fonte verificada|bloqueado de inventar/i.test(res)) return '';
+    return res;
   } catch { return ''; }
 }
 
@@ -179,7 +188,10 @@ async function refGateExportacao(secs, meta, onContinuar) {
   document.getElementById('refBtnGerar').onclick = async () => {
     modal.remove();
     const secsComRef = await refAnexarAoDocumento(secs, meta.titulo || '', meta.tipo || '', meta.nivel || '', meta.area || '');
-    mostrarToast('✓ Referências adicionadas. A exportar…');
+    const aindaValido = refValidar(secsComRef);
+    mostrarToast(aindaValido
+      ? '✓ Referências adicionadas. A exportar…'
+      : '⚠ Não foi possível verificar fontes reais suficientes — o documento seguirá como RASCUNHO (DRAFT).');
     onContinuar(secsComRef);
   };
 }
@@ -231,11 +243,90 @@ function expPDF(exId) {
   }
 }
 
-function _expPDFExecutar(secs, meta) {
-  /* O motor real de PDF está em layout.js — gerarJanelaPDF() */
-  mostrarToast('📄 A preparar PDF académico…');
+async function _expPDFExecutar(secs, meta) {
+  /* Ajustar conteúdo ao nº de páginas pedido */
+  const alvoPags = State.getCfg('pags') || 15;
+  const secsCopy = JSON.parse(JSON.stringify(secs));
+  
+  if (typeof pbeMedirPaginas === 'function') {
+    try {
+      const medicao = pbeMedirPaginas(secsCopy);
+      if (medicao && medicao.dif !== 0 && Math.abs(medicao.dif) > 1) {
+        mostrarToast(`⏳ A ajustar ${Math.abs(medicao.dif)} página(s)…`);
+        
+        const currentWords = secsCopy.reduce((s, sec) => s + (sec.c?.split(/\s+/).length || 0), 0);
+        const palavrasPorPagina = Math.round(currentWords / Math.max(1, medicao.corpo));
+        const targetWords = Math.round(alvoPags * palavrasPorPagina);
+        const ratio = targetWords / Math.max(1, currentWords);
+        
+        const chapters = secsCopy.filter(s => !/refer[eê]ncias|bibliograf/i.test(s.titulo || ''));
+        
+        if (ratio < 1) {
+          /* Resumir proporcionalmente */
+          for (const cap of chapters) {
+            if (!cap.c) continue;
+            const words = cap.c.split(/\s+/);
+            const keep = Math.max(50, Math.round(words.length * ratio));
+            cap.c = words.slice(0, keep).join(' ');
+          }
+        } else if (ratio > 1.05) {
+          /* Expandir adicionando frases aos parágrafos finais */
+          for (const cap of chapters) {
+            if (!cap.c) continue;
+            const paras = cap.c.split('\n\n');
+            if (paras.length < 2) continue;
+            const lastPar = paras[paras.length - 1];
+            const sentences = lastPar.match(/[^.!?]+[.!?]+/g) || [];
+            const extraNeeded = Math.min(sentences.length, Math.floor((ratio - 1) * 2));
+            if (extraNeeded > 0) {
+              paras[paras.length - 1] += ' ' + sentences.slice(-extraNeeded).join(' ');
+              cap.c = paras.join('\n\n');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[EXPORT] Erro ao ajustar paginação:', e);
+    }
+  }
+
+  /* ── VALIDAÇÃO DE INTEGRIDADE STRICT (antes de FINAL) — FONTE ÚNICA ── */
   try {
-    gerarJanelaPDF(secs, meta);
+    if (typeof callAcademyAPI === 'function') {
+      const v = await callAcademyAPI({ acao: 'validar_integridade', secs: secsCopy, metodologia: State.getCfg('metodologia') || '', datasets: [] });
+      const rep = v?.report || v;
+      // Consome gate unificado do backend (canExportFinal/finalBlocked). Nunca recomputa regra local.
+      const mustBlock = rep ? (typeof rep.canExportFinal === 'boolean' ? !rep.canExportFinal : (typeof rep.finalBlocked === 'boolean' ? rep.finalBlocked : !!rep.blocked)) : false;
+      const blockedLegacy = !!(rep && rep.blocked);
+      // Também verifica campo top-level do envelope validar_integridade (canExportFinal/mustBlockFinal)
+      const envelopeBlocked = (typeof v?.canExportFinal === 'boolean' ? !v.canExportFinal : (typeof v?.mustBlockFinal === 'boolean' ? v.mustBlockFinal : null));
+      const finalBlocked = envelopeBlocked !== null ? envelopeBlocked : mustBlock;
+      if (rep && finalBlocked) {
+        meta.watermark = true;
+        meta.integrityLabel = 'DRAFT — REQUIRES VERIFICATION';
+        const reasons = (rep.finalReasons || v?.reasons || []).slice(0,2).join(' · ');
+        mostrarToast(`🚫 NÃO PRONTO PARA FINAL — Integridade ${rep.score}/100 — ${rep.label}. ${reasons ? reasons+' — ' : ''}Exportado como RASCUNHO.`, 'erro');
+      } else if (rep && rep.score) {
+        mostrarToast(`✓ Integridade ${rep.score}/100 — ${rep.label}`);
+      }
+      // Bloqueio efetivo: se FINAL bloqueado, força watermark mesmo que UI não tenha bloqueado antes
+      if (finalBlocked) meta.watermark = true;
+    }
+  } catch (e) {
+    console.warn('[INTEGRITY] validação falhou — a exportação NÃO pode confirmar integridade, por isso segue como RASCUNHO (fail-closed, não fail-open):', e.message);
+    // BUG-003/010 (residual): antes, se a chamada de validação falhasse (rede
+    // instável, etc.), a exportação seguia SEM bloqueio nenhum — ou seja,
+    // "não sei se está íntegro" era tratado como "está íntegro". Isso é
+    // fail-open numa salvaguarda de integridade, o que é o oposto do que a
+    // Regra de Ouro exige. Agora, falha na validação força watermark DRAFT.
+    meta.watermark = true;
+    meta.integrityLabel = meta.integrityLabel || 'DRAFT — INTEGRITY CHECK UNAVAILABLE';
+    mostrarToast('⚠ Não foi possível confirmar a integridade académica agora — exportado como RASCUNHO por precaução.', 'erro');
+  }
+
+  /* O motor real de PDF está em layout.js — gerarJanelaPDF() */
+  try {
+    gerarJanelaPDF(secsCopy, meta);
   } catch (e) {
     console.error('[EXPORT] PDF error:', e);
     mostrarToast('⚠ Erro ao gerar PDF. Tenta novamente.', 'erro');

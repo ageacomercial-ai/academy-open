@@ -37,8 +37,7 @@ export function estimateCost(model, usage) {
 }
 
 const CFG = {
-  /* Ordem: pago primeiro, mas com fallback automático se 503 — evita loop infinito
-     SOMENTE_PAGO puro causava 503 em loop no Cap 2 quando OpenRouter quota 429 */
+  /* Ordem forçada: OpenAI pago primeiro, Groq grátis segundo, OpenRouter grátis terceiro */
   primary   : 'openai_direct',
   secondary : 'existing_free_api',
   tertiary  : 'openrouter',
@@ -525,7 +524,10 @@ const PROVIDERS = { ollama, openrouter, existing_free_api: existingFreeApi, open
    Prioridade: openai_direct (pago) → existing_free_api (grátis) → openrouter (grátis).
 ═══════════════════════════════════════════════════════════ */
 function ordemProviders() {
-  return [CFG.primary, CFG.secondary, CFG.tertiary].filter(Boolean);
+  const ordem = [CFG.primary, CFG.secondary, CFG.tertiary];
+  /* openai_direct já está na ordem via CFG.primary — não duplicar */
+  if (CFG.openrouterKey && !ordem.includes('openai_direct')) ordem.push('openai_direct');
+  return ordem.filter((p, i, arr) => p && arr.indexOf(p) === i);
 }
 
 async function generate(messages, opts = {}) {

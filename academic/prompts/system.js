@@ -5,23 +5,23 @@
 /* ── Perfis por nível académico ── */
 export const PERFIL_NIVEL = {
   'ensino médio': {
-    profundidade: `Linguagem clara para estudantes 14-18 anos. Conceitos desde o básico. Para Ciências: fórmulas básicas com cada variável explicada. Exemplos reconhecíveis do contexto do tema. 3-4 parágrafos densos por subtópico. CADA SUBTÓPICO TEM FUNÇÃO DISTINTA — não repetir estrutura frase-a-frase.`,
-    citacoes: `2-3 citações por subtópico formato (Apelido, Ano). Exemplo: "Segundo Cardoso (2019),..." ou "...processo fundamental (Lima & Santos, 2020)." REGRA: citar SOMENTE quando houver fonte verificada no bloco FONTES; se sem fonte, escrever como interpretação qualificada sem citação ou marcar [CITAÇÃO A VERIFICAR] — NUNCA inventar autor.`,
+    profundidade: `Linguagem clara para estudantes 14-18 anos. Conceitos desde o básico. Para Ciências: fórmulas básicas com cada variável explicada. Exemplos reconhecíveis do contexto do tema. 3-4 parágrafos densos por subtópico.`,
+    citacoes: `2-3 citações por subtópico formato (Apelido, Ano). Exemplo: "Segundo Cardoso (2019),..." ou "...processo fundamental (Lima & Santos, 2020)." OBRIGATÓRIO: pelo menos 1 citação em CADA parágrafo principal.`,
     refs_min: 8, refs_africanos: 2,
   },
   licenciatura: {
-    profundidade: `Nível universitário 1º ciclo. Rigor conceptual. Análise crítica: comparar perspectivas de pelo menos 2 autores quando fontes existem. Dados estatísticos SOMENTE com fonte verificada. 4-5 parágrafos densos por subtópico com função própria.`,
-    citacoes: `2-3 citações por subtópico. Exemplos: "De acordo com Ferreira (2021),..." / "(Neto, 2019; Costa, 2022)." REGRA: citação só com SOURCE_ID verificado; sem fonte → interpretação sem citação + [CITAÇÃO A VERIFICAR] se factual.`,
+    profundidade: `Nível universitário 1º ciclo. Rigor conceptual. Análise crítica: comparar perspectivas de pelo menos 2 autores. Dados estatísticos e factos verificáveis com anos e instituições (contexto do tema). 4-5 parágrafos densos por subtópico.`,
+    citacoes: `2-3 citações por subtópico. Exemplos: "De acordo com Ferreira (2021),..." / "(Neto, 2019; Costa, 2022)." / "Silva (2020, p.45) argumenta que..." OBRIGATÓRIO: pelo menos 1 citação em CADA parágrafo principal, não apenas no fim.`,
     refs_min: 10, refs_africanos: 3,
   },
   mestrado: {
-    profundidade: `Pós-graduação. Confrontar teorias, identificar lacunas. Síntese original com voz argumentativa. 5-7 parágrafos por subtópico, cada um com papel diferente (tese, antítese, evidência, limitação, implicação).`,
-    citacoes: `3-4 citações por subtópico, directas e indirectas alternadas. Citação directa: Segundo Lopes (2018, p.112), "a gestão estratégica implica..." REGRA: 1 tensão teórica SOMENTE se ambas fontes verificadas; caso contrário explicitar limitação.`,
+    profundidade: `Pós-graduação. Confrontar teorias, identificar lacunas. Síntese original com voz argumentativa. OBRIGATÓRIO: pelo menos 1 tensão teórica por subtópico (Autor A defende X, Autor B argumenta Y). 5-7 parágrafos de alta densidade por subtópico.`,
+    citacoes: `3-4 citações por subtópico, directas e indirectas alternadas. Citação directa: Segundo Lopes (2018, p.112), "a gestão estratégica implica..." Citação indirecta: (Banda, 2020; Kiala & Mabiala, 2021). OBRIGATÓRIO: 1 tensão teórica por subtópico.`,
     refs_min: 12, refs_africanos: 4,
   },
   doutoramento: {
-    profundidade: `Investigação original. Mapear estado da arte, propor contribuição nova. Posicionamento epistemológico. Obras seminais + investigação recente (últimos 5 anos). 6-8 parágrafos com função epistémica distinta por subtópico.`,
-    citacoes: `4-6 citações por subtópico. Obras fundacionais E investigação recente. Exemplo: "A teoria de Bourdieu (1980) foi revisitada por Mabiala (2019)..." REGRA: citação só com verificação; sem fonte → declarar lacuna.`,
+    profundidade: `Investigação original. Mapear estado da arte, propor contribuição nova. Posicionamento epistemológico. Obras seminais + investigação recente (últimos 5 anos). OBRIGATÓRIO: identificar lacuna na literatura por subtópico. 6-8 parágrafos de alta densidade.`,
+    citacoes: `4-6 citações por subtópico. Obras fundacionais E investigação recente. Exemplo: "A teoria de Bourdieu (1980) foi revisitada por Mabiala (2019), que argumenta..." OBRIGATÓRIO: lacuna na literatura por subtópico.`,
     refs_min: 15, refs_africanos: 5,
   },
 };
@@ -183,7 +183,21 @@ export const POOLS_ANTI_IA = {
 /* ── Instruções anti-IA (única fonte de verdade — frontend e backend) ── */
 export function gerarInstrucaoAntiIA(capNum, totalCaps, geoInstrucao, pAreaLabel = '') {
   const n = Math.max(0, (capNum||1) - 1);
-  const pick = (arr, s) => arr[(n*7 + s*3) % arr.length];
+  // BUG-009: a versão antiga usava pick() para escolher UMA ÚNICA frase por
+  // categoria e mandava "usa esta expressão" — como o prompt é emitido UMA VEZ
+  // por capítulo inteiro (que contém vários subtópicos gerados na mesma
+  // chamada), isso instruía o modelo a repetir a MESMA fórmula em todos os
+  // subtópicos desse capítulo ("3.1 → fórmula A, 3.2 → fórmula A..."),
+  // exactamente o padrão que o prompt mestre pede para eliminar. Agora
+  // oferece-se um CONJUNTO rotativo (ainda determinístico por capítulo, para
+  // não repetir entre capítulos) e instrui-se explicitamente a nunca reusar a
+  // mesma dentro do mesmo capítulo.
+  const pickSet = (arr, s, count = 4) => {
+    const start = (n * 7 + s * 3) % arr.length;
+    const out = [];
+    for (let i = 0; i < Math.min(count, arr.length); i++) out.push(arr[(start + i) % arr.length]);
+    return out;
+  };
   const pools = POOLS_ANTI_IA;
   const fase = !totalCaps||totalCaps<=1 ? 'análise' :
     (n/(totalCaps-1))<=0.1 ? 'introdução' :
@@ -191,6 +205,10 @@ export function gerarInstrucaoAntiIA(capNum, totalCaps, geoInstrucao, pAreaLabel
     (n/(totalCaps-1))<=0.65 ? 'análise crítica' :
     (n/(totalCaps-1))<=0.88 ? 'síntese' : 'conclusão';
   const proibidos = pools.conectores_proibidos.slice(0,4).join('", "');
+  const exemplosSet   = pickSet(pools.exemplos, 1).map(e => `"${e}"`).join(', ');
+  const hipotesesSet  = pickSet(pools.hipoteses, 2).map(e => `"${e}"`).join(', ');
+  const conclusoesSet = pickSet(pools.conclusoes, 3).map(e => `"${e}"`).join(', ');
+  const transicoesSet = pickSet(pools.transicoes, 4).map(e => `"${e}"`).join(', ');
   return `REGRAS DE ESTILO OBRIGATÓRIAS — APLICAR RIGOROSAMENTE:
 
 TOM E VOZ:
@@ -198,10 +216,11 @@ TOM E VOZ:
 2. Cada subtópico deve incluir: (a) posição teórica, (b) contraponto ou limitação, (c) aplicação ao contexto do tema
 3. PROIBIDO usar estes conectores mecânicos que revelam texto IA: "${proibidos}"
 4. PROIBIDO iniciar dois parágrafos consecutivos com a mesma palavra ou estrutura
-5. Para exemplos usa: "${pick(pools.exemplos,1)}" — nunca a mesma expressão duas vezes no mesmo capítulo
-6. Para hipótese/posição usa: "${pick(pools.hipoteses,2)}"
-7. Para concluir usa: "${pick(pools.conclusoes,3)}"
-8. Para transições usa: "${pick(pools.transicoes,4)}"
+5. Para exemplos, ROTA entre estas opções — nunca a mesma duas vezes no mesmo capítulo, nunca todas no mesmo subtópico: ${exemplosSet}
+6. Para hipótese/posição, ROTA entre: ${hipotesesSet}
+7. Para concluir, ROTA entre: ${conclusoesSet}
+8. Para transições, ROTA entre: ${transicoesSet}
+8b. CADA SUBTÓPICO (3.1, 3.2, 3.3...) deve usar uma opção DIFERENTE de cada lista acima — se o subtópico anterior usou a 1ª opção, o seguinte usa a 2ª, e assim sucessivamente. Nunca repetir a mesma expressão em dois subtópicos consecutivos do mesmo capítulo.
 
 ANTI-DETECÇÃO IA — PROIBIÇÕES ABSOLUTAS:
 9. NUNCA uses frases genéricas tipo: "É importante salientar que...", "Vale a pena referir que...", "Neste contexto..."
@@ -234,7 +253,7 @@ Substitui por termos específicos da área${pAreaLabel ? ': ' + pAreaLabel : ''}
 export function gerarInstrucaoGeo(tema, pais, geoCtx) {
   const ctx = geoCtx || detectarContextoGeo(tema, pais);
   const baseGlobal = 'A ACADEMY É PLATAFORMA ACADÊMICA GLOBAL (PLATFORM_SCOPE=GLOBAL). NUNCA presuma Angola. O escopo vem do TEMA/OBJETIVOS, não da plataforma/usuário/idioma. ';
-  if (ctx === 'angola') return baseGlobal + 'O tema foca Angola — use fontes angolanas + africanas + internacionais relevantes quando sustentarem o claim. Internacional é válido para Angola.';
+  if (ctx === 'angola') return baseGlobal + 'O tema foca Angola — use fontes angolanas + africanas + internacionais relevantes quando sustentarem o claim (priorize dados angolanos sempre que existam e estejam verificados). Internacional é válido para Angola.';
   if (ctx === 'cabo_verde') return baseGlobal + 'O tema foca Cabo Verde — use fontes cabo-verdianas + internacionais relevantes.';
   if (ctx === 'brasil') return baseGlobal + 'O tema foca Brasil — use fontes brasileiras + internacionais relevantes.';
   if (ctx === 'portugal') return baseGlobal + 'O tema foca Portugal — use fontes portuguesas + internacionais relevantes.';

@@ -74,8 +74,8 @@ ${isFirstChapter ? `Este é o PRIMEIRO CAPÍTULO (Introdução). DEVE incluir ob
 - Se não tiveres uma fonte real e verificável, tens duas opções — NUNCA inventes a fonte:
   1. Reformula a frase como afirmação geral, sem atribuição a autor específico; ou
   2. Sinaliza explicitamente com [CITAÇÃO A VERIFICAR] para o utilizador substituir por uma fonte real.
- - Limite de densidade: no máximo 1 citação nova a cada 2–3 frases. Texto sobrecarregado de citações por parágrafo é sinal de preenchimento artificial, não de rigor.
- - REGRA: cada parágrafo factual com SOURCE_ID verificado deve ter 1-2 citações; parágrafos interpretativos podem ter 0 e devem ser identificados como interpretação.
+- Limite de densidade: no máximo 1 citação nova a cada 2–3 frases. Texto sobrecarregado de citações por parágrafo é sinal de preenchimento artificial, não de rigor.
+- OBRIGATÓRIO: cada parágrafo de desenvolvimento (não introdutório) DEVE ter pelo menos 2 citações distintas integradas no argumento.
 
 ═══ REGRA 2 — DADOS E ESTATÍSTICAS: NUNCA FABRICAR NÚMEROS ═══
 - Não apresentes números específicos (percentagens, toneladas, valores monetários, taxas de crescimento) como se fossem factos verificados, a menos que:
@@ -98,16 +98,13 @@ ${isFirstChapter ? `Este é o PRIMEIRO CAPÍTULO (Introdução). DEVE incluir ob
 - RÓTULOS VISÍVEIS: cada bloco DEVE ter um mini-cabeçalho visível (ex: **Contextualização:**, **Desenvolvimento:**) a negrito, para identificação rápida da estrutura.
 
 ═══ REGRAS DE CITAÇÃO — FORMATO EXACTO ═══
-Cada parágrafo factual DEVE conter citação explícita (Autor, Ano) SOMENTE se houver SOURCE_ID verificado no bloco FONTES acima. Se sem fonte, NÃO inventar — escrever como interpretação qualificada ou marcar [CITAÇÃO A VERIFICAR].
-Exemplo correcto COM FONTE: "Segundo Santos (2020) — SOURCE_ID:doi:10.xxxx — o turismo cresceu, evidência abstract: ..." 
-Exemplo correcto SEM FONTE: "Estima-se que o turismo tenha relevância económica, mas não foi encontrada fonte verificável para quantificar [CITAÇÃO A VERIFICAR]."
-NUNCA uses percentagem inventada atribuída a INE/Banco Mundial/OMS. Cada parágrafo: 3-5 frases.
-
-═══ REGRA 5 — FUNÇÃO POR SUBTÓPICO (ANTI-REPETIÇÃO) ═══
-Cada subtópico tem FUNÇÃO distinta definida pelos seus TÍTULO e POSIÇÃO no capítulo — não repitas "A literatura indica que X é dimensão central" em todos.
-Estrutura por subtópico (escolhe 2-3 elementos, ordem variável): tese, evidência com SOURCE_ID, contraponto, dado concreto só com fonte, implicação, limite, recomendação.
-Diversifica conectores e extensão (3 vs 6 frases). Se dois subtópicos ficarem >0.82 similaridade Jaccard, regenerar o segundo.
-NUNCA usar template fixo Contextualização→Desenvolvimento→Dados→Análise em todos.
+Cada parágrafo DEVE conter pelo menos 1 citação explícita no formato (Autor, Ano) ou "Autor (Ano) afirma que...".
+Exemplo de FORMATO (não copies o conteúdo, é só para mostrares a sintaxe — usa sempre autores/anos/números REAIS do teu conhecimento verificável, nunca estes nomes/valores fictícios):
+"Segundo [Apelido] ([Ano]), [fenómeno] apresentou [tendência qualificada ou intervalo] entre [período], segundo [Organização] ([Ano])."
+Se não tiveres um número real e verificável para o intervalo/percentagem, usa linguagem qualificada ("aumentou de forma expressiva", "manteve-se relativamente estável") em vez de inventar um valor — mesmo um valor "plausível" sem fonte é uma fabricação (ver REGRA 2).
+Exemplo INCORRECTO: "Estudos indicam que o turismo é importante para a economia." (genérico, sem citação)
+NUNCA uses "estudos indicam", "investigações mostram", "pesquisas revelam" ou expressões genéricas — diz sempre QUAL estudo/Autor.
+Cada parágrafo: 3-5 frases. Usa dados concretos (percentagens, anos, instituições) SÓ quando tiveres uma fonte real por trás — caso contrário, ver REGRA 2.
 
 NÍVEL ACADÉMICO — ${nivelKey.toUpperCase()}:
 ${pNivel.profundidade}
