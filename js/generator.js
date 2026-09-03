@@ -655,6 +655,16 @@ function validarQualidadeCapitulo(raw, textoFinal, ast) {
   if (wc > 0 && wc < pisoWC) motivos.push(`Densidade EMPTY: ${wc} palavras (<${pisoWC} mínimo${isRefCap ? ' ref' : ' BALANCED'})`);
   if (/\(Ano\)|Segundo autor\s*\(Ano\)/i.test(limpo)) motivos.push('Placeholder detectado: (Ano) literal');
   if (/Autor\s+et\s+al\.\s*\(Ano\)/i.test(limpo)) motivos.push('Placeholder detectado: Autor et al. (Ano)');
+  // Detetor de loop fallback "não se dissocia das condições materiais" / "A literatura indica que 2/3/4"
+  if (/n[aã]o se dissocia das condi[cç][oõ]es materiais/i.test(limpo)) motivos.push('Fallback loop detectado: frase repetida Santos 2019');
+  if (/A literatura indica que\s*[234]\s*\./i.test(limpo)) motivos.push('Placeholder fallback: "A literatura indica que 2/3/4"');
+  const frases = limpo.split(/[.!?]+/).map(s=>s.trim()).filter(s=>s.length>20);
+  if (frases.length >= 4) {
+    const freq = new Map();
+    frases.forEach(f=>{ const k=f.substring(0,60).toLowerCase(); freq.set(k,(freq.get(k)||0)+1); });
+    const repetida = [...freq.values()].some(v=>v>=3);
+    if (repetida) motivos.push('Conteúdo repetido: mesma frase 3×+ (fallback)');
+  }
   if (ast && Array.isArray(ast.sections) && ast.sections.length > 0) {
     const parasValidos = s => (s.paragrafos || s.paragraphs || [])
       .filter(p => p && typeof p === 'string' && p.trim().length > 15);

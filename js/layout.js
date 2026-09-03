@@ -1032,15 +1032,17 @@ body { background:#E8E8E8; font-family:Georgia,'Times New Roman',serif; }
 }
 
 .sub-h2 {
-  font-family:Georgia,serif; font-size:12.5pt; font-weight:700; line-height:1.35;
-  margin:16pt 0 8pt; padding:6pt 0 6pt 12pt;
-  border-left:4px solid; border-image:linear-gradient(180deg,${t.primario},${t.acento}) 1;
-  color:${t.texto}; background:linear-gradient(90deg,rgba(${t.primario},.04),transparent);
+  font-family:'Cormorant Garamond',Georgia,serif; font-size:14pt; font-weight:700; line-height:1.3;
+  margin:20pt 0 10pt; padding:8pt 14pt;
+  border-left:5px solid; border-image:linear-gradient(180deg,${t.primario},${t.acento}) 1;
+  color:${t.primario}; background:linear-gradient(90deg,rgba(0,0,0,.035),transparent);
+  letter-spacing:.02em; text-transform:none;
 }
 .sub-h3 {
-  font-family:Georgia,serif; font-size:11.5pt; font-weight:600; font-style:italic;
-  line-height:1.35; margin:12pt 0 6pt; color:${t.secundario};
-  padding-left:4pt; border-left:2px solid ${t.acento};
+  font-family:'Cormorant Garamond',Georgia,serif; font-size:12pt; font-weight:600; font-style:italic;
+  line-height:1.3; margin:14pt 0 8pt; color:${t.secundario};
+  padding:6pt 0 6pt 10pt; border-left:3px solid ${t.acento};
+  background:linear-gradient(90deg,rgba(0,0,0,.02),transparent);
 }
 
 .heading-group {

@@ -140,7 +140,9 @@ function repararAST(raw, capNum, capTit, subs) {
       }
       sec.paragraphs = sec.paragraphs
         .map(p => typeof p === 'string' ? p.trim() : '')
-        .filter(p => p.length > 15 && !REGEX_LIXO_JSON.test(p));
+        .filter(p => p.length > 15 && !REGEX_LIXO_JSON.test(p))
+        .filter(p => !/n[aã]o se dissocia das condi[cç][oõ]es materiais/i.test(p))
+        .filter(p => !/A literatura indica que\s*[234]\s*\./i.test(p));
       return sec;
     });
   }
