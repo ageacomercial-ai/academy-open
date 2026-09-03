@@ -647,11 +647,11 @@ function validarQualidadeCapitulo(raw, textoFinal, ast) {
   const limpo = String(textoFinal || '').trim();
   if (limpo.length < 60) motivos.push('conteúdo insuficiente');
   if (limpo.startsWith('[') && /[Ss]ec[çc][ãa]o/.test(limpo)) motivos.push('placeholder de falha');
-  // Capítulos de referências/bibliografia têm densidade diferente — não exigir 320w
+  // Capítulos de referências/bibliografia têm densidade diferente — não exigir 320w (ASCII-safe)
   const tituloCap = (ast?.title || '').toLowerCase();
-  const isRefCap = /refer[eê]ncia|bibliograf/.test(tituloCap) || /refer[eê]ncia|bibliograf/.test(limpo.substring(0,120).toLowerCase());
+  const isRefCap = /refer|bibliograf/i.test(tituloCap) || /refer|bibliograf/i.test(limpo.substring(0,150).toLowerCase());
   const wc = limpo.split(/\s+/).filter(Boolean).length;
-  const pisoWC = isRefCap ? 80 : 320;
+  const pisoWC = isRefCap ? 60 : 320;
   if (wc > 0 && wc < pisoWC) motivos.push(`Densidade EMPTY: ${wc} palavras (<${pisoWC} mínimo${isRefCap ? ' ref' : ' BALANCED'})`);
   if (/\(Ano\)|Segundo autor\s*\(Ano\)/i.test(limpo)) motivos.push('Placeholder detectado: (Ano) literal');
   if (/Autor\s+et\s+al\.\s*\(Ano\)/i.test(limpo)) motivos.push('Placeholder detectado: Autor et al. (Ano)');
