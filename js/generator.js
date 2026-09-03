@@ -647,6 +647,10 @@ function validarQualidadeCapitulo(raw, textoFinal, ast) {
   const limpo = String(textoFinal || '').trim();
   if (limpo.length < 60) motivos.push('conteúdo insuficiente');
   if (limpo.startsWith('[') && /[Ss]ec[çc][ãa]o/.test(limpo)) motivos.push('placeholder de falha');
+  const wc = limpo.split(/\s+/).filter(Boolean).length;
+  if (wc > 0 && wc < 320) motivos.push(`Densidade EMPTY: ${wc} palavras (<320 mínimo BALANCED)`);
+  if (/\(Ano\)|Segundo autor\s*\(Ano\)/i.test(limpo)) motivos.push('Placeholder detectado: (Ano) literal');
+  if (/Autor\s+et\s+al\.\s*\(Ano\)/i.test(limpo)) motivos.push('Placeholder detectado: Autor et al. (Ano)');
   if (ast && Array.isArray(ast.sections) && ast.sections.length > 0) {
     const parasValidos = s => (s.paragrafos || s.paragraphs || [])
       .filter(p => p && typeof p === 'string' && p.trim().length > 15);
@@ -811,9 +815,9 @@ async function iniciarGer(retomar) {
               capTitulo:           cap.titulo,
               capSubs:             cap.subs || [],
               totalCaps:           est.length,
-              palavrasPorCap:      pbePlan ? Math.max(pbePlan.piso, pbePlan.porCapitulo[i]) : Math.max(300, Math.round(totalPags * 220 / Math.max(1, est.length))),
+              palavrasPorCap:      pbePlan ? Math.max(650, pbePlan.porCapitulo[i]) : Math.max(650, Math.round(totalPags * 480 / Math.max(1, est.length))),
               wordBudget:          pbePlan ? pbePlan.totalPalavras : 0,
-              palavrasPorPagina:   pbePlan ? pbePlan.palavrasPorPagina : 262,
+              palavrasPorPagina:   pbePlan ? pbePlan.palavrasPorPagina : 480,
               paginasAlvo:         totalPags,
               objetivo:            (plano.objetivo || '').substring(0, 120),
               hipotese:            (plano.hipotese || '').substring(0, 100),
@@ -930,8 +934,8 @@ async function iniciarGer(retomar) {
 
     /* 100% AUTOMÁTICO — nunca POR COMPLETAR, nunca exige clique ↺ */
     if (!qcOk) {
-      aSecDOM(i, 'g', `⏳ Cap. ${cap.num} — re-tentativa automática…`);
-      await new Promise(r=>setTimeout(r, 6000));
+      aSecDOM(i, 'g', `⏳ Cap. ${cap.num} — densidade baixa, re-tentativa automática em 3s…`);
+      await new Promise(r=>setTimeout(r, 3000));
       i--; continue;
     }
 

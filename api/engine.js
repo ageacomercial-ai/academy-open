@@ -564,10 +564,11 @@ async function doCapitulo(p) {
   let retryCount = 0;
 
   const PAGINAS_FIXAS = 3;
-  const PALAVRAS_POR_PAGINA = 320;
+  const PALAVRAS_POR_PAGINA = 480;
   const paginasConteudo = Math.max(totalPags - PAGINAS_FIXAS, 1);
-  const palavrasCalc = Math.round((paginasConteudo * PALAVRAS_POR_PAGINA) / totalCaps);
-  const palavras = Math.min(Math.max(parseInt(p.palavrasPorCap)||palavrasCalc, 200), 4000);
+  const palavrasCalcBruto = Math.round((paginasConteudo * PALAVRAS_POR_PAGINA) / totalCaps);
+  const palavrasCalc = Math.max(650, palavrasCalcBruto);
+  const palavras = Math.min(Math.max(parseInt(p.palavrasPorCap)||palavrasCalc, 450), 4000);
 
   const nivelKey  = detectarNivel(nivel);
   const areaKey   = detectarArea(tema, p.area);
@@ -591,10 +592,11 @@ async function doCapitulo(p) {
      arrays de strings ou JSON truncado → 503). Com system schema + json_object
      o flash-lite e o gpt-4o-mini devolvem sections válidos em ~2s. */
   const systemJSON = `Gera APENAS um objeto JSON com este esquema EXACTO (sem markdown, sem texto adicional):
-{"chapter_id":"${capNum}","title":"${capTit}","total_paragraphs":${Math.max(3, Math.round(palavras / 90))},"sections":[{"section_id":"${capNum}.1","title":"<subtítulo>","paragraphs":["<parágrafo 1>","<parágrafo 2>","<parágrafo 3>"]}]}
+{"chapter_id":"${capNum}","title":"${capTit}","total_paragraphs":${Math.max(6, Math.round(palavras / 75))},"sections":[{"section_id":"${capNum}.1","title":"<subtítulo>","paragraphs":["<parágrafo 1>","<parágrafo 2>","<parágrafo 3>"]}]}
 REGRAS:
 - sections: UMA entrada por subtópico obrigatório do prompt do utilizador, na mesma ordem e numeração.
-- paragraphs: 3-5 parágrafos completos (3-5 frases cada), texto corrido, sem markdown, sem bullets.
+- paragraphs: 4-6 parágrafos densos por subtópico (80-120 palavras cada, 4-6 frases), texto corrido, sem markdown, sem bullets. MÍNIMO 650 palavras no total do capítulo.
+- PROIBIDO usar "(Ano)" literal, "Segundo autor (Ano)", "Autor et al. (Ano)" genérico. Toda citação deve ter autor real e ano válido (ex: Silva 2020).
 - Resposta DEVE ser exclusivamente esse objeto JSON.`;
 
   let r1 = await callAI([
