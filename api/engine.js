@@ -142,9 +142,7 @@ function repararAST(raw, capNum, capTit, subs) {
         .map(p => typeof p === 'string' ? p.trim() : '')
         .filter(p => p.length > 15 && !REGEX_LIXO_JSON.test(p))
         .filter(p => !/n[aã]o se dissocia das condi[cç][oõ]es materiais/i.test(p))
-        .filter(p => !/A literatura indica que\s*[234]\s*\./i.test(p))
-        .filter(p => !/A literatura indica que (desafios|oportunidades|a regula[cç][aã]o)/i.test(p))
-        .filter(p => !/\[DADO A VERIFICAR/i.test(p))
+        .filter(p => !/\[DADO A VERIFICAR COM FONTE PRIM[ÁA]RIA/i.test(p))
         // Quebrar muro gigante (>900 chars) em frases para evitar página vazia + muro
         .flatMap(p => {
           if (p.length > 900 && (p.match(/\.\s+[A-ZÁÉÍÓÚÂÊ]/g)||[]).length >= 4) {

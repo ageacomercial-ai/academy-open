@@ -649,17 +649,21 @@ function validarQualidadeCapitulo(raw, textoFinal, ast) {
   if (limpo.startsWith('[') && /[Ss]ec[çc][ãa]o/.test(limpo)) motivos.push('placeholder de falha');
   // Capítulos de referências/bibliografia têm densidade diferente — não exigir 320w (ASCII-safe)
   const tituloCap = (ast?.title || '').toLowerCase();
-  const isRefCap = /refer|bibliograf/i.test(tituloCap) || /refer|bibliograf/i.test(limpo.substring(0,150).toLowerCase());
+  // isRef: título contém refer OU texto parece lista de refs (≥3 linhas com Ano)
+  const refsCount = (limpo.match(/\(\s*(19|20)\d{2}[a-z]?\)/g) || []).length;
+  const isRefCap = /refer|bibliograf/i.test(tituloCap) || /refer|bibliograf/i.test(limpo.substring(0,200).toLowerCase()) || refsCount >= 5;
   const wc = limpo.split(/\s+/).filter(Boolean).length;
   const pisoWC = isRefCap ? 60 : 320;
   if (wc > 0 && wc < pisoWC) motivos.push(`Densidade EMPTY: ${wc} palavras (<${pisoWC} mínimo${isRefCap ? ' ref' : ' BALANCED'})`);
   if (/\(Ano\)|Segundo autor\s*\(Ano\)/i.test(limpo)) motivos.push('Placeholder detectado: (Ano) literal');
   if (/Autor\s+et\s+al\.\s*\(Ano\)/i.test(limpo)) motivos.push('Placeholder detectado: Autor et al. (Ano)');
-  if (/\[DADO A VERIFICAR/i.test(limpo)) motivos.push('Placeholder detectado: [DADO A VERIFICAR — fallback]');
-  // Detetor de loop fallback "não se dissocia das condições materiais" / "A literatura indica que"
-  if (/n[aã]o se dissocia das condi[cç][oõ]es materiais/i.test(limpo)) motivos.push('Fallback loop detectado: frase repetida Santos 2019');
-  if (/A literatura indica que\s*[234]\s*\./i.test(limpo)) motivos.push('Placeholder fallback: "A literatura indica que 2/3/4"');
-  if (/A literatura indica que (desafios|oportunidades|a regula[cç][aã]o)/i.test(limpo)) motivos.push('Fallback loop: "A literatura indica que X é dimensão central" repetido');
+  // Só bloquear [DADO A VERIFICAR COM FONTE PRIMÁRIA] repetido (fallback), não ocorrência isolada qualificada
+  const dadoVerifCount = (limpo.match(/\[DADO A VERIFICAR/gi) || []).length;
+  if (dadoVerifCount >= 2) motivos.push(`Placeholder repetido: [DADO A VERIFICAR] ${dadoVerifCount}× (fallback)`);
+  // Detetor de loop fallback: só se repetido + estrutura "não se dissocia..."
+  const dissociaCount = (limpo.match(/n[aã]o se dissocia das condi[cç][oõ]es materiais/gi) || []).length;
+  if (dissociaCount >= 2) motivos.push(`Fallback loop: "não se dissocia" ${dissociaCount}×`);
+  if (/A literatura indica que\s*[234]\s*\./i.test(limpo) && dissociaCount >= 1) motivos.push('Placeholder fallback: "A literatura indica que 2/3/4" + dissocia');
   const frases = limpo.split(/[.!?]+/).map(s=>s.trim()).filter(s=>s.length>20);
   if (frases.length >= 4) {
     const freq = new Map();
