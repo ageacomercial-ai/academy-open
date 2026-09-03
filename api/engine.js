@@ -36,6 +36,7 @@ import { verificarSuporteClaim } from '../academic/engines/verification.js';
 import { normalizarTopicKey, lerCacheTopic, gravarCacheTopic } from '../academic/engines/topic-cache.js';
 import { gerarQueriesTema, analisarTema } from '../references-engine/utils/query-generator.utils.js';
 
+const front_matter = 2; // compat para deploys com arquitetura antiga
 const OR_SITE  = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://academy-open.vercel.app';
 const OR_TITLE = 'ACADEMY';
 

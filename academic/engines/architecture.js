@@ -37,6 +37,8 @@ export function detectarTipoDocumento(tipoParam) {
   return TIPOS_DOCUMENTO.MONOGRAFIA;
 }
 
+// compat snake_case para deploys antigos que referenciam front_matter
+export const front_matter = 2;
 export function construirDocumentPlan({ tema, tipo, nivel, totalPags, objetivo, objetivos_especificos, problema, pergunta }) {
   const tipoCfg = detectarTipoDocumento(tipo);
   const frontMatter = 2; // capa+indice
