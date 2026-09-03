@@ -34,6 +34,7 @@ import { extrairClaims, gerarQueries } from '../academic/engines/claims.js';
 import { retrieveSource, extractEvidence, verifyClaimSupport } from '../academic/engines/retrieval.js';
 import { verificarSuporteClaim } from '../academic/engines/verification.js';
 import { normalizarTopicKey, lerCacheTopic, gravarCacheTopic } from '../academic/engines/topic-cache.js';
+import { gerarQueriesTema, analisarTema } from '../references-engine/utils/query-generator.utils.js';
 
 const OR_SITE  = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://academy-open.vercel.app';
 const OR_TITLE = 'ACADEMY';
@@ -667,10 +668,10 @@ async function doCapitulo(p) {
       _cacheUsado = true;
       _ts.search_at = _ts.verify_at = _ts.evidence_at = _ts.support_at = Date.now();
     } else {
-      // 1) SEARCH amplo por tema do capítulo (não por claim pré-inventada)
+      // 1) SEARCH amplo por tema do capítulo — agora via gerador 5-15 queries PT/EN (secção 5-6)
       _ts.search_at = Date.now();
-      const temaQuery = [tema, capTit, ...capSubs].join(' ').slice(0, 200);
-      const queries = [temaQuery, capTit, tema].filter(Boolean).slice(0, 3);
+      const analise = analisarTema(tema);
+      const queries = gerarQueriesTema(`${tema} ${capTit} ${capSubs.join(' ')}`).slice(0, 8);
       for (const q of queries) {
         try {
           const res = await searchAll(q, { limit: 5 });
