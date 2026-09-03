@@ -655,15 +655,27 @@ function validarQualidadeCapitulo(raw, textoFinal, ast) {
   if (wc > 0 && wc < pisoWC) motivos.push(`Densidade EMPTY: ${wc} palavras (<${pisoWC} mínimo${isRefCap ? ' ref' : ' BALANCED'})`);
   if (/\(Ano\)|Segundo autor\s*\(Ano\)/i.test(limpo)) motivos.push('Placeholder detectado: (Ano) literal');
   if (/Autor\s+et\s+al\.\s*\(Ano\)/i.test(limpo)) motivos.push('Placeholder detectado: Autor et al. (Ano)');
-  // Detetor de loop fallback "não se dissocia das condições materiais" / "A literatura indica que 2/3/4"
+  if (/\[DADO A VERIFICAR/i.test(limpo)) motivos.push('Placeholder detectado: [DADO A VERIFICAR — fallback]');
+  // Detetor de loop fallback "não se dissocia das condições materiais" / "A literatura indica que"
   if (/n[aã]o se dissocia das condi[cç][oõ]es materiais/i.test(limpo)) motivos.push('Fallback loop detectado: frase repetida Santos 2019');
   if (/A literatura indica que\s*[234]\s*\./i.test(limpo)) motivos.push('Placeholder fallback: "A literatura indica que 2/3/4"');
+  if (/A literatura indica que (desafios|oportunidades|a regula[cç][aã]o)/i.test(limpo)) motivos.push('Fallback loop: "A literatura indica que X é dimensão central" repetido');
   const frases = limpo.split(/[.!?]+/).map(s=>s.trim()).filter(s=>s.length>20);
   if (frases.length >= 4) {
     const freq = new Map();
     frases.forEach(f=>{ const k=f.substring(0,60).toLowerCase(); freq.set(k,(freq.get(k)||0)+1); });
     const repetida = [...freq.values()].some(v=>v>=3);
     if (repetida) motivos.push('Conteúdo repetido: mesma frase 3×+ (fallback)');
+  }
+  // Prova de erro: muro de texto (1 parágrafo gigante >400w ou >900 chars sem quebra)
+  const parasRaw = (ast?.sections || []).flatMap(s=>s.paragraphs||s.paragrafos||[]);
+  if (parasRaw.length === 1 && wc > 280) motivos.push(`Muro de texto: 1 parágrafo com ${wc}w — sem estrutura H2/H3`);
+  const gigante = parasRaw.find(p=>p && p.length > 900 && (p.match(/\.\s+[A-Z]/g)||[]).length >= 4);
+  if (gigante) motivos.push('Muro de texto: parágrafo >900 chars com múltiplos tópicos fundidos');
+  if (parasRaw.length >= 1 && parasRaw.every(p=>p && p.length < 80)) motivos.push('Parágrafos muito curtos (<80 chars) — conteúdo fragmentado');
+  // Título órfão: cap só com título + muro sem H2
+  if (parasRaw.length <= 2 && wc > 200 && !limpo.includes('\n') && ast?.sections?.length === 1) {
+    // pode ser muro não separado
   }
   if (ast && Array.isArray(ast.sections) && ast.sections.length > 0) {
     const parasValidos = s => (s.paragrafos || s.paragraphs || [])

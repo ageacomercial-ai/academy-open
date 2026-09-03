@@ -142,7 +142,21 @@ function repararAST(raw, capNum, capTit, subs) {
         .map(p => typeof p === 'string' ? p.trim() : '')
         .filter(p => p.length > 15 && !REGEX_LIXO_JSON.test(p))
         .filter(p => !/n[aã]o se dissocia das condi[cç][oõ]es materiais/i.test(p))
-        .filter(p => !/A literatura indica que\s*[234]\s*\./i.test(p));
+        .filter(p => !/A literatura indica que\s*[234]\s*\./i.test(p))
+        .filter(p => !/A literatura indica que (desafios|oportunidades|a regula[cç][aã]o)/i.test(p))
+        .filter(p => !/\[DADO A VERIFICAR/i.test(p))
+        // Quebrar muro gigante (>900 chars) em frases para evitar página vazia + muro
+        .flatMap(p => {
+          if (p.length > 900 && (p.match(/\.\s+[A-ZÁÉÍÓÚÂÊ]/g)||[]).length >= 4) {
+            const frases = p.split(/(?<=\.)\s+(?=[A-ZÁÉÍÓÚÂÊ])/).map(s=>s.trim()).filter(s=>s.length>40);
+            if (frases.length >= 3) {
+              const grupos = [];
+              for (let i=0;i<frases.length;i+=2) grupos.push(frases.slice(i,i+2).join(' '));
+              return grupos;
+            }
+          }
+          return [p];
+        });
       return sec;
     });
   }
@@ -594,11 +608,14 @@ async function doCapitulo(p) {
      arrays de strings ou JSON truncado → 503). Com system schema + json_object
      o flash-lite e o gpt-4o-mini devolvem sections válidos em ~2s. */
   const systemJSON = `Gera APENAS um objeto JSON com este esquema EXACTO (sem markdown, sem texto adicional):
-{"chapter_id":"${capNum}","title":"${capTit}","total_paragraphs":${Math.max(6, Math.round(palavras / 75))},"sections":[{"section_id":"${capNum}.1","title":"<subtítulo>","paragraphs":["<parágrafo 1>","<parágrafo 2>","<parágrafo 3>"]}]}
-REGRAS:
-- sections: UMA entrada por subtópico obrigatório do prompt do utilizador, na mesma ordem e numeração.
-- paragraphs: 4-6 parágrafos densos por subtópico (80-120 palavras cada, 4-6 frases), texto corrido, sem markdown, sem bullets. MÍNIMO 650 palavras no total do capítulo.
-- PROIBIDO usar "(Ano)" literal, "Segundo autor (Ano)", "Autor et al. (Ano)" genérico. Toda citação deve ter autor real e ano válido (ex: Silva 2020).
+{"chapter_id":"${capNum}","title":"${capTit}","total_paragraphs":${Math.max(6, Math.round(palavras / 75))},"sections":[{"section_id":"${capNum}.1","title":"<subtítulo>","paragraphs":["<parágrafo 1 com 80-120 palavras>","<parágrafo 2 com 80-120 palavras>","<parágrafo 3 com 80-120 palavras>","<parágrafo 4 com 80-120 palavras>"]}]}
+REGRAS ESTRUTURAIS (PROVA DE ERRO):
+- sections: UMA entrada por subtópico obrigatório do prompt do utilizador, na mesma ordem e numeração. NÃO juntar subtópicos num só.
+- paragraphs: 4-6 parágrafos DENSOS por subtópico, CADA UM 80-120 palavras (4-6 frases). MÍNIMO 650 palavras no total do capítulo.
+- CADA paragraph é UMA string JSON separada — NUNCA um muro de texto único. Usa "\\n\\n" entre parágrafos apenas dentro da estrutura JSON, cada elemento do array é 1 parágrafo.
+- PROIBIDO muro: se gerares 1 parágrafo com >300 palavras contendo múltiplos subtópicos, será rejeitado.
+- PROIBIDO usar "(Ano)" literal, "Segundo autor (Ano)", "Autor et al. (Ano)" genérico, ou "[DADO A VERIFICAR...]" . Toda citação deve ter autor real e ano válido (ex: Silva 2020) ou marca [CITAÇÃO A VERIFICAR] isolada.
+- EXEMPLO CORRETO: "sections":[{"section_id":"1.1","title":"Contextualização","paragraphs":["Texto 80-120w com Gomes (2021)...","Texto 80-120w com UIT (2021)..."]}]
 - Resposta DEVE ser exclusivamente esse objeto JSON.`;
 
   let r1 = await callAI([

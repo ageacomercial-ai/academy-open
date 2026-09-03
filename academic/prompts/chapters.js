@@ -114,10 +114,13 @@ ${pNivel.citacoes}
 
 ${pArea.instrucoes}
 
-FORMATAÇÃO OBRIGATÓRIA:
+FORMATAÇÃO OBRIGATÓRIA (PROVA DE ERRO — MURO = REJEITADO):
 - Português formal académico, SEM aspas a envolver parágrafos inteiros
-- Cada parágrafo: 3-5 frases completas, sem bullets
+- Cada parágrafo: 4-6 frases, 80-120 palavras, sem bullets
 - NÃO uses markdown (***, **, *, acentos graves) dentro dos parágrafos
+- ESTRUTURA ANTI-MURO: CADA subtópico é uma entrada SEPARADA em "sections". NUNCA juntar 2+ subtópicos num único parágrafo gigante.
+- QUEBRA OBRIGATÓRIA: entre parágrafos, fecha a string JSON e abre nova entrada no array. Ex: "paragraphs":["Parágrafo 1 com Gomes (2021)...","Parágrafo 2 com UIT (2021)..."] — NÃO "Parágrafo 1. Parágrafo 2. Parágrafo 3." numa só string.
+- Se o conteúdo tem "Contextualização... Importância... Objetivos..." em sequência sem quebra de parágrafo, será rejeitado como muro.
 ${instrucaoSubtitulos ? '\n' + instrucaoSubtitulos : ''}
 ${gerarInstrucaoAntiIA(capNum, totalCaps, geoInstrucao, pArea.label)}`;
 
