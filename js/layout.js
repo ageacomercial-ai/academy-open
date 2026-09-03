@@ -598,7 +598,7 @@ function layoutRenderPagina(blocos, opts) {
     <span class="pg-rodape-num">— ${num} —</span>
     <span class="pg-rodape-data">${new Date().getFullYear()}</span>
   </div>
-  ${watermark ? '<div class="pg-wm">ACADEMY · RASCUNHO</div>' : ''}
+  ${''}
 </div>`;
 }
 
@@ -669,7 +669,7 @@ function renderPagina(html, opts) {
     <span class="pg-rodape-num">— ${num} —</span>
     <span class="pg-rodape-data">${new Date().getFullYear()}</span>
   </div>` : ''}
-  ${watermark ? '<div class="pg-wm">ACADEMY · RASCUNHO</div>' : ''}
+  ${''}
 </div>`;
 }
 

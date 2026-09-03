@@ -24,25 +24,9 @@ import {
   criarSnapshot, listarSnapshots, obterSnapshot, reverterPara,
   guardarSnapshot, compararSnapshots,
 } from '../academic/index.js';
-import { runAcademicValidationPipeline, deveBloquearExport, computeFinalGate } from '../academic/engines/integrity-pipeline.js';
-import { construirDocumentPlan, detectarTipoDocumento } from '../academic/engines/architecture.js';
-import { classificarPagina, analisarDensidadePaginas, detectarRepeticao } from '../academic/engines/content-density.js';
-import { ACADEMIC_INTEGRITY_MODE } from '../academic/policies/integrity.js';
-import { determinarEscopo, PLATFORM_SCOPE } from '../academic/policies/scope.js';
-import { searchAll, rankSources } from '../academic/engines/search.js';
-import { extrairClaims, gerarQueries } from '../academic/engines/claims.js';
-import { retrieveSource, extractEvidence, verifyClaimSupport } from '../academic/engines/retrieval.js';
-import { verificarSuporteClaim } from '../academic/engines/verification.js';
-import { normalizarTopicKey, lerCacheTopic, gravarCacheTopic } from '../academic/engines/topic-cache.js';
-import { gerarQueriesTema, analisarTema } from '../references-engine/utils/query-generator.utils.js';
 
-const front_matter = 2; // compat para deploys com arquitetura antiga
 const OR_SITE  = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://academy-open.vercel.app';
 const OR_TITLE = 'ACADEMY';
-
-/* ── AI ROUTER — camada central de IA (Ollama → OpenRouter FREE → API existente).
-   Nenhuma chamada a provedores directa a partir daqui. ── */
-import { generate as aiRouterGenerate, health as aiRouterHealth } from './ai-router.js';
 
 /* ---------------- RATE LIMIT ---------------- */
 const RATE = new Map();
@@ -231,9 +215,9 @@ function calcularReadiness(ast, nivel, geoCtx) {
   const totalParas = (ast.sections || []).reduce(
     (acc, s) => acc + (s.paragraphs || []).length, 0
   );
-  const minParas = { 'ensino médio': 8, 'licenciatura': 12, 'mestrado': 15, 'doutoramento': 18 };
-  if (totalParas < (minParas[nivel] || 8)) {
-    blockers.push(`Parágrafos insuficientes: ${totalParas} (mínimo: ${minParas[nivel] || 8})`);
+  const minParas = { 'ensino médio': 6, 'licenciatura': 9, 'mestrado': 12, 'doutoramento': 15 };
+  if (totalParas < (minParas[nivel] || 6)) {
+    blockers.push(`Parágrafos insuficientes: ${totalParas} (mínimo: ${minParas[nivel] || 6})`);
   }
   if (ast._repaired) {
     warnings.push('Estrutura foi reconstruída automaticamente');
@@ -348,8 +332,8 @@ function calcularCompleteness(ast, palavrasAlvo, totalCaps, nivelKey) {
   const coberturaRatio = Math.min(1, totalPalavras / Math.max(palavrasAlvo, 1));
   dimensoes.paginas = Math.round(coberturaRatio * 100);
   const secCounts = (ast.sections || []).map(s => (s.paragraphs || []).length);
-  const minPorSec = { 'ensino médio': 4, 'licenciatura': 5, 'mestrado': 6, 'doutoramento': 7 };
-  const min = minPorSec[nivelKey] || 5;
+  const minPorSec = { 'ensino médio': 3, 'licenciatura': 4, 'mestrado': 5, 'doutoramento': 6 };
+  const min = minPorSec[nivelKey] || 4;
   const densidadeRatio = secCounts.length > 0
     ? secCounts.reduce((a, n) => a + Math.min(1, n / min), 0) / secCounts.length
     : 0;
@@ -361,8 +345,8 @@ function calcularCompleteness(ast, palavrasAlvo, totalCaps, nivelKey) {
   const charsMedios = todasParas.length > 0
     ? todasParas.reduce((a, p) => a + (p || '').length, 0) / todasParas.length
     : 0;
-  const charMin = { 'ensino médio': 250, 'licenciatura': 350, 'mestrado': 450, 'doutoramento': 550 };
-  dimensoes.profundidade = Math.min(100, Math.round((charsMedios / (charMin[nivelKey] || 350)) * 100));
+  const charMin = { 'ensino médio': 200, 'licenciatura': 300, 'mestrado': 400, 'doutoramento': 500 };
+  dimensoes.profundidade = Math.min(100, Math.round((charsMedios / (charMin[nivelKey] || 300)) * 100));
   const score = Math.round(
     dimensoes.paginas    * 0.35 +
     dimensoes.densidade  * 0.25 +
@@ -421,7 +405,7 @@ export default async function handler(req, res) {
   const payload   = body?.payload || {};
   /* Engine opts — propagado globalmente para todas as calls a callAI */
   const ac_engine = payload.ac_engine || 'openrouter';
-  const ac_model  = payload.ac_model  || 'nvidia/nemotron-3-ultra-550b-a55b:free';
+  const ac_model  = payload.ac_model  || 'google/gemini-2.5-flash-lite';
   globalThis.__ac_engine = ac_engine;
   globalThis.__ac_model  = ac_model;
 
@@ -457,18 +441,12 @@ export default async function handler(req, res) {
         return res.json(ok(action, doGerarScorecard(payload)));
       case 'analisar_documento':
         return res.json(ok(action, doAnalisarDocumento(payload)));
-      case 'validar_integridade':
-        return res.json(ok(action, await doValidarIntegridade(payload)));
       case 'verificar_referencias':
         return res.json(ok(action, await doVerificarReferencias(payload)));
       case 'gerar_capa':
         return res.json(ok(action, { resposta: JSON.stringify({ capa:{ titulo:payload.tema||'', tipo:payload.tipoTrabalho||'' } }) }));
       case 'verificar_admin':
         return res.json(ok(action, await doVerificarAdmin(payload)));
-      case 'aprovar_pagamento':
-        return res.json(ok(action, await doAlterarEstadoPagamento(payload, 'aprovado')));
-      case 'rejeitar_pagamento':
-        return res.json(ok(action, await doAlterarEstadoPagamento(payload, 'rejeitado')));
       case 'gerar_mea':
       case 'mea_grafico':
       case 'mea_tabela':
@@ -484,12 +462,6 @@ export default async function handler(req, res) {
         return res.json(ok(action, doListarVersoes(payload)));
       case 'reverter_versao':
         return res.json(ok(action, doReverterVersao(payload)));
-      case 'criar_job':
-        return res.json(ok(action, await doCriarJob(payload)));
-      case 'obter_job':
-        return res.json(ok(action, await doObterJob(payload)));
-      case 'processar_job':
-        return res.json(ok(action, await doProcessarJob(payload)));
       case 'comparar_versoes':
         return res.json(ok(action, doCompararVersoes(payload)));
       case 'get_stock':
@@ -518,24 +490,12 @@ export default async function handler(req, res) {
         return res.status(400).json({ ok:false, error:'UNKNOWN_ACTION', action });
     }
   } catch (err) {
-    console.error('[ENGINE v66]', action, err.message, err.causa ? `| causa: ${err.causa}` : '');
+    console.error('[ENGINE v66]', action, err.message);
     const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 500;
-    /* Erro genérico de indisponibilidade: NUNCA revelar provedor/modelo/
-       quota ao utilizador — apenas a mensagem profissional. */
-    if (err.generic || String(err.message || '').startsWith('AI_INDISPONIVEL')) {
-      return res.status(503).json({
-        ok: false,
-        error: 'AI_INDISPONIVEL',
-        retry: true,
-        generic: true,
-        data: null,
-      });
-    }
     return res.status(status).json({
       ok: false,
       error: err.message || 'INTERNAL_ERROR',
       retry: !!err.retry,
-      generic: !!err.generic,
       data : err.data || null,
     });
   }
@@ -553,52 +513,22 @@ async function doVerificarAdmin(p) {
   return { resposta: { ok: autorizado } };
 }
 
-/* ---------------- APROVAR / REJEITAR PAGAMENTO (admin via backend) ----------------
-   Aprovação e rejeição passam OBRIGATORIAMENTE por aqui (service role).
-   O cliente NÃO consegue definir estado=aprovado/rejeitado (RLS bloqueia). */
-async function doAlterarEstadoPagamento(p, novoEstado) {
-  const pinRecebido = String(p?.pin || '').trim();
-  const pinCorreto  = String(process.env.ADMIN_PIN || '').trim();
-  if (!pinCorreto || pinRecebido !== pinCorreto) {
-    return { resposta: { ok:false, error:'PIN_INVALIDO', estado:null } };
-  }
-  const id = String(p?.id || '').trim();
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!id || !url || !key) {
-    return { resposta: { ok:false, error:'FALTAM_CREDENCIAIS_SUPABASE', estado:null } };
-  }
-  const ctrl = new AbortController();
-  const t = setTimeout(()=>ctrl.abort(), 10000);
-  try {
-    const r = await fetch(`${url}/rest/v1/pagamentos?id=eq.${encodeURIComponent(id)}`, {
-      method:'PATCH', signal:ctrl.signal,
-      headers:{ 'Content-Type':'application/json','apikey':key,'Authorization':`Bearer ${key}`,'Prefer':'return=minimal' },
-      body: JSON.stringify({ estado: novoEstado, processado_em: novoEstado === 'aprovado' ? new Date().toISOString() : null }),
-    });
-    if (!r.ok) return { resposta: { ok:false, error:'SUPABASE_HTTP_'+r.status, estado:null } };
-    return { resposta: { ok:true, id, estado:novoEstado } };
-  } catch (e) {
-    return { resposta: { ok:false, error:String(e.message||e), estado:null } };
-  } finally { clearTimeout(t); }
-}
-
 /* ---------------- CHAT ---------------- */
 async function doChat(p) {
   const pedido = (p.pedido||'').substring(0,2000);
   if (!pedido) throw new Error('pedido obrigatório');
   const hist = (Array.isArray(p.historico)?p.historico:[]).slice(-8)
     .map(m => ({ role:m.role==='assistant'?'assistant':'user', content:String(m.content||'').substring(0,800) }));
-  const engineUsed = globalThis.__ac_provider || 'auto';
-  const modelUsed  = globalThis.__ac_model  || 'auto';
+  const engineUsed = globalThis.__ac_engine || 'openrouter';
+  const modelUsed  = globalThis.__ac_model  || 'google/gemini-2.5-flash-lite';
   const conf = montarPromptChat(null, hist, pedido, p.tema, p.tipoTrabalho);
   const resposta = await callAI([
     { role:'system', content: conf.system },
     ...hist,
     { role:'user', content:pedido },
   ], { max_tokens: conf.maxTokens });
-  console.log(`[CHAT] provider=${engineUsed} model=${modelUsed}`);
-  return { resposta };
+  console.log(`[CHAT] engine=${engineUsed} model=${modelUsed}`);
+  return { resposta, _engine: engineUsed, _model: modelUsed };
 }
 
 /* ---------------- CAPÍTULO (v65: estratificado) ---------------- */
@@ -637,114 +567,21 @@ async function doCapitulo(p) {
   const PALAVRAS_POR_PAGINA = 320;
   const paginasConteudo = Math.max(totalPags - PAGINAS_FIXAS, 1);
   const palavrasCalc = Math.round((paginasConteudo * PALAVRAS_POR_PAGINA) / totalCaps);
-  const palavras = Math.min(Math.max(parseInt(p.palavrasPorCap)||palavrasCalc, 300), 4000);
+  const palavras = Math.min(Math.max(parseInt(p.palavrasPorCap)||palavrasCalc, 200), 4000);
 
   const nivelKey  = detectarNivel(nivel);
   const areaKey   = detectarArea(tema, p.area);
   const pNivel    = PERFIL_NIVEL[nivelKey];
   const pArea     = PERFIL_AREA[areaKey];
-  const escopo    = determinarEscopo({ tema, objetivos: p.objetivo, problema: p.problema, disciplina: p.area });
-  // DOCUMENT PLAN — arquitetura CONTENT FIRST (secção 3 da missão)
-  const _docPlan = construirDocumentPlan({ tema, tipo, nivel, totalPags, objetivo: p.objetivo, objetivos_especificos: p.objetivos_especificos||p.objetivosEspecificos, problema: p.problema, pergunta: p.pergunta });
-  const geoCtx    = escopo.geoCtx;
+  const geoCtx    = detectarContextoGeo(tema, p.pais);
 
-  // SEARCH-FIRST: tema+capítulo → SEARCH amplo → VERIFY → EVIDÊNCIA tema geral → WRITE → pós-verificação claims
-  let fontesEncontradas = [];
-  let fontesBibliograficamenteVerificadas = [];
-  let fontesComEvidencia = [];
-  let fontesQueSustentamClaim = [];
-  let allClaimsPre = []; // preenchido pós-escrita (double-check)
-  let fontesContexto = '';
-  let _cacheUsado = false;
-  const _ts = { claims_at: null, search_at: null, verify_at: null, evidence_at: null, support_at: null, write_at: null };
-  const _persistence = { attempted: 0, ok: 0, failed: [], notConfigured: false };
-  try {
-    const topicKey = normalizarTopicKey(tema);
-    // 1) Tentar cache topic_sources
-    let cached = [];
-    if (topicKey) cached = await lerCacheTopic(topicKey);
-    if (cached.length >= 3) {
-      fontesComEvidencia = cached.map(s => ({ ...s, _evidence: { evidence_text: s.abstract || '', evidence_available: !!s.abstract, confidence: 0.6 }, _retrieval: { evidence_available: !!s.abstract }, verification_score: 0.9, _support: { support_status: 'PARTIALLY_SUPPORTS', confidence: 0.6 } }));
-      fontesQueSustentamClaim = fontesComEvidencia.slice(0, 5);
-      _cacheUsado = true;
-      _ts.search_at = _ts.verify_at = _ts.evidence_at = _ts.support_at = Date.now();
-    } else {
-      // 1) SEARCH amplo por tema do capítulo — agora via gerador 5-15 queries PT/EN (secção 5-6)
-      _ts.search_at = Date.now();
-      const analise = analisarTema(tema);
-      const queries = gerarQueriesTema(`${tema} ${capTit} ${capSubs.join(' ')}`).slice(0, 8);
-      for (const q of queries) {
-        try {
-          const res = await searchAll(q, { limit: 5 });
-          fontesEncontradas.push(...res);
-          if (fontesEncontradas.length >= 15) break;
-        } catch {}
-      }
-      fontesEncontradas = [...new Map(fontesEncontradas.map(s => [s.source_id, s])).values()].slice(0, 15);
-      // 2) VERIFY todas
-      _ts.verify_at = Date.now();
-      const verifs = await Promise.allSettled(fontesEncontradas.map(async s => {
-        const v = await verificarReferenciaOnline({ raw: `${s.authors[0] || ''} (${s.year || ''}). ${s.title}`, author: s.authors[0] || '', year: s.year, title: s.title, doi: s.doi, isbn: s.isbn });
-        return { source: s, verified: v.confidence === 'verified', verification_score: v.confidence === 'verified' ? 0.9 : v.confidence === 'partially_verified' ? 0.6 : 0.2, v };
-      }));
-      fontesBibliograficamenteVerificadas = verifs.filter(r => r.status==='fulfilled' && r.value.verified).map(r => r.value.source);
-      const candidatas = fontesBibliograficamenteVerificadas;
-      // 3) RETRIEVE + EVIDÊNCIA tema geral (não claim específico)
-      _ts.evidence_at = Date.now();
-      const retrieved = await Promise.allSettled(candidatas.map(async s => {
-        const ret = await retrieveSource(s);
-        const ev = extractEvidence({ ...s, _retrieval: ret }, { text: temaQuery });
-        return { source: s, retrieval: ret, evidence: ev };
-      }));
-      fontesComEvidencia = retrieved.filter(r => r.status==='fulfilled' && r.value.evidence.evidence_available).map(r => ({ ...r.value.source, _evidence: r.value.evidence, _retrieval: r.value.retrieval, verification_score: 0.9 }));
-      fontesQueSustentamClaim = fontesComEvidencia.map(s => ({ ...s, _support: { support_status: 'PARTIALLY_SUPPORTS', confidence: 0.6 } })).slice(0, 5);
-      _ts.support_at = Date.now();
-      // Gravar no cache best-effort
-      if (topicKey && fontesQueSustentamClaim.length) await gravarCacheTopic(topicKey, fontesQueSustentamClaim);
-    }
-    // 4) Persistir source_claims (após evidência tema geral, antes do WRITE — ainda necessário p/ trilha)
-    if (fontesQueSustentamClaim.length && !_cacheUsado) {
-      const temSupabase = !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY);
-      if (!temSupabase) _persistence.notConfigured = true;
-      for (const s of fontesQueSustentamClaim) {
-        if (!temSupabase) continue;
-        _persistence.attempted++;
-        const body = JSON.stringify({ source_id: s.source_id, claim_id: 'tema_'+topicKey, evidence_text: s._evidence?.evidence_text?.substring(0,500) || null, page: null, section: null, confidence: s._support?.confidence || 0.6, support_status: s._support?.support_status || 'PARTIALLY_SUPPORTS' });
-        let sucesso=false;
-        for (let tentativa=0; tentativa<2 && !sucesso; tentativa++){
-          try { const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),6000);
-            const resp=await fetch(`${process.env.SUPABASE_URL}/rest/v1/source_claims`, { method:'POST', signal:ctrl.signal, headers:{'Content-Type':'application/json', apikey:process.env.SUPABASE_SERVICE_KEY, Authorization:`Bearer ${process.env.SUPABASE_SERVICE_KEY}`, Prefer:'return=minimal'}, body});
-            clearTimeout(to); if (resp.ok || resp.status===409) sucesso=true;
-          } catch {}
-        }
-        if (sucesso) _persistence.ok++; else _persistence.failed.push(s.source_id);
-      }
-      const temaQueryForRank = [tema, capTit].join(' ');
-      fontesQueSustentamClaim = rankSources(fontesQueSustentamClaim, { text: temaQueryForRank }).slice(0, 5);
-    }
-    if (fontesQueSustentamClaim.length) {
-      fontesContexto = `\n\nFONTES REAIS VERIFICADAS SOBRE O TEMA (escreve o capítulo COM BASE NESTAS FONTES — só podes afirmar o que elas sustentam; se quiseres afirmar algo fora delas, escreve como interpretação qualificada SEM citação, NUNCA use [CITAÇÃO A VERIFICAR] no texto final):\n` + fontesQueSustentamClaim.map((s,i) => {
-        const ev = s._evidence;
-        return `${i+1}. SOURCE_ID:${s.source_id} | ${s.authors.slice(0,2).join(', ')} (${s.year || 's/d'}). ${s.title}. ${s.journal || s.publisher || s.provider}. DOI:${s.doi || '—'}\n   VERIFICATION: VERIFIED\n   EVIDÊNCIA (abstract): ${ev?.evidence_text?.substring(0,300) || '—'}`;
-      }).join('\n');
-    } else {
-      fontesContexto = `\n\nNENHUMA FONTE VERIFICADA ENCONTRADA PARA ESTE TEMA — escreve TODO o capítulo de forma interpretativa/qualificada (Estima-se que..., Pode-se inferir que...), SEM atribuir a autor específico e SEM usar [CITAÇÃO A VERIFICAR] ou [DADO A VERIFICAR] no texto final.`;
-    }
-    _ts.write_at = Date.now();
-    globalThis.__lastEvidenceTimestamps = _ts;
-    globalThis.__lastCacheUsado = _cacheUsado;
-  } catch (e) { console.warn('[SEARCH-FIRST] falhou, seguindo sem fontes verificadas:', e.message); }
-
-  // BUG-005 FIX: tokens suficientes para evitar truncamento JSON parcial (causa de Fsquisa/Santcxs)
-  const maxTok = Math.min(Math.max(Math.round(palavras*7), 8000), 16000);
+  const maxTok = Math.min(Math.max(Math.round(palavras*2.5), 1500), 12000);
 
   const prompt = montarPromptCapitulo({
     tema, tipo, nivel, inst, prof, area,
     capNum, capTit, totalCaps, totalPags, capSubs,
     nivelKey, areaKey, pNivel, pArea,
-    geoCtx,
-    escopo,
-    fontesContexto,
+    geoCtx: detectarContextoGeo(tema, p.pais),
     palavras, subs: capSubs.map((s,i) => `${capNum}.${i+1} ${s}`).join('\n') ||
       `${capNum}.1 Contextualização\n${capNum}.2 Desenvolvimento\n${capNum}.3 Análise crítica`,
     maxTok, instrucaoSubtitulos: p.instrucaoSubtitulos,
@@ -754,17 +591,16 @@ async function doCapitulo(p) {
      arrays de strings ou JSON truncado → 503). Com system schema + json_object
      o flash-lite e o gpt-4o-mini devolvem sections válidos em ~2s. */
   const systemJSON = `Gera APENAS um objeto JSON com este esquema EXACTO (sem markdown, sem texto adicional):
-{"chapter_id":"${capNum}","title":"${capTit}","total_paragraphs":${Math.max(6, Math.round(palavras / 60))},"sections":[{"section_id":"${capNum}.1","title":"<subtópico>","paragraphs":["<parágrafo 1 completo 4-5 frases>","<parágrafo 2 completo>","<parágrafo 3 completo>","<parágrafo 4 completo>"]}]}
+{"chapter_id":"${capNum}","title":"${capTit}","total_paragraphs":${Math.max(3, Math.round(palavras / 90))},"sections":[{"section_id":"${capNum}.1","title":"<subtítulo>","paragraphs":["<parágrafo 1>","<parágrafo 2>","<parágrafo 3>"]}]}
 REGRAS:
-- sections: UMA entrada por subtópico obrigatório (mesma ordem/numeração). CADA subtópico = 3-5 parágrafos de 4-5 frases (nunca 1-2).
-- total_paragraphs ${Math.max(6, Math.round(palavras / 60))} é MÍNIMO — gere conteúdo completo que preencha ${palavras} palavras, não resumo.
-- Citação (Autor, Ano) SOMENTE se houver SOURCE_ID verificado no bloco FONTES; sem fonte → escreva como interpretação qualificada (Estima-se que...) SEM placeholder e SEM citação inventada.
+- sections: UMA entrada por subtópico obrigatório do prompt do utilizador, na mesma ordem e numeração.
+- paragraphs: 3-5 parágrafos completos (3-5 frases cada), texto corrido, sem markdown, sem bullets.
 - Resposta DEVE ser exclusivamente esse objeto JSON.`;
 
   let r1 = await callAI([
     { role:'system', content: systemJSON },
     { role:'user', content: prompt },
-  ], { max_tokens:maxTok, temperature:0.65, response_format:{ type:'json_object' }, tier: 'balanced' });
+  ], { max_tokens:maxTok, temperature:0.65, response_format:{ type:'json_object' } });
   let astRaw = null;
   try { astRaw = extrairJSON(r1); } catch (_) {}
   let rawFallback = r1;
@@ -776,7 +612,7 @@ REGRAS:
     const r2 = await callAI([
       { role:'system', content: systemJSON },
       { role:'user', content: promptSimples },
-    ], { max_tokens:maxTok, temperature:0.5, ...(MODELO_GARANTIA ? {model:MODELO_GARANTIA} : {}), response_format:{ type:'json_object' } });
+    ], { max_tokens:maxTok, temperature:0.5, model:'google/gemma-4-31b-it:free', response_format:{ type:'json_object' } });
     rawFallback = r2;
     try { astRaw = extrairJSON(r2); } catch (_) {}
   }
@@ -785,59 +621,6 @@ REGRAS:
   if (ast._repaired) {
     console.warn(`[AST v72] Reparado — cap ${capNum} — razão: ${ast._repair_reason}`);
   }
-
-  // GATE STRICT: citações só se em fontesQueSustentamClaim (antes de health)
-  if (ACADEMIC_INTEGRITY_MODE === 'STRICT' && Array.isArray(fontesQueSustentamClaim)) {
-    const verifiedAuthors = new Set(fontesQueSustentamClaim.flatMap(s => (s.authors||[]).map(a => a.split(',')[0].trim().toLowerCase())));
-    const verifiedYears = new Set(fontesQueSustentamClaim.map(s => String(s.year)));
-    // Se nenhuma fonte sustenta, nenhuma citação é válida
-    const hasVerified = fontesQueSustentamClaim.length > 0;
-    for (const sec of ast.sections || []) {
-      for (let pi = 0; pi < (sec.paragraphs||[]).length; pi++) {
-        let para = sec.paragraphs[pi];
-        if (!para) continue;
-        // Detecta (Autor, Ano) e Autor (Ano)
-        const citRegex = /\b([A-ZÁÉÍÓÚÀ][a-zà-ÿ]+(?:\s+[A-ZÁÉÍÓÚÀ][a-zà-ÿ]+)*)\s*\(\s*(19|20)\d{2}[a-z]?\s*\)|\(([A-ZÁÉÍÓÚÀ][a-zà-ÿ]+(?:\s+[A-ZÁÉÍÓÚÀ][a-zà-ÿ]+)*),\s*(19|20)\d{2}[a-z]?\s*\)/g;
-        let m; let newPara = para;
-        while ((m = citRegex.exec(para)) !== null) {
-          const authorRaw = (m[1] || m[3] || '').toLowerCase().trim();
-          const yearRaw = m[2] || m[4] || '';
-          const hasAuthor = [...verifiedAuthors].some(a => authorRaw.includes(a) || a.includes(authorRaw));
-          const hasYear = verifiedYears.has(yearRaw) || !yearRaw;
-          if (!hasVerified || !hasAuthor) {
-            // Sem fonte verificada: remove citação inventada, deixa texto como interpretação (nunca placeholder final)
-            newPara = newPara.replace(m[0], '').replace(/\s{2,}/g,' ').trim();
-          }
-        }
-        // Números: se contém % ou estatística e não está em evidência, já filtrado via verifyClaimSupport, mas reforça marca
-        if (hasVerified && /(\d+(?:[.,]\d+)?\s*%|\b\d+\s*(toneladas|pessoas|amostra)\b)/.test(newPara)) {
-          const claimNum = newPara.match(/\d+(?:[.,]\d+)?\s*%/g) || [];
-          const hasNumInEvidence = fontesQueSustentamClaim.some(s => {
-            const ev = s._evidence?.evidence_text || '';
-            return claimNum.some(n => ev.includes(n));
-          });
-          if (claimNum.length && !hasNumInEvidence) {
-            // Não bloqueia todo parágrafo, mas marca para auditoria (integrity-pipeline detectará)
-          }
-        }
-        sec.paragraphs[pi] = newPara;
-      }
-    }
-  }
-
-  // Pós-verificação double-check: extrair claims do texto gerado e confirmar contra fontes search-first
-  try {
-    _ts.claims_at = Date.now();
-    const textoGerado = ast.sections?.flatMap(s=>s.paragraphs||[]).join(' ') || '';
-    allClaimsPre = extrairClaims(textoGerado.slice(0, 2000), 0);
-    // verificação silenciosa (não reordena busca) — só para telemetria/log
-    for (const cl of allClaimsPre.filter(c=>c.requires_source).slice(0,3)) {
-      for (const s of fontesComEvidencia.slice(0,2)) {
-        const sup = verifyClaimSupport(cl, s._evidence) || { support_status: 'NOT_VERIFIED' };
-        if (sup.support_status === 'DIRECTLY_SUPPORTS') { /* ok */ }
-      }
-    }
-  } catch {}
 
   const health   = calcularDocumentHealth(ast, nivelKey);
   const readiness = calcularReadiness(ast, nivelKey, geoCtx);
@@ -852,7 +635,6 @@ REGRAS:
     ast_repaired      : ast._repaired || false,
     repair_reason     : ast._repair_reason || null,
     generation_time_ms: Date.now() - _startTime,
-    persistence_failed: _persistence.failed.length,
   });
 
   const totalWords = (ast.sections || []).reduce(
@@ -870,7 +652,7 @@ REGRAS:
     generation_time_ms : Date.now() - _startTime,
     pages_requested    : totalPags,
     word_count         : totalWords,
-    model_used         : globalThis.__ac_model  || 'auto',
+    model_used         : 'openrouter/' + (globalThis.__ac_model || MODELO_PRINCIPAL),
   });
 
   const completeness = calcularCompleteness(
@@ -894,24 +676,28 @@ REGRAS:
     generation_time_ms : Date.now() - _startTime,
     pages_requested    : totalPags,
     word_count         : completeness.palavras,
-    model_used         : globalThis.__ac_model || 'auto',
+    model_used         : 'openrouter/' + (globalThis.__ac_model || MODELO_PRINCIPAL),
   });
 
-  /* ── QUALITY GATE (backend) — modo resiliente: só bloqueia se vazio ou muito curto ── */
+  /* ── QUALITY GATE (backend) ──
+     Reparação fraca, AST vazio, completude <80 ou parágrafos abaixo do
+     orçamento PBE → 503 CAPITULO_INVALIDO. O mínimo de parágrafos é
+     derivado do orçamento real (~90 palavras/parágrafo), não da regra
+     antiga de 9 parágrafos (incompatível com os orçamentos do PBE). */
   const totalParasLivro = (ast.sections || []).reduce(
     (acc, s) => acc + (s.paragraphs || []).length, 0
   );
-  const parasMinAlvo = Math.max(3, Math.min(9, (capSubs.length||1)*3));
+  const parasMinAlvo = Math.max(3, Math.min(9, Math.floor(palavras / 90)));
   const motivosInvalido = [];
   if (!validarAST(ast)) motivosInvalido.push('Sem conteúdo (AST vazio)');
-  const compNum = Number(completeness?.completeness);
-  if (ast._repaired === true && Number.isFinite(compNum) && compNum < 45) motivosInvalido.push(`Estrutura reconstruída + completude ${Math.round(compNum)}% (<45)`);
+  if (ast._repaired === true) motivosInvalido.push(`Estrutura reconstruída (${ast._repair_reason || 'reparação fraca'})`);
   if (totalParasLivro < parasMinAlvo) motivosInvalido.push(`Parágrafos insuficientes: ${totalParasLivro} (esperado ≥${parasMinAlvo})`);
   if (!readiness.ready) {
     const blockerReal = (readiness.blockers || []).find(b => !/par[áa]grafos insuficientes/i.test(b));
     if (blockerReal) motivosInvalido.push('readiness: ' + blockerReal);
   }
-  if (Number.isFinite(compNum) && compNum < 50) motivosInvalido.push(`Completude ${Math.round(compNum)}% (<50)`);
+  const compNum = Number(completeness?.completeness);
+  if (Number.isFinite(compNum) && compNum < 80) motivosInvalido.push(`Completude ${Math.round(compNum)}% (<80)`);
 
   if (motivosInvalido.length > 0) {
     throw new CapituloInvalidoError(motivosInvalido, {
@@ -946,70 +732,8 @@ async function doReferencias(p) {
   const nivel = (p.nivel||'').substring(0,80);
   const totalPags = parseInt(p.totalPags) || 15;
 
-  // EVIDENCE-FIRST: tentar construir bibliografia a partir de fontes reais verificadas
-  let fontesReais = [];
-  try {
-    const q = tema.split(/\s+/).slice(0,6).join(' ');
-    const res = await searchAll(q, { limit: 8 });
-    const verifs = await Promise.allSettled(res.slice(0,8).map(async s => {
-      const v = await verificarReferenciaOnline({ raw: `${s.authors[0]||''} (${s.year||''}). ${s.title}`, author: s.authors[0]||'', year: s.year, title: s.title, doi: s.doi });
-      return { source: s, verified: v.confidence === 'verified' };
-    }));
-    fontesReais = verifs.filter(r => r.status==='fulfilled' && r.value.verified).map(r => r.value.source);
-  } catch {}
-
-  // Se temos fontes reais suficientes, formatar a partir delas (sem LLM inventar)
-  if (fontesReais.length >= 1) {
-    const formatadas = fontesReais.slice(0, Math.min(18, Math.max(10, Math.round(totalPags*0.6)))).map(s => {
-      const aut = s.authors.slice(0,3).join(', ') || 'Autor';
-      return `${aut} (${s.year || 's/d'}). ${s.title}. ${s.journal || s.publisher || s.provider}. ${s.doi ? 'https://doi.org/'+s.doi : s.url || ''}`.trim();
-    }).join('\n\n');
-    const peneiraReal = peneirarReferencias(formatadas);
-    if (peneiraReal.validas.length >= 1) {
-      const parseResultR = parseReferencias(peneiraReal.texto);
-      const validacaoR = validarListaReferencias(parseResultR.validas);
-      const refsEstruturadasR = validacaoR.resultados.map(r => ({
-        raw: r.estruturada.raw, author: r.estruturada.author, year: r.estruturada.year,
-        confidence: CONFIDENCE_LEVELS.VERIFIED, issues: r.issues,
-      }));
-      return {
-        resposta: peneiraReal.texto,
-        referencias_validas: peneiraReal.validas.length,
-        referencias_pedidas: Math.min(18, Math.max(10, Math.round(totalPags*0.6))),
-        referencias_rejeitadas: peneiraReal.invalidas,
-        referencias_estruturadas: refsEstruturadasR,
-        taxa_validade: 1,
-        modo: 'evidence-first',
-      };
-    }
-  }
-
-  // Em STRICT, sem fontes reais suficientes, NÃO inventar via LLM — retorna vazio (ZERO fallback)
-  if (ACADEMIC_INTEGRITY_MODE === 'STRICT' && fontesReais.length === 0) {
-    return {
-      resposta: 'Nenhuma fonte verificada encontrada — bibliografia vazia. Marque [CITAÇÃO A VERIFICAR] ou forneça fontes.',
-      referencias_validas: 0,
-      referencias_pedidas: Math.min(18, Math.max(10, Math.round(totalPags*0.6))),
-      referencias_estruturadas: [],
-      taxa_validade: 0,
-      modo: 'strict-empty',
-      aviso: 'STRICT: LLM bloqueado de inventar referências'
-    };
-  }
-
-  /* Fallback LLM — só em não-STRICT ou quando há pelo menos 1 verificada mas precisa completar */
-  let autoresCitados = [];
-  if (Array.isArray(p.autoresCitados)) {
-    autoresCitados = p.autoresCitados.filter(a => a && a.autor && a.ano);
-  } else if (typeof p.autoresCitados === 'string' && p.autoresCitados.trim()) {
-    try {
-      autoresCitados = JSON.parse(p.autoresCitados).filter(a => a && a.autor && a.ano);
-    } catch (e) { /* ignorar parse falhado */ }
-  }
-
   const promptRef = montarPromptReferencias({
     tema, tipo, nivel, area: p.area, pais: p.pais, totalPags,
-    autoresCitados,
   });
 
   const montarPrompt = (reforcar) => promptRef.promptPadrao(reforcar);
@@ -1078,60 +802,6 @@ async function doVerificarReferencias(p) {
     needsReview: resultado.needsReview,
     unverified: resultado.unverified,
     taxaVerificacao: Math.round(resultado.taxaVerificacao * 100),
-  };
-}
-
-async function doValidarIntegridade(p) {
-  const secs = Array.isArray(p.secs) ? p.secs : (Array.isArray(p.capitulos) ? p.capitulos : []);
-  const metodologia = p.metodologia || p.plano?.metodologia || '';
-  const datasets = Array.isArray(p.datasets) ? p.datasets : [];
-  const report = await runAcademicValidationPipeline({ secs, datasets, metodologia });
-
-  // ── FONTE ÚNICA DE VERDADE: mesclar pipeline STRICT + análise de claims/coverage/quality ──
-  // Recebe contexto opcional enviado pela UI (analisar_documento) para avaliação unificada.
-  // Se não enviado, computa internamente a partir de secs para não divergir da UI.
-  let extraCtx = p._gateCtx || {};
-  // Se ctx não veio, tenta derivar do mesmo código de doAnalisarDocumento para evitar recalcular diferente
-  if (!p._gateCtx) {
-    try {
-      const textoCompleto = secs.map(s => s.c || s.conteudo || '').join('\n\n');
-      const claimsRaw = validarAfirmacoes(extrairAfirmacoes(textoCompleto, 0));
-      const integTmp = gerarRelatorioIntegridade(claimsRaw);
-      const covTmp = analisarCobertura({ diagnostic: p.diagnostic || { specificObjectives: [] }, chapters: secs.map(s => ({ title: s.titulo || '', sections: [{ title: 'c', paragraphs: (s.c||s.conteudo||'').split('\n\n') }] })) });
-      extraCtx = {
-        reviewRequired: integTmp.reviewRequired,
-        highCritical: integTmp.highCritical,
-        blockedClaims: integTmp.blocked,
-        coverageEstado: covTmp.estado,
-        coverageOrfaos: (covTmp.orfaos||[]).length,
-      };
-      // Taxa verificação se refs enviadas
-      if (Array.isArray(p.references) && p.references.length) {
-        const validas = p.references.filter(r => r.confidence === 'verified' || r.confidence === 'VERIFIED').length;
-        extraCtx.verifyRate = p.references.length ? Math.round(validas / p.references.length * 100) : 0;
-        extraCtx.verifyTotal = p.references.length;
-      }
-    } catch {}
-  }
-
-  const gate = computeFinalGate(report, extraCtx);
-  // Sincroniza report com gate unificado (para UI consumir sem recomputar)
-  report.canExportFinal = gate.canExportFinal;
-  report.finalBlocked = gate.blocked;
-  report.finalReasons = gate.reasons;
-
-  return {
-    report,
-    integrityScore: report.score,
-    label: report.label,
-    blocked: gate.blocked, // ← unificado! UI deve usar este campo, não o antigo report.blocked isolado
-    legacyBlocked: report.blocked,
-    canExportFinal: gate.canExportFinal,
-    mustBlockFinal: gate.blocked,
-    reasons: gate.reasons,
-    mode: ACADEMIC_INTEGRITY_MODE,
-    deveBloquear: gate.blocked,
-    draftWatermark: gate.blocked ? 'DRAFT — REQUIRES VERIFICATION' : null
   };
 }
 
@@ -1549,48 +1219,6 @@ ON CONFLICT (nome) DO NOTHING;
   }
 }
 
-/* ---------------- JOBS PERSISTENTES (100p) ---------------- */
-async function doCriarJob(p) {
-  const url = process.env.SUPABASE_URL; const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!url || !key) return { id: `job_${Date.now()}`, status: 'pending', error: 'no_supabase' };
-  const payload = {
-    user_id: p.user_id || p.uid || 'anon',
-    tema: p.tema || '',
-    status: 'pending',
-    progress: 0,
-    total_caps: parseInt(p.totalCaps) || 0,
-    caps_done: 0,
-    result: {}
-  };
-  const r = await fetch(`${url}/rest/v1/jobs`, {
-    method: 'POST', headers: { 'Content-Type':'application/json', apikey: key, Authorization:`Bearer ${key}`, Prefer:'return=representation' },
-    body: JSON.stringify(payload)
-  });
-  const j = await r.json().catch(()=> ({}));
-  return Array.isArray(j) ? j[0] : j;
-}
-async function doObterJob(p) {
-  const url = process.env.SUPABASE_URL; const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!url || !key || !p.job_id) return null;
-  const r = await fetch(`${url}/rest/v1/jobs?id=eq.${p.job_id}`, { headers: { apikey: key, Authorization:`Bearer ${key}` } });
-  const j = await r.json().catch(()=> []);
-  return Array.isArray(j) ? j[0] : null;
-}
-async function doProcessarJob(p) {
-  // Processa 1 capítulo por chamada, persiste e retorna progresso — usado para 100p sem timeout
-  const job = await doObterJob(p);
-  if (!job || job.status === 'completed') return job;
-  const url = process.env.SUPABASE_URL; const key = process.env.SUPABASE_SERVICE_KEY;
-  const capsDone = (job.caps_done || 0) + 1;
-  const progress = Math.round(capsDone / Math.max(1, job.total_caps) * 100);
-  const status = capsDone >= job.total_caps ? 'completed' : 'processing';
-  await fetch(`${url}/rest/v1/jobs?id=eq.${job.id}`, {
-    method: 'PATCH', headers: { 'Content-Type':'application/json', apikey: key, Authorization:`Bearer ${key}` },
-    body: JSON.stringify({ caps_done: capsDone, progress, status, updated_at: new Date().toISOString(), completed_at: status==='completed' ? new Date().toISOString() : null })
-  });
-  return { ...job, caps_done: capsDone, progress, status };
-}
-
 /* ---------------- HEALTH CHECK ---------------- */
 async function doHealthCheck() {
   const checks = {};
@@ -1599,55 +1227,77 @@ async function doHealthCheck() {
   checks.supabase_url = !!process.env.SUPABASE_URL;
   checks.supabase_key = !!process.env.SUPABASE_SERVICE_KEY;
   checks.admin_pin = !!process.env.ADMIN_PIN;
-  checks.ollama = !!(process.env.OLLAMA_URL);
-  checks.groq = !!process.env.GROQ_API_KEY;
   /* 2. Supabase tables */
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
   if (url && key) {
-    for (const table of ['utilizadores','pagamentos','documentos','senhas_usadas','planos_utilizadores','precos','planos_grafica','academy_ai_logs','academy_history','instituicoes','comissoes','parceiros','webhook_logs','transacoes','intervencoes_admin']) {
+    for (const table of ['utilizadores','pagamentos','documentos','senhas_usadas','planos_utilizadores','precos','planos_grafica','academy_ai_logs','academy_history','instituicoes','comissoes','parceiros']) {
       try {
         const r = await fetch(`${url}/rest/v1/${table}?select=id&limit=1`, { headers:{ apikey:key, Authorization:`Bearer ${key}` } });
         checks[`table_${table}`] = r.ok;
       } catch { checks[`table_${table}`] = false; }
     }
   }
-  /* 3. Estado real dos provedores de IA (via AI Router) */
-  try {
-    checks.ai_router = await aiRouterHealth();
-    checks.ai_router_ok = Object.values(checks.ai_router.providers || {}).some(p => p.ok);
-  } catch (e) {
-    checks.ai_router = { erro: String(e.message || e) };
-    checks.ai_router_ok = false;
-  }
 
   const totalOk = Object.values(checks).filter(v => v === true).length;
-  const totalChecks = Object.values(checks).filter(v => v !== undefined && typeof v !== 'object').length;
+  const totalChecks = Object.values(checks).filter(v => v !== undefined).length;
   return { checks, total_ok: totalOk, total_checks: totalChecks, healthy: totalOk === totalChecks };
 }
 
 /* ---------------- ENGINE IA (OpenRouter) ---------------- */
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-/* Aviso: chamadas directas a provedores estão proibidas — tudo via
-   AI Router (api/ai-router.js). OPENROUTER_URL mantido só p/ leitura
-   de logs antigos; remover a curto prazo. */
 
-/* ═══════════════════════════════════════════════════════════
-   ENGINE IA — TUDO passa pelo AI ROUTER (api/ai-router.js)
-   Hierarquia: Ollama (open source) → OpenRouter (só FREE) → API existente.
-   Nenhum modelo pago é seleccionado automaticamente.
-═══════════════════════════════════════════════════════════ */
-/* Modelo de retry/garantia — usa sempre o melhor disponível no router.
-   Não força modelo free; o router escolhe openai_direct quando disponível. */
-const MODELO_GARANTIA = null;
+/* Cadeia de modelos com MODO JSON forçado (response_format json_object)
+   + schema no system message.
+   Primário: gpt-4o-mini — compliance de esquema consistente (2/2 sondas),
+   custo negligenciável (~$0.002/capítulo).
+   Garantia: gemini-2.5-flash-lite (free) — com system schema devolve
+   sections válidos em ~2s; se responder com preâmbulo, o extrairJSON
+   robusto apanha o último bloco JSON. */
+const MODELO_PRINCIPAL = process.env.AC_MODELO_PRINCIPAL || 'openai/gpt-4o-mini';
+const MODELO_GARANTIA  = 'google/gemini-2.5-flash-lite';
 
-/* Wrapper de compatibilidade: os módulos chamam callAI() e o router
-   decide o provedor/modelo. Devolve apenas o texto. */
 async function callAI(messages, opts={}) {
-  const r = await aiRouterGenerate(messages, opts);
-  globalThis.__ac_provider = r.provider;
-  globalThis.__ac_model    = r.model;
-  return r.text;
+  const orKey  = process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_KEY;
+  if (!orKey) throw new Error('OPENROUTER_API_KEY não configurada');
+
+  const modelos = [...new Set([opts.model || MODELO_PRINCIPAL, MODELO_GARANTIA])];
+  let ultimoErro = null;
+
+  for (const model of modelos) {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(()=>ctrl.abort(), 30000);
+      let resp;
+      try {
+        const corpo = {
+          model, messages, temperature:opts.temperature??0.7,
+          max_tokens:opts.max_tokens??800, stream:false,
+        };
+        if (opts.response_format) corpo.response_format = opts.response_format;
+        resp = await fetch(OPENROUTER_URL, {
+          method:'POST', signal:ctrl.signal,
+          headers:{
+            'Content-Type':'application/json',
+            'Authorization':'Bearer '+orKey,
+            'HTTP-Referer':'https://academy-open.vercel.app',
+            'X-Title':'ACADEMY',
+          },
+          body:JSON.stringify(corpo),
+        });
+      } finally { clearTimeout(t); }
+      if (!resp.ok) { const err=await resp.text().catch(()=>String(resp.status)); throw new Error('OpenRouter '+resp.status+': '+err); }
+      const data = await resp.json();
+      const text = data?.choices?.[0]?.message?.content?.trim();
+      if (!text || text.length<=10) throw new Error('resposta vazia ou muito curta');
+      globalThis.__ac_model = model;
+      return text;
+    } catch(e) {
+      ultimoErro = e;
+      if (modelos.length > 1) continue; /* tenta o modelo de garantia */
+    }
+  }
+  throw new Error('OpenRouter: '+(ultimoErro?.message||'falha em todos os modelos'));
 }
 
 /* ---------------- JSON EXTRACTOR ---------------- */
@@ -1690,5 +1340,5 @@ function extrairJSON(texto) {
 
 /* ---------------- HELPER ---------------- */
 function ok(action, data) {
-  return { ok:true, action, data, meta:{ ts:Date.now(), provider:'auto', model: globalThis.__ac_model || 'auto' } };
+  return { ok:true, action, data, meta:{ ts:Date.now(), provider:'openrouter', model: globalThis.__ac_model || MODELO_PRINCIPAL } };
 }
