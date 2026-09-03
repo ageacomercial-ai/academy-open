@@ -25,6 +25,8 @@ import {
   guardarSnapshot, compararSnapshots,
 } from '../academic/index.js';
 import { runAcademicValidationPipeline, deveBloquearExport, computeFinalGate } from '../academic/engines/integrity-pipeline.js';
+import { construirDocumentPlan, detectarTipoDocumento } from '../academic/engines/architecture.js';
+import { classificarPagina, analisarDensidadePaginas, detectarRepeticao } from '../academic/engines/content-density.js';
 import { ACADEMIC_INTEGRITY_MODE } from '../academic/policies/integrity.js';
 import { determinarEscopo, PLATFORM_SCOPE } from '../academic/policies/scope.js';
 import { searchAll, rankSources } from '../academic/engines/search.js';
@@ -640,6 +642,8 @@ async function doCapitulo(p) {
   const pNivel    = PERFIL_NIVEL[nivelKey];
   const pArea     = PERFIL_AREA[areaKey];
   const escopo    = determinarEscopo({ tema, objetivos: p.objetivo, problema: p.problema, disciplina: p.area });
+  // DOCUMENT PLAN — arquitetura CONTENT FIRST (secção 3 da missão)
+  const _docPlan = construirDocumentPlan({ tema, tipo, nivel, totalPags, objetivo: p.objetivo, objetivos_especificos: p.objetivos_especificos||p.objetivosEspecificos, problema: p.problema, pergunta: p.pergunta });
   const geoCtx    = escopo.geoCtx;
 
   // SEARCH-FIRST: tema+capítulo → SEARCH amplo → VERIFY → EVIDÊNCIA tema geral → WRITE → pós-verificação claims
