@@ -25,6 +25,15 @@ import {
   guardarSnapshot, compararSnapshots,
 } from '../academic/index.js';
 
+import {
+  construirGrafoClaimEvidence,
+  detetarRepeticao,
+  detetarOrfas,
+} from '../academic/engines/claim-evidence-graph.js';
+
+import { executarQualityGate } from '../academic/engines/quality-gate.js';
+import { analisarDensidadePaginas, repararLayout } from '../academic/engines/page-density.js';
+
 const OR_SITE  = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://academy-open.vercel.app';
 const OR_TITLE = 'ACADEMY';
 
@@ -685,28 +694,51 @@ REGRAS ESTRUTURAIS (PROVA DE ERRO):
     model_used         : 'openrouter/' + (globalThis.__ac_model || MODELO_PRINCIPAL),
   });
 
-  /* ── QUALITY GATE (backend) ──
-     Reparação fraca, AST vazio, completude <80 ou parágrafos abaixo do
-     orçamento PBE → 503 CAPITULO_INVALIDO. O mínimo de parágrafos é
-     derivado do orçamento real (~90 palavras/parágrafo), não da regra
-     antiga de 9 parágrafos (incompatível com os orçamentos do PBE). */
-  const totalParasLivro = (ast.sections || []).reduce(
-    (acc, s) => acc + (s.paragraphs || []).length, 0
-  );
-  const parasMinAlvo = Math.max(3, Math.min(9, Math.floor(palavras / 90)));
+  /* ── QUALITY GATE MULTIDIMENSIONAL (v76) ──
+     Substitui o gate de word-count por 8 dimensões: estrutura, conteúdo,
+     evidência, argumentação, cobertura, citações, escrita, layout.
+     Score ≥60 AND zero erros críticos → 200 OK. Caso contrário → 503. */
+  const capitulosParaGrafo = (ast.sections || []).map((s, i) => ({
+    num: capNum,
+    titulo: s.title || '',
+    c: (s.paragraphs || []).join(' '),
+  }));
+
+  const grafoClaimEvidence = construirGrafoClaimEvidence(capitulosParaGrafo);
+  const repeticao = detetarRepeticao(capitulosParaGrafo);
+
+  const referenciasBrutas = parseReferencias(
+    (ast.sections || []).filter(s => /refer|bibliograf/i.test(s.title || ''))
+      .flatMap(s => s.paragraphs || []).join('\n')
+  ).validas;
+  const orfas = detetarOrfas(referenciasBrutas, capitulosParaGrafo.map(c => c.c).join(' '));
+
+  const blocoPaginas = ast.sections?.flatMap(s =>
+    (s.paragraphs || []).map(p => [{ tipo: 'paragrafo', texto: p }])
+  ) || [];
+  const densidadePaginas = analisarDensidadePaginas(blocoPaginas);
+  const reparacaoLayout = repararLayout(densidadePaginas, []);
+
+  const gate = executarQualityGate({
+    capitulos: capitulosParaGrafo,
+    referencias: referenciasBrutas,
+    grafoClaimEvidence,
+    repeticao,
+    orfas,
+    documentPlan: null,
+    objetivo: p.objetivo || tema,
+    totalPags,
+  });
+
   const motivosInvalido = [];
+  if (!gate.can_export) {
+    gate.erros_criticos.forEach(e => motivosInvalido.push(`CRÍTICO: ${e}`));
+    gate.erros.forEach(e => motivosInvalido.push(e.message || String(e)));
+  }
   if (!validarAST(ast)) motivosInvalido.push('Sem conteúdo (AST vazio)');
-  if (ast._repaired === true) motivosInvalido.push(`Estrutura reconstruída (${ast._repair_reason || 'reparação fraca'})`);
-  if (totalParasLivro < parasMinAlvo) motivosInvalido.push(`Parágrafos insuficientes: ${totalParasLivro} (esperado ≥${parasMinAlvo})`);
-  // DENSIDADE BALANCED 350-650 — só libera BALANCED (referências isentas, ASCII-safe)
+  if (ast._repaired === true && gate.score < 70) motivosInvalido.push(`Estrutura reconstruída + score baixo (${gate.score})`);
   const isRefBackend = /refer|bibliograf/i.test(capTit);
   if (!isRefBackend && totalWords < 350) motivosInvalido.push(`Densidade VERY_EMPTY: ${totalWords} palavras (<350 mínimo BALANCED)`);
-  if (!readiness.ready) {
-    const blockerReal = (readiness.blockers || []).find(b => !/par[áa]grafos insuficientes/i.test(b));
-    if (blockerReal) motivosInvalido.push('readiness: ' + blockerReal);
-  }
-  const compNum = Number(completeness?.completeness);
-  if (Number.isFinite(compNum) && compNum < 60) motivosInvalido.push(`Completude ${Math.round(compNum)}% (<60)`);
 
   if (motivosInvalido.length > 0) {
     throw new CapituloInvalidoError(motivosInvalido, {
@@ -715,6 +747,7 @@ REGRAS ESTRUTURAIS (PROVA DE ERRO):
       readiness,
       confidence,
       completeness,
+      quality_gate: gate,
       reparado: ast._repaired || false,
       razao    : ast._repair_reason || null,
       motivos  : motivosInvalido,
@@ -729,6 +762,9 @@ REGRAS ESTRUTURAIS (PROVA DE ERRO):
     readiness,
     confidence,
     completeness,
+    quality_gate: gate,
+    densidade   : densidadePaginas,
+    layout_fix  : reparacaoLayout,
     _guaranteed : true,
   };
 }

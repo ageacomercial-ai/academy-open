@@ -643,6 +643,16 @@ function validarQualidadeCapitulo(raw, textoFinal, ast) {
       const comp = Math.round(raw.completeness.completeness);
       if (comp < 65) motivos.push(`Completude ${comp}% (<65)`);
     }
+    // Multi-dimensional quality gate (v76)
+    if (raw.quality_gate) {
+      const qg = raw.quality_gate;
+      if (!qg.can_export) {
+        (qg.erros_criticos || []).forEach(e => motivos.push(`CRÍTICO: ${e}`));
+      }
+      if (typeof qg.score === 'number' && qg.score < 60) {
+        motivos.push(`Quality Gate score: ${qg.score}/100 (<60)`);
+      }
+    }
   }
   const limpo = String(textoFinal || '').trim();
   if (limpo.length < 60) motivos.push('conteúdo insuficiente');
@@ -1002,12 +1012,14 @@ async function iniciarGer(retomar) {
     secsArr[i].c   = textoFinal;
     secsArr[i].blocks = blkExtrair({ c: textoFinal });
     secsArr[i].ast = astFinal;
+    if (rawEnvelope?.quality_gate) secsArr[i].quality_gate = rawEnvelope.quality_gate;
     State.set('secs', secsArr);
 
     const healthLabel = secsArr[i].health  ? ` · ${secsArr[i].health.health}% ${secsArr[i].health.label}` : '';
     const readyLabel  = secsArr[i].readiness ? (secsArr[i].readiness.ready ? ' ✓' : ' ⚠') : '';
+    const qgLabel     = secsArr[i].quality_gate ? ` · QG:${secsArr[i].quality_gate.score}` : '';
     const wordCount   = textoFinal ? textoFinal.split(/\s+/).length : 0;
-    aSecDOM(i, 'p', `✓ PRONTO · ${wordCount} palavras${healthLabel}${readyLabel}`, textoFinal);
+    aSecDOM(i, 'p', `✓ PRONTO · ${wordCount} palavras${healthLabel}${readyLabel}${qgLabel}`, textoFinal);
     aBarra(i + 1, est.length);
     // Actualizar preview espelhado com trecho real
     const _liveT2 = document.getElementById('genLiveTitle'); if (_liveT2) _liveT2.textContent = `✓ ${cap.titulo.substring(0,32)}`;

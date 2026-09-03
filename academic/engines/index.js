@@ -5,3 +5,7 @@ export * from './references.js';
 export * from './quality.js';
 export * from './verification.js';
 export * from './versioning.js';
+export * from './document-plan.js';
+export * from './claim-evidence-graph.js';
+export * from './quality-gate.js';
+export * from './page-density.js';
