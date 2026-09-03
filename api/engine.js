@@ -699,7 +699,7 @@ REGRAS:
     if (blockerReal) motivosInvalido.push('readiness: ' + blockerReal);
   }
   const compNum = Number(completeness?.completeness);
-  if (Number.isFinite(compNum) && compNum < 80) motivosInvalido.push(`Completude ${Math.round(compNum)}% (<80)`);
+  if (Number.isFinite(compNum) && compNum < 60) motivosInvalido.push(`Completude ${Math.round(compNum)}% (<60)`);
 
   if (motivosInvalido.length > 0) {
     throw new CapituloInvalidoError(motivosInvalido, {
