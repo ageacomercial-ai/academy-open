@@ -9,6 +9,6 @@ export function classifyVerification(ref){
   return 'NAO_VERIFICADA';
 }
 export function isUsable(ref){
-  const s=classifyVerification(ref);
-  return s==='VERIFICADA' || (s==='PARCIALMENTE_VERIFICADA' && !!ref.doi);
+  // Fase 1: mantém todas com validação básica; descarte de NAO_VERIFICADA é feito no ranking/auditoria, não na coleta
+  return validateBasic(ref);
 }
