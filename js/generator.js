@@ -928,39 +928,11 @@ async function iniciarGer(retomar) {
     const secsArr = State.get('secs') || [];
     if (!secsArr[i]) { _genCancelado = true; break; }
 
-    /* Capítulo com QC fraco após 3 tentativas: entregar como 'p' com aviso se tiver conteúdo útil */
+    /* 100% AUTOMÁTICO — nunca POR COMPLETAR, nunca exige clique ↺ */
     if (!qcOk) {
-      const palavrasQc = textoFinal ? textoFinal.split(/\s+/).length : 0;
-      const temConteudoUtil = textoFinal && textoFinal.trim().length > 120 && !textoFinal.startsWith('[') && palavrasQc >= 80;
-      if (temConteudoUtil) {
-        secsArr[i].e        = 'p';
-        secsArr[i].c        = textoFinal;
-        secsArr[i].blocks   = blkExtrair({ c: textoFinal });
-        secsArr[i].ast      = astFinal;
-        secsArr[i].qcAviso  = true;
-        State.set('secs', secsArr);
-        aSecDOM(i, 'p', `✓ PRONTO · ${palavrasQc} palavras ⚠`, textoFinal);
-        aBarra(i + 1, est.length);
-        genGuardarProgresso();
-        autoGuardar();
-        mostrarToast(`⚠ Cap. ${cap.num}: entregue com qualidade média — podes melhorar no editor.`);
-      } else {
-        textoFinal = textoFinal && textoFinal.trim().length > 0 && !textoFinal.startsWith('[')
-          ? textoFinal
-          : `[Secção '${cap.num}' incompleta. Toca em ↺ para regenerar.]`;
-        secsArr[i].e        = 'x';
-        secsArr[i].c        = textoFinal;
-        secsArr[i].blocks   = blkExtrair({ c: textoFinal });
-        secsArr[i].ast      = astFinal;
-        secsArr[i].qcRejeitado = true;
-        State.set('secs', secsArr);
-        aSecDOM(i, 'x', '⚠ POR COMPLETAR', textoFinal);
-        aBarra(i + 1, est.length);
-        genGuardarProgresso();
-        autoGuardar();
-        mostrarToast(`⚠ Cap. ${cap.num}: qualidade insuficiente — deixado "a completar". Toca em ↺ no editor.`);
-      }
-      if (!temConteudoUtil) continue;
+      aSecDOM(i, 'g', `⏳ Cap. ${cap.num} — re-tentativa automática…`);
+      await new Promise(r=>setTimeout(r, 6000));
+      i--; continue;
     }
 
     /* ── GUARDAR NA SECÇÃO (aprovado pelo gate) ── */
