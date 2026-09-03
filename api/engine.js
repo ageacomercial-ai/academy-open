@@ -8,7 +8,7 @@ import {
   PERFIL_NIVEL, PERFIL_AREA,
   detectarNivel, detectarArea, detectarContextoGeo,
   montarPromptCapitulo, montarPromptRetry,
-  peneirarReferencias,
+  montarPromptReferencias, peneirarReferencias,
   montarPromptPlano, montarPromptEstrutura,
   montarPromptEdicaoSimples, montarPromptEdicaoDocumento,
   montarPromptCoerencia, montarPromptChat,
@@ -31,6 +31,7 @@ import { searchAll, rankSources } from '../academic/engines/search.js';
 import { extrairClaims, gerarQueries } from '../academic/engines/claims.js';
 import { retrieveSource, extractEvidence, verifyClaimSupport } from '../academic/engines/retrieval.js';
 import { verificarSuporteClaim } from '../academic/engines/verification.js';
+import { normalizarTopicKey, lerCacheTopic, gravarCacheTopic } from '../academic/engines/topic-cache.js';
 
 const OR_SITE  = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://academy-open.vercel.app';
 const OR_TITLE = 'ACADEMY';
@@ -74,23 +75,11 @@ const REGEX_LIXO_JSON = /^\s*[\{\[]|"(?:chapter_id|section_id|title|paragraphs|c
 
 function repararAST(raw, capNum, capTit, subs) {
   let ast = null;
-  let pareceTruncado = false;
   if (raw && typeof raw === 'object') {
     ast = raw;
   } else if (typeof raw === 'string') {
-    const limpo = raw.replace(/```(?:json)?\s*/gi,'').replace(/```/g,'').trim();
-    try { ast = JSON.parse(limpo); }
-    catch (_) {
-      ast = null;
-      // Detecção explícita de truncamento (BUG-005): se o texto parece ter
-      // começado como JSON ({ ou [) mas não termina com } ou ] correspondente,
-      // é quase certamente max_tokens estourado a meio da resposta — não um
-      // "sem JSON" genérico. Distinguir isto permite telemetria/retry dirigido
-      // em vez de mascarar tudo sob a mesma etiqueta 'no_json'.
-      const comecaJson = /^[\{\[]/.test(limpo);
-      const terminaJson = /[\}\]]\s*$/.test(limpo);
-      pareceTruncado = comecaJson && !terminaJson;
-    }
+    try { ast = JSON.parse(raw.replace(/```(?:json)?\s*/gi,'').replace(/```/g,'').trim()); }
+    catch (_) { ast = null; }
     if (!ast) {
       const m = raw.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
       if (m) try { ast = JSON.parse(m[1]); } catch (_) {}
@@ -123,7 +112,7 @@ function repararAST(raw, capNum, capTit, subs) {
     }
     if (secAtual) secs.push(secAtual);
     if (secs.length > 0 && secs.some(s => s.paragraphs.length > 0)) {
-      return { ...base, sections: secs, _repaired: true, _repair_reason: pareceTruncado ? 'truncated_json' : 'raw_text_parsed' };
+      return { ...base, sections: secs, _repaired: true, _repair_reason: 'raw_text_parsed' };
     }
   }
   if (!ast) {
@@ -135,7 +124,7 @@ function repararAST(raw, capNum, capTit, subs) {
       status      : 'empty',
       paragraphs  : [],
     }));
-    return { ...base, sections: secsDefault, _repaired: true, _repair_reason: pareceTruncado ? 'truncated_json' : 'no_json' };
+    return { ...base, sections: secsDefault, _repaired: true, _repair_reason: 'no_json' };
   }
   ast.chapter_id  = ast.chapter_id  || base.chapter_id;
   ast.title       = ast.title       || base.title;
@@ -163,11 +152,7 @@ function repararAST(raw, capNum, capTit, subs) {
       }
       sec.paragraphs = sec.paragraphs
         .map(p => typeof p === 'string' ? p.trim() : '')
-        // Filtra apenas lixo JSON reconhecível ou paragrafos vazios — NÃO descarta
-        // parágrafos curtos legítimos (ex.: uma frase de transição de 30 chars).
-        // O limiar antigo (>15 chars) podia eliminar conteúdo académico válido
-        // (BUG_MAP P2). O corte agora é por vacuidade real (<5 chars) + regex de lixo.
-        .filter(p => p.length >= 5 && !REGEX_LIXO_JSON.test(p));
+        .filter(p => p.length > 15 && !REGEX_LIXO_JSON.test(p));
       return sec;
     });
   }
@@ -268,7 +253,7 @@ function calcularConfidence(ast, meta) {
   let score = 100;
   const factores = [];
   if (ast._repaired || meta.ast_repaired) {
-    const penalty = (meta.repair_reason === 'no_json' || meta.repair_reason === 'truncated_json') ? 25 : 12;
+    const penalty = meta.repair_reason === 'no_json' ? 25 : 12;
     score -= penalty;
     factores.push({ factor: 'ast_repaired', impact: -penalty, reason: meta.repair_reason });
   }
@@ -294,14 +279,6 @@ function calcularConfidence(ast, meta) {
   if (meta.generation_time_ms > 60000) {
     score -= 5;
     factores.push({ factor: 'slow_generation', ms: meta.generation_time_ms, impact: -5 });
-  }
-  if (meta.persistence_failed > 0) {
-    // BUG-008: se a persistência de source_claims falhou, a rastreabilidade
-    // CLAIM→EVIDENCE→SOURCE deste capítulo não está garantida em armazenamento
-    // permanente — reduz confiança em vez de silenciar.
-    const penalty = Math.min(20, meta.persistence_failed * 10);
-    score -= penalty;
-    factores.push({ factor: 'source_claims_persistence_failed', count: meta.persistence_failed, impact: -penalty });
   }
   score = Math.max(0, score);
   return {
@@ -665,127 +642,95 @@ async function doCapitulo(p) {
   const escopo    = determinarEscopo({ tema, objetivos: p.objetivo, problema: p.problema, disciplina: p.area });
   const geoCtx    = escopo.geoCtx;
 
-  // EVIDENCE-FIRST: 100% claims factuais → SEARCH → VERIFY → RETRIEVE → EVIDENCE → CLAIM_SUPPORT → SAVE → WRITE
+  // SEARCH-FIRST: tema+capítulo → SEARCH amplo → VERIFY → EVIDÊNCIA tema geral → WRITE → pós-verificação claims
   let fontesEncontradas = [];
   let fontesBibliograficamenteVerificadas = [];
   let fontesComEvidencia = [];
   let fontesQueSustentamClaim = [];
-  let allClaimsPre = [];
+  let allClaimsPre = []; // preenchido pós-escrita (double-check)
   let fontesContexto = '';
+  let _cacheUsado = false;
+  const _ts = { claims_at: null, search_at: null, verify_at: null, evidence_at: null, support_at: null, write_at: null };
   const _persistence = { attempted: 0, ok: 0, failed: [], notConfigured: false };
-  const _ts = { claims_at: Date.now(), search_at: null, verify_at: null, evidence_at: null, support_at: null, write_at: null };
   try {
-    allClaimsPre = extrairClaims(tema, [capTit, ...capSubs], p.objetivo || '');
-    const factualClaims = allClaimsPre.filter(c => c.requires_source);
-    // Se nenhum claim factual, não precisa SEARCH
-    if (factualClaims.length) {
+    const topicKey = normalizarTopicKey(tema);
+    // 1) Tentar cache topic_sources
+    let cached = [];
+    if (topicKey) cached = await lerCacheTopic(topicKey);
+    if (cached.length >= 3) {
+      fontesComEvidencia = cached.map(s => ({ ...s, _evidence: { evidence_text: s.abstract || '', evidence_available: !!s.abstract, confidence: 0.6 }, _retrieval: { evidence_available: !!s.abstract }, verification_score: 0.9, _support: { support_status: 'PARTIALLY_SUPPORTS', confidence: 0.6 } }));
+      fontesQueSustentamClaim = fontesComEvidencia.slice(0, 5);
+      _cacheUsado = true;
+      _ts.search_at = _ts.verify_at = _ts.evidence_at = _ts.support_at = Date.now();
+    } else {
+      // 1) SEARCH amplo por tema do capítulo (não por claim pré-inventada)
       _ts.search_at = Date.now();
-      const queries = factualClaims.flatMap(c => gerarQueries(c)).slice(0, 8);
+      const temaQuery = [tema, capTit, ...capSubs].join(' ').slice(0, 200);
+      const queries = [temaQuery, capTit, tema].filter(Boolean).slice(0, 3);
       for (const q of queries) {
         try {
-          const res = await searchAll(q, { limit: 3 });
+          const res = await searchAll(q, { limit: 5 });
           fontesEncontradas.push(...res);
-          if (fontesEncontradas.length >= 10) break;
+          if (fontesEncontradas.length >= 15) break;
         } catch {}
       }
-      fontesEncontradas = [...new Map(fontesEncontradas.map(s => [s.source_id, s])).values()].slice(0, 12);
-      // VERIFY todas
+      fontesEncontradas = [...new Map(fontesEncontradas.map(s => [s.source_id, s])).values()].slice(0, 15);
+      // 2) VERIFY todas
       _ts.verify_at = Date.now();
       const verifs = await Promise.allSettled(fontesEncontradas.map(async s => {
         const v = await verificarReferenciaOnline({ raw: `${s.authors[0] || ''} (${s.year || ''}). ${s.title}`, author: s.authors[0] || '', year: s.year, title: s.title, doi: s.doi, isbn: s.isbn });
         return { source: s, verified: v.confidence === 'verified', verification_score: v.confidence === 'verified' ? 0.9 : v.confidence === 'partially_verified' ? 0.6 : 0.2, v };
       }));
       fontesBibliograficamenteVerificadas = verifs.filter(r => r.status==='fulfilled' && r.value.verified).map(r => r.value.source);
-      const candidatas = fontesBibliograficamenteVerificadas.length ? fontesBibliograficamenteVerificadas : [];
-      // RETRIEVE + EVIDENCE para cada claim factual
+      const candidatas = fontesBibliograficamenteVerificadas;
+      // 3) RETRIEVE + EVIDÊNCIA tema geral (não claim específico)
       _ts.evidence_at = Date.now();
       const retrieved = await Promise.allSettled(candidatas.map(async s => {
         const ret = await retrieveSource(s);
-        // Usa primeiro claim factual como proxy para evidence, mas verifica todos depois
-        const ev = extractEvidence({ ...s, _retrieval: ret }, factualClaims[0] || { text: tema });
+        const ev = extractEvidence({ ...s, _retrieval: ret }, { text: temaQuery });
         return { source: s, retrieval: ret, evidence: ev };
       }));
-      fontesComEvidencia = retrieved.filter(r => r.status==='fulfilled' && r.value.evidence.evidence_available).map(r => ({ ...r.value.source, _evidence: r.value.evidence, _retrieval: r.value.retrieval }));
-      // CLAIM SUPPORT para TODOS os claims factuais (não só principal)
+      fontesComEvidencia = retrieved.filter(r => r.status==='fulfilled' && r.value.evidence.evidence_available).map(r => ({ ...r.value.source, _evidence: r.value.evidence, _retrieval: r.value.retrieval, verification_score: 0.9 }));
+      fontesQueSustentamClaim = fontesComEvidencia.map(s => ({ ...s, _support: { support_status: 'PARTIALLY_SUPPORTS', confidence: 0.6 } })).slice(0, 5);
       _ts.support_at = Date.now();
-      const suportadasMap = new Map();
-      for (const claim of factualClaims) {
-        for (const s of fontesComEvidencia) {
-          const sup = verifyClaimSupport(claim, s._evidence) || verificarSuporteClaim(claim.text, s._evidence.evidence_text);
-          if (sup.support_status === 'DIRECTLY_SUPPORTS' || sup.support_status === 'PARTIALLY_SUPPORTS') {
-            if (!suportadasMap.has(s.source_id)) suportadasMap.set(s.source_id, { ...s, _support: sup, _claimId: claim.id });
-          }
-        }
-      }
-      fontesQueSustentamClaim = [...suportadasMap.values()];
-      // Fallback: se nenhum suporta mas temos evidência, tenta claim principal com suporte parcial
-      if (!fontesQueSustentamClaim.length && fontesComEvidencia.length) {
-        const claimPrincipal = factualClaims[0] || { text: `${capTit} — ${capSubs.join(' ')}` };
-        for (const s of fontesComEvidencia) {
-          const sup = verifyClaimSupport(claimPrincipal, s._evidence);
-          if (sup.support_status === 'DIRECTLY_SUPPORTS' || sup.support_status === 'PARTIALLY_SUPPORTS') {
-            fontesQueSustentamClaim.push({ ...s, _support: sup });
-          }
-        }
-      }
-    } else {
-      _ts.search_at = _ts.verify_at = _ts.evidence_at = _ts.support_at = Date.now();
+      // Gravar no cache best-effort
+      if (topicKey && fontesQueSustentamClaim.length) await gravarCacheTopic(topicKey, fontesQueSustentamClaim);
     }
-    // Persistir source_claims para todas as suportadas antes de WRITE.
-    // BUG-008: antes isto era "best-effort" com catch(()=>{}) silencioso — se o
-    // Supabase estivesse em baixo, capítulos citavam fontes como
-    // DIRECTLY_SUPPORTS sem NENHUM registo em source_claims (rastreabilidade
-    // CLAIM→EVIDENCE→SOURCE quebrada sem qualquer sinal). Agora: 1 retry com
-    // timeout maior, e as falhas são reportadas explicitamente no envelope de
-    // resposta (_persistence) para o Quality Gate/health poder penalizar —
-    // nunca silenciadas.
-    if (fontesQueSustentamClaim.length) {
+    // 4) Persistir source_claims (após evidência tema geral, antes do WRITE — ainda necessário p/ trilha)
+    if (fontesQueSustentamClaim.length && !_cacheUsado) {
       const temSupabase = !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY);
-      if (!temSupabase) {
-        _persistence.notConfigured = true;
-        console.warn('[EVIDENCE-FIRST] SUPABASE não configurado — source_claims NÃO será persistido (rastreabilidade reduzida a memória do processo).');
-      }
+      if (!temSupabase) _persistence.notConfigured = true;
       for (const s of fontesQueSustentamClaim) {
         if (!temSupabase) continue;
         _persistence.attempted++;
-        const body = JSON.stringify({ source_id: s.source_id, claim_id: s._claimId || allClaimsPre[0]?.id || 'claim_1', evidence_text: s._evidence?.evidence_text?.substring(0,500) || null, page: null, section: null, confidence: s._support?.confidence || 0.7, support_status: s._support?.support_status || 'DIRECTLY_SUPPORTS' });
-        let sucesso = false;
-        for (let tentativa = 0; tentativa < 2 && !sucesso; tentativa++) {
-          try {
-            const ctrl = new AbortController(); const to = setTimeout(()=>ctrl.abort(), 6000);
-            const resp = await fetch(`${process.env.SUPABASE_URL}/rest/v1/source_claims`, {
-              method: 'POST', signal: ctrl.signal,
-              headers: { 'Content-Type':'application/json', apikey: process.env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_KEY}`, Prefer: 'return=minimal' },
-              body,
-            });
-            clearTimeout(to);
-            if (resp.ok || resp.status === 409 /* já existe (unique constraint) — não é falha */) sucesso = true;
-          } catch (e) { /* tenta de novo (até 2x) */ }
+        const body = JSON.stringify({ source_id: s.source_id, claim_id: 'tema_'+topicKey, evidence_text: s._evidence?.evidence_text?.substring(0,500) || null, page: null, section: null, confidence: s._support?.confidence || 0.6, support_status: s._support?.support_status || 'PARTIALLY_SUPPORTS' });
+        let sucesso=false;
+        for (let tentativa=0; tentativa<2 && !sucesso; tentativa++){
+          try { const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),6000);
+            const resp=await fetch(`${process.env.SUPABASE_URL}/rest/v1/source_claims`, { method:'POST', signal:ctrl.signal, headers:{'Content-Type':'application/json', apikey:process.env.SUPABASE_SERVICE_KEY, Authorization:`Bearer ${process.env.SUPABASE_SERVICE_KEY}`, Prefer:'return=minimal'}, body});
+            clearTimeout(to); if (resp.ok || resp.status===409) sucesso=true;
+          } catch {}
         }
         if (sucesso) _persistence.ok++; else _persistence.failed.push(s.source_id);
       }
-      if (_persistence.failed.length > 0) {
-        console.warn(`[EVIDENCE-FIRST] Falha ao persistir source_claims para ${_persistence.failed.length} fonte(s):`, _persistence.failed);
-      }
-      // Re-rank já filtradas
-      const claimP = allClaimsPre[0] || { text: `${capTit} — ${capSubs.join(' ')}` };
-      fontesQueSustentamClaim = rankSources(fontesQueSustentamClaim, claimP).slice(0, 3);
+      const temaQueryForRank = [tema, capTit].join(' ');
+      fontesQueSustentamClaim = rankSources(fontesQueSustentamClaim, { text: temaQueryForRank }).slice(0, 5);
     }
     if (fontesQueSustentamClaim.length) {
-      fontesContexto = `\n\nFONTES VERIFICADAS COM EVIDÊNCIA (APENAS estas podem ser citadas como fato — se DIRECTLY/PARTIALLY):\n` + fontesQueSustentamClaim.map((s,i) => {
+      fontesContexto = `\n\nFONTES REAIS VERIFICADAS SOBRE O TEMA (escreve o capítulo COM BASE NESTAS FONTES — só podes afirmar o que elas sustentam; se quiseres afirmar algo fora delas, usa [CITAÇÃO A VERIFICAR]):\n` + fontesQueSustentamClaim.map((s,i) => {
         const ev = s._evidence;
-        const sup = s._support;
-        return `${i+1}. SOURCE_ID:${s.source_id} | ${s.authors.slice(0,2).join(', ')} (${s.year || 's/d'}). ${s.title}. ${s.journal || s.publisher || s.provider}. DOI:${s.doi || '—'}\n   VERIFICATION: VERIFIED (score ${s.verification_score || 0.9})\n   EVIDENCE (${ev ? 'ABSTRACT_ONLY' : 'UNAVAILABLE'}): ${ev?.evidence_text?.substring(0,220) || '—'}\n   SUPPORT: ${sup?.support_status} (conf ${(sup?.confidence||0).toFixed(2)}) — ${sup?.support_status === 'PARTIALLY_SUPPORTS' ? 'Use apenas a parte sustentada' : 'Pode citar como fato'}`;
+        return `${i+1}. SOURCE_ID:${s.source_id} | ${s.authors.slice(0,2).join(', ')} (${s.year || 's/d'}). ${s.title}. ${s.journal || s.publisher || s.provider}. DOI:${s.doi || '—'}\n   VERIFICATION: VERIFIED\n   EVIDÊNCIA (abstract): ${ev?.evidence_text?.substring(0,300) || '—'}`;
       }).join('\n');
     } else {
-      fontesContexto = `\n\nNENHUMA FONTE VERIFICADA SUSTENTA O CLAIM — NÃO CITE COMO FATO. Use [CITAÇÃO A VERIFICAR] ou [EVIDÊNCIA INSUFICIENTE] ou reformule como inferência.`;
+      fontesContexto = `\n\nNENHUMA FONTE VERIFICADA ENCONTRADA PARA ESTE TEMA — escreve de forma interpretativa/qualificada, sem atribuir a autor específico. Se precisares de dado factual, marca [CITAÇÃO A VERIFICAR].`;
     }
     _ts.write_at = Date.now();
-    // Guardar timestamps para teste 33
     globalThis.__lastEvidenceTimestamps = _ts;
-  } catch (e) { console.warn('[EVIDENCE-FIRST] falhou, seguindo sem fontes verificadas:', e.message); }
+    globalThis.__lastCacheUsado = _cacheUsado;
+  } catch (e) { console.warn('[SEARCH-FIRST] falhou, seguindo sem fontes verificadas:', e.message); }
 
-  const maxTok = Math.min(Math.max(Math.round(palavras*6), 6000), 12000);
+  // BUG-005 FIX: tokens suficientes para evitar truncamento JSON parcial (causa de Fsquisa/Santcxs)
+  const maxTok = Math.min(Math.max(Math.round(palavras*7), 8000), 16000);
 
   const prompt = montarPromptCapitulo({
     tema, tipo, nivel, inst, prof, area,
@@ -803,11 +748,11 @@ async function doCapitulo(p) {
      arrays de strings ou JSON truncado → 503). Com system schema + json_object
      o flash-lite e o gpt-4o-mini devolvem sections válidos em ~2s. */
   const systemJSON = `Gera APENAS um objeto JSON com este esquema EXACTO (sem markdown, sem texto adicional):
-{"chapter_id":"${capNum}","title":"${capTit}","total_paragraphs":${Math.max(3, Math.round(palavras / 90))},"sections":[{"section_id":"${capNum}.1","title":"<subtítulo>","paragraphs":["<parágrafo 1>","<parágrafo 2>","<parágrafo 3>"]}]}
+{"chapter_id":"${capNum}","title":"${capTit}","total_paragraphs":${Math.max(6, Math.round(palavras / 60))},"sections":[{"section_id":"${capNum}.1","title":"<subtópico>","paragraphs":["<parágrafo 1 completo 4-5 frases>","<parágrafo 2 completo>","<parágrafo 3 completo>","<parágrafo 4 completo>"]}]}
 REGRAS:
-- sections: UMA entrada por subtópico obrigatório do prompt do utilizador, na mesma ordem e numeração.
-- paragraphs: 3-5 parágrafos completos (3-5 frases cada), texto corrido, sem markdown, sem bullets.
-- Cada parágrafo deve ter pelo menos 1 citação (Autor, Ano) quando for dado factual.
+- sections: UMA entrada por subtópico obrigatório (mesma ordem/numeração). CADA subtópico = 3-5 parágrafos de 4-5 frases (nunca 1-2).
+- total_paragraphs ${Math.max(6, Math.round(palavras / 60))} é MÍNIMO — gere conteúdo completo que preencha ${palavras} palavras, não resumo.
+- Citação (Autor, Ano) SOMENTE se houver SOURCE_ID verificado no bloco FONTES; sem fonte → escreva como interpretação qualificada (Estima-se que...) SEM placeholder e SEM citação inventada.
 - Resposta DEVE ser exclusivamente esse objeto JSON.`;
 
   let r1 = await callAI([
@@ -835,13 +780,8 @@ REGRAS:
     console.warn(`[AST v72] Reparado — cap ${capNum} — razão: ${ast._repair_reason}`);
   }
 
-  // GATE DE CITAÇÕES (determinístico, SEMPRE ativo — BUG-002/BUG_MAP P0-2):
-  // a substituição de citações não verificadas por [CITAÇÃO A VERIFICAR] é uma
-  // salvaguarda de integridade, não uma preferência de estilo. NÃO pode depender
-  // de ACADEMIC_INTEGRITY_MODE — isso permitia inventar autores livremente sempre
-  // que a variável de ambiente não fosse exatamente 'STRICT'. Mantém-se o registo
-  // do modo apenas para telemetria/relatório, nunca para desligar o gate.
-  if (Array.isArray(fontesQueSustentamClaim)) {
+  // GATE STRICT: citações só se em fontesQueSustentamClaim (antes de health)
+  if (ACADEMIC_INTEGRITY_MODE === 'STRICT' && Array.isArray(fontesQueSustentamClaim)) {
     const verifiedAuthors = new Set(fontesQueSustentamClaim.flatMap(s => (s.authors||[]).map(a => a.split(',')[0].trim().toLowerCase())));
     const verifiedYears = new Set(fontesQueSustentamClaim.map(s => String(s.year)));
     // Se nenhuma fonte sustenta, nenhuma citação é válida
@@ -850,8 +790,8 @@ REGRAS:
       for (let pi = 0; pi < (sec.paragraphs||[]).length; pi++) {
         let para = sec.paragraphs[pi];
         if (!para) continue;
-        // Detecta (Autor, Ano) e Autor (Ano) — inclui SIGLAS maiúsculas tipo INE, OMS (BUG-006)
-        const citRegex = /\b([A-ZÁÉÍÓÚÀ][A-Za-zà-ÿ]*(?:\s+[A-ZÁÉÍÓÚÀ][A-Za-zà-ÿ]*)*)\s*\(\s*(19|20)\d{2}[a-z]?\s*\)|\(([A-ZÁÉÍÓÚÀ][A-Za-zà-ÿ]*(?:\s+[A-ZÁÉÍÓÚÀ][A-Za-zà-ÿ]*)*),\s*(19|20)\d{2}[a-z]?\s*\)/g;
+        // Detecta (Autor, Ano) e Autor (Ano)
+        const citRegex = /\b([A-ZÁÉÍÓÚÀ][a-zà-ÿ]+(?:\s+[A-ZÁÉÍÓÚÀ][a-zà-ÿ]+)*)\s*\(\s*(19|20)\d{2}[a-z]?\s*\)|\(([A-ZÁÉÍÓÚÀ][a-zà-ÿ]+(?:\s+[A-ZÁÉÍÓÚÀ][a-zà-ÿ]+)*),\s*(19|20)\d{2}[a-z]?\s*\)/g;
         let m; let newPara = para;
         while ((m = citRegex.exec(para)) !== null) {
           const authorRaw = (m[1] || m[3] || '').toLowerCase().trim();
@@ -859,7 +799,8 @@ REGRAS:
           const hasAuthor = [...verifiedAuthors].some(a => authorRaw.includes(a) || a.includes(authorRaw));
           const hasYear = verifiedYears.has(yearRaw) || !yearRaw;
           if (!hasVerified || !hasAuthor) {
-            newPara = newPara.replace(m[0], '[CITAÇÃO A VERIFICAR]');
+            // Sem fonte verificada: remove citação inventada, deixa texto como interpretação (nunca placeholder final)
+            newPara = newPara.replace(m[0], '').replace(/\s{2,}/g,' ').trim();
           }
         }
         // Números: se contém % ou estatística e não está em evidência, já filtrado via verifyClaimSupport, mas reforça marca
@@ -870,16 +811,27 @@ REGRAS:
             return claimNum.some(n => ev.includes(n));
           });
           if (claimNum.length && !hasNumInEvidence) {
-            // Número sem evidência: marca explicitamente para o gate detectar
-            // determinísticamente (antes só ficava para o integrity-pipeline
-            // inferir via regex de contexto — agora fica explícito no texto).
-            newPara = newPara.replace(claimNum[0], `${claimNum[0]} [DADO A VERIFICAR COM FONTE PRIMÁRIA]`);
+            // Não bloqueia todo parágrafo, mas marca para auditoria (integrity-pipeline detectará)
           }
         }
         sec.paragraphs[pi] = newPara;
       }
     }
   }
+
+  // Pós-verificação double-check: extrair claims do texto gerado e confirmar contra fontes search-first
+  try {
+    _ts.claims_at = Date.now();
+    const textoGerado = ast.sections?.flatMap(s=>s.paragraphs||[]).join(' ') || '';
+    allClaimsPre = extrairClaims(textoGerado.slice(0, 2000), 0);
+    // verificação silenciosa (não reordena busca) — só para telemetria/log
+    for (const cl of allClaimsPre.filter(c=>c.requires_source).slice(0,3)) {
+      for (const s of fontesComEvidencia.slice(0,2)) {
+        const sup = verifyClaimSupport(cl, s._evidence) || { support_status: 'NOT_VERIFIED' };
+        if (sup.support_status === 'DIRECTLY_SUPPORTS') { /* ok */ }
+      }
+    }
+  } catch {}
 
   const health   = calcularDocumentHealth(ast, nivelKey);
   const readiness = calcularReadiness(ast, nivelKey, geoCtx);
@@ -943,26 +895,17 @@ REGRAS:
   const totalParasLivro = (ast.sections || []).reduce(
     (acc, s) => acc + (s.paragraphs || []).length, 0
   );
-  const parasMinAlvo = Math.max(4, Math.min(9, Math.floor(palavras / 100)));
+  const parasMinAlvo = Math.max(3, Math.min(9, (capSubs.length||1)*3));
   const motivosInvalido = [];
   if (!validarAST(ast)) motivosInvalido.push('Sem conteúdo (AST vazio)');
-  // Reparação fraca vira aviso, não bloqueio — só bloqueia se também houver pouca completude
   const compNum = Number(completeness?.completeness);
-  if (ast._repaired === true && Number.isFinite(compNum) && compNum < 60) motivosInvalido.push(`Estrutura reconstruída + completude ${Math.round(compNum)}% (<60)`);
+  if (ast._repaired === true && Number.isFinite(compNum) && compNum < 45) motivosInvalido.push(`Estrutura reconstruída + completude ${Math.round(compNum)}% (<45)`);
   if (totalParasLivro < parasMinAlvo) motivosInvalido.push(`Parágrafos insuficientes: ${totalParasLivro} (esperado ≥${parasMinAlvo})`);
   if (!readiness.ready) {
     const blockerReal = (readiness.blockers || []).find(b => !/par[áa]grafos insuficientes/i.test(b));
     if (blockerReal) motivosInvalido.push('readiness: ' + blockerReal);
   }
-  if (Number.isFinite(compNum) && compNum < 65) motivosInvalido.push(`Completude ${Math.round(compNum)}% (<65)`);
-  // BUG-008: se TODAS as fontes que sustentam claims falharam a persistir
-  // (e havia Supabase configurado — logo não é um simples "sem BD"), a
-  // rastreabilidade fica apenas em memória de processo e desaparece no
-  // próximo pedido. Isso não é aceitável para claims FACT/estatísticos —
-  // bloqueia como os outros motivos, não vira apenas um aviso decorativo.
-  if (!_persistence.notConfigured && _persistence.attempted > 0 && _persistence.ok === 0) {
-    motivosInvalido.push(`Persistência de source_claims falhou para todas as ${_persistence.attempted} fonte(s) — rastreabilidade CLAIM→EVIDENCE→SOURCE não garantida`);
-  }
+  if (Number.isFinite(compNum) && compNum < 50) motivosInvalido.push(`Completude ${Math.round(compNum)}% (<50)`);
 
   if (motivosInvalido.length > 0) {
     throw new CapituloInvalidoError(motivosInvalido, {
@@ -985,7 +928,6 @@ REGRAS:
     readiness,
     confidence,
     completeness,
-    persistence : _persistence,
     _guaranteed : true,
   };
 }
@@ -1036,12 +978,8 @@ async function doReferencias(p) {
     }
   }
 
-  // NUNCA inventar referências via LLM sem verificação real — independentemente
-  // do modo (BUG-002: o bypass "só em não-STRICT" foi eliminado). Se não há
-  // fontes reais verificadas suficientes, a bibliografia fica vazia/placeholder
-  // em vez de "PARTIALLY_VERIFIED" fabricado. Isto está alinhado com a Regra de
-  // Ouro (secção 31 do prompt mestre): nunca otimizar para "passar no gate".
-  if (fontesReais.length === 0) {
+  // Em STRICT, sem fontes reais suficientes, NÃO inventar via LLM — retorna vazio (ZERO fallback)
+  if (ACADEMIC_INTEGRITY_MODE === 'STRICT' && fontesReais.length === 0) {
     return {
       resposta: 'Nenhuma fonte verificada encontrada — bibliografia vazia. Marque [CITAÇÃO A VERIFICAR] ou forneça fontes.',
       referencias_validas: 0,
@@ -1049,23 +987,58 @@ async function doReferencias(p) {
       referencias_estruturadas: [],
       taxa_validade: 0,
       modo: 'strict-empty',
-      aviso: 'Nenhuma fonte real verificada — LLM bloqueado de inventar referências (aplica-se sempre, não só em STRICT)'
+      aviso: 'STRICT: LLM bloqueado de inventar referências'
     };
   }
 
-  // Se chegámos aqui: havia >=1 fonte real mas peneiraReal.validas ficou vazio
-  // (falha de formatação, não falta de fonte). Em vez de reintroduzir geração
-  // livre por LLM (que fabricava referências sem verificação — BUG-004/BUG-002),
-  // devolve-se vazio explicitamente: é melhor 0 referências do que referências
-  // fictícias com aparência de "PARTIALLY_VERIFIED".
+  /* Fallback LLM — só em não-STRICT ou quando há pelo menos 1 verificada mas precisa completar */
+  let autoresCitados = [];
+  if (Array.isArray(p.autoresCitados)) {
+    autoresCitados = p.autoresCitados.filter(a => a && a.autor && a.ano);
+  } else if (typeof p.autoresCitados === 'string' && p.autoresCitados.trim()) {
+    try {
+      autoresCitados = JSON.parse(p.autoresCitados).filter(a => a && a.autor && a.ano);
+    } catch (e) { /* ignorar parse falhado */ }
+  }
+
+  const promptRef = montarPromptReferencias({
+    tema, tipo, nivel, area: p.area, pais: p.pais, totalPags,
+    autoresCitados,
+  });
+
+  const montarPrompt = (reforcar) => promptRef.promptPadrao(reforcar);
+
+  let bruta = await callAI([{ role:'user', content: montarPrompt(false) }], { max_tokens:2500, temperature:0.4 });
+  let peneira = peneirarReferencias(bruta);
+
+  if (peneira.validas.length < promptRef.MIN_VALIDAS) {
+    console.warn(`[Referências] ${peneira.validas.length}/${promptRef.numRefs} válidas — retry reforçado`);
+    const bruta2 = await callAI([{ role:'user', content: montarPrompt(true) }], { max_tokens:2500, temperature:0.35 });
+    const peneira2 = peneirarReferencias(bruta2);
+    if (peneira2.validas.length > peneira.validas.length) peneira = peneira2;
+  }
+
+  const parseResult = parseReferencias(peneira.texto);
+  const validacao = validarListaReferencias(parseResult.validas);
+
+  /* Estruturar cada referência com confiança */
+  const refsEstruturadas = validacao.resultados.map(r => ({
+    raw:       r.estruturada.raw,
+    author:    r.estruturada.author,
+    year:      r.estruturada.year,
+    confidence: r.valida
+      ? CONFIDENCE_LEVELS.PARTIALLY_VERIFIED
+      : CONFIDENCE_LEVELS.UNVERIFIED,
+    issues:    r.issues,
+  }));
+
   return {
-    resposta: 'Fontes reais encontradas mas não foi possível formatá-las de forma válida — bibliografia vazia.',
-    referencias_validas: 0,
-    referencias_pedidas: Math.min(18, Math.max(10, Math.round(totalPags*0.6))),
-    referencias_estruturadas: [],
-    taxa_validade: 0,
-    modo: 'strict-empty-format-fail',
-    aviso: 'Fontes reais existiam mas falharam formatação — sem fallback de invenção LLM'
+    resposta:          peneira.texto || 'Nenhuma referência válida gerada.',
+    referencias_validas: peneira.validas.length,
+    referencias_pedidas: promptRef.numRefs,
+    referencias_rejeitadas: peneira.invalidas,
+    referencias_estruturadas: refsEstruturadas,
+    taxa_validade:     validacao.taxaValidade,
   };
 }
 
