@@ -723,12 +723,12 @@ async function doCapitulo(p) {
       fontesQueSustentamClaim = rankSources(fontesQueSustentamClaim, { text: temaQueryForRank }).slice(0, 5);
     }
     if (fontesQueSustentamClaim.length) {
-      fontesContexto = `\n\nFONTES REAIS VERIFICADAS SOBRE O TEMA (escreve o capítulo COM BASE NESTAS FONTES — só podes afirmar o que elas sustentam; se quiseres afirmar algo fora delas, usa [CITAÇÃO A VERIFICAR]):\n` + fontesQueSustentamClaim.map((s,i) => {
+      fontesContexto = `\n\nFONTES REAIS VERIFICADAS SOBRE O TEMA (escreve o capítulo COM BASE NESTAS FONTES — só podes afirmar o que elas sustentam; se quiseres afirmar algo fora delas, escreve como interpretação qualificada SEM citação, NUNCA use [CITAÇÃO A VERIFICAR] no texto final):\n` + fontesQueSustentamClaim.map((s,i) => {
         const ev = s._evidence;
         return `${i+1}. SOURCE_ID:${s.source_id} | ${s.authors.slice(0,2).join(', ')} (${s.year || 's/d'}). ${s.title}. ${s.journal || s.publisher || s.provider}. DOI:${s.doi || '—'}\n   VERIFICATION: VERIFIED\n   EVIDÊNCIA (abstract): ${ev?.evidence_text?.substring(0,300) || '—'}`;
       }).join('\n');
     } else {
-      fontesContexto = `\n\nNENHUMA FONTE VERIFICADA ENCONTRADA PARA ESTE TEMA — escreve de forma interpretativa/qualificada, sem atribuir a autor específico. Se precisares de dado factual, marca [CITAÇÃO A VERIFICAR].`;
+      fontesContexto = `\n\nNENHUMA FONTE VERIFICADA ENCONTRADA PARA ESTE TEMA — escreve TODO o capítulo de forma interpretativa/qualificada (Estima-se que..., Pode-se inferir que...), SEM atribuir a autor específico e SEM usar [CITAÇÃO A VERIFICAR] ou [DADO A VERIFICAR] no texto final.`;
     }
     _ts.write_at = Date.now();
     globalThis.__lastEvidenceTimestamps = _ts;
