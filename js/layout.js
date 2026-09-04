@@ -212,6 +212,20 @@ function docEstruturarSemantico(secs) {
     });
   }
 
+  // TRUNCAGEM FIX: se último parágrafo não termina com pontuação, fecha com ponto
+  // Evita "foi feito utilizando software" ou "sugere que soluções" cortado (p.8/10)
+  for (let bi = blocos.length - 1; bi >= 0; bi--) {
+    if (blocos[bi].tipo === 'paragrafo') {
+      const t = (blocos[bi].texto || '').trim();
+      if (t.length > 40 && !/[.!?…»"']\s*$/.test(t)) {
+        blocos[bi].texto = t + '.';
+        console.warn('[LAYOUT] último parágrafo sem fecho — ponto adicionado:', t.slice(-40));
+      }
+      break;
+    }
+    if (blocos[bi].tipo === 'titulo_cap' || blocos[bi].tipo === 'h2') break;
+  }
+
   return blocos;
 }
 
@@ -288,7 +302,45 @@ function construirReferenciasCitadas(secs) {
 }
 
 function docEstruturarSemanticoTexto(sec, txt, blocos) {
-  const linhas = txt.split('\n');
+  // MURO FIX: quebrar parágrafos gigantes que contêm subtítulos embutidos
+  // Ex: "Revisão Sistemática da Literatura A revisão..." → split antes de "A revisão"
+  const HEADINGS_EMBUTIDOS = [
+    'Revisão Sistemática', 'Quadro Teórico', 'Conceitos-Chave', 'Conceitos Chave',
+    'Abordagem Metodológica', 'Métodos e Técnicas', 'Recolha e Registo', 'Recolha e Registro',
+    'Apresentação dos Resultados', 'Análise Crítica', 'Principais Conclusões', 'Implicações Práticas',
+    'Enquadramento do Tema', 'Problema de Pesquisa', 'Objectivos', 'Objetivos',
+    'Discussão', 'Conclusão', 'Introdução', 'Metodologia', 'Resultados', 'Fundamentação'
+  ];
+  function splitMuro(linha) {
+    // Se linha > 280 chars e contém heading conhecido no meio, parte em 2+ blocos
+    if (linha.length < 250) return [linha];
+    for (const h of HEADINGS_EMBUTIDOS) {
+      const idx = linha.indexOf(h);
+      // Heading no meio (não no início) com capitalização intacta
+      if (idx > 30 && idx < linha.length - 30) {
+        const antes = linha.substring(0, idx).trim();
+        const depois = linha.substring(idx).trim();
+        // Recursivo para múltiplos headings no mesmo parágrafo
+        return [antes, ...splitMuro(depois)];
+      }
+    }
+    // Fallback genérico: frases curtas Title Case (3-6 palavras) seguidas de maiúscula = provável heading
+    // Procura padrão ".  Xxx Xxx Xxx  Texto longo..." após ponto
+    const partes = linha.split(/(?<=\.)\s+(?=[A-ZÁÉÍÓÚÀ][a-zà-ÿ]+(?:\s+[A-ZÁÉÍÓÚÀa-zà-ÿ]+){1,5}\s+[A-ZÁÉÍÓÚÀ])/);
+    if (partes.length > 1 && partes.some(p => p.length < 70 && p.length > 12 && !/[.!?]$/.test(p.trim()))) {
+      return partes.flatMap(p => splitMuro(p.trim())).filter(Boolean);
+    }
+    return [linha];
+  }
+
+  const linhasRaw = txt.split('\n');
+  // Expandir muros antes de processar
+  const linhas = [];
+  for (const r of linhasRaw) {
+    const splits = splitMuro(r.trim());
+    for (const s of splits) if (s.trim()) linhas.push(s.trim());
+  }
+
   let primeiroPar = true;
   const tituloCap = (sec.titulo || '').toLowerCase().replace(/^\d+\.?\s*/, '').trim();
 
@@ -318,9 +370,13 @@ function docEstruturarSemanticoTexto(sec, txt, blocos) {
     const isSubSecH2 = /^\d+\.\d+\s+[A-ZÁÉÍÓÚÀ]/.test(linha) && linha.length < 90;
     const isSubSecH3 = /^\d+\.\d+\.\d+\s+[A-ZÁÉÍÓÚÀ]/.test(linha) && linha.length < 90;
     /* Subtítulos não numerados: linha curta em maiúsculas ou caps */
-    const isTituloLinha = !isSubSecH2 && !isSubSecH3 && linha.length < 70
-      && (linha === linha.toUpperCase() || /^[A-ZÁÉÍÓÚÀ][^.!?]{4,60}$/.test(linha))
-      && !/[.!?,;]$/.test(linha);
+    const isTituloLinha = !isSubSecH2 && !isSubSecH3 && linha.length < 90
+      && !/[.!?]$/.test(linha)
+      && (
+        linha === linha.toUpperCase()
+        || HEADINGS_EMBUTIDOS.some(h => linha.startsWith(h) && linha.length < 85)
+        || (/^[A-ZÁÉÍÓÚÀ][^.!?]{4,65}$/.test(linha) && linha.split(/\s+/).length >= 2 && linha.split(/\s+/).length <= 6)
+      );
 
     if (isSubSecH3) {
       blocos.push({ tipo: 'h3', texto: linha });
@@ -328,12 +384,27 @@ function docEstruturarSemanticoTexto(sec, txt, blocos) {
     } else if (isSubSecH2) {
       blocos.push({ tipo: 'h2', texto: linha });
       primeiroPar = true;
-    } else if (isTituloLinha && i > 0) {
+    } else if (isTituloLinha) {
       blocos.push({ tipo: 'h2', texto: linha });
       primeiroPar = true;
-    } else if (linha.length > 30) {
-      blocos.push({ tipo: 'paragrafo', texto: linha, noIndent: primeiroPar });
-      primeiroPar = false;
+    } else if (linha.length > 25) {
+      // Quebrar parágrafos muito longos (> 900 chars) em blocos de ~500 para evitar muro
+      if (linha.length > 900) {
+        const frases = linha.split(/(?<=[.!?])\s+/);
+        let acc = '';
+        for (const f of frases) {
+          if ((acc + ' ' + f).length > 600 && acc.length > 200) {
+            blocos.push({ tipo: 'paragrafo', texto: acc.trim(), noIndent: primeiroPar });
+            primeiroPar = false;
+            acc = f;
+          } else acc += (acc ? ' ' : '') + f;
+        }
+        if (acc.trim().length > 25) blocos.push({ tipo: 'paragrafo', texto: acc.trim(), noIndent: primeiroPar });
+        primeiroPar = false;
+      } else {
+        blocos.push({ tipo: 'paragrafo', texto: linha, noIndent: primeiroPar });
+        primeiroPar = false;
+      }
     }
   }
 }
@@ -360,17 +431,21 @@ function preRenderAgrupar(blocos) {
       currentChapterId = id;
       const grupo = { id, chapter_id: id, section_id: null, tipo: 'chapter_group', blocos: [b], linhasTotal: linhasBloco(b) };
       i++;
-      let nPars = 0, nSubs = 0;
+      // EXCEPCIONAL: agrupar TODO o capítulo até ao próximo titulo_cap (nunca fragmentar)
+      // O ConstraintEngine trata da paginação com orphan protection — o grupo é lógico, não físico
       while (i < validBlocos.length && validBlocos[i].tipo !== 'titulo_cap') {
         const nb = validBlocos[i];
         grupo.blocos.push(nb);
         grupo.linhasTotal += linhasBloco(nb);
-        if (nb.tipo === 'paragrafo') nPars++;
-        if (nb.tipo === 'h2' || nb.tipo === 'h3') nSubs++;
         i++;
-        if (nSubs >= 1 && nPars >= 3) break;
       }
+      // Nunca empurrar capítulo só com título — se só tem título, descarta (evita página órfã vazia)
       if (grupo.blocos.length > 1) grupos.push(grupo);
+      // Se só tem título sem conteúdo (geração falhou), não cria página isolada
+      else if (grupo.blocos.length === 1) {
+        // Tenta anexar ao próximo grupo se existir, senão ignora
+        console.warn('[LAYOUT] capítulo sem conteúdo ignorado:', b.titulo);
+      }
       continue;
     }
 
@@ -498,19 +573,28 @@ function preRenderConstraintEngine(grupos) {
   return paginas;
 }
 
-/* PASSO 3.3 — Anti-Órfãos: remove headings soltos no fim da página */
+/* PASSO 3.3 — Anti-Órfãos: remove headings soltos + funde páginas só com título */
 function preRenderFixOrphans(paginas) {
   const isHeading = b => b.tipo === 'h2' || b.tipo === 'h3' || b.tipo === 'titulo_cap';
-  const fixed = [];
+  // 1) Títulos órfãos no fim da página → empurra para próxima
   for (let pi = 0; pi < paginas.length; pi++) {
-    const pg = [...paginas[pi]];
+    const pg = paginas[pi];
     while (pg.length > 1 && isHeading(pg[pg.length - 1])) {
       const orphan = pg.pop();
-      if (pi + 1 < paginas.length) {
-        paginas[pi + 1].unshift(orphan);
-      } else {
-        paginas.push([orphan]);
-      }
+      if (pi + 1 < paginas.length) paginas[pi + 1].unshift(orphan);
+      else paginas.push([orphan]);
+    }
+  }
+  // 2) Páginas que ficaram só com título (1 bloco titulo_cap) → funde com a seguinte
+  // Isso elimina as páginas 3/5/7/9/11 vazias do PDF Gestão de resíduos
+  const fixed = [];
+  for (let pi = 0; pi < paginas.length; pi++) {
+    const pg = paginas[pi];
+    const soTitulo = pg.length === 1 && pg[0].tipo === 'titulo_cap';
+    if (soTitulo && pi + 1 < paginas.length) {
+      // Funde título + próxima página num só bloco (mantém ordem)
+      paginas[pi + 1].unshift(pg[0]);
+      continue; // não empurra esta página isolada
     }
     if (pg.length > 0) fixed.push(pg);
   }

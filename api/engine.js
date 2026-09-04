@@ -586,7 +586,8 @@ async function doCapitulo(p) {
   const pArea     = PERFIL_AREA[areaKey];
   const geoCtx    = detectarContextoGeo(tema, p.pais);
 
-  const maxTok = Math.min(Math.max(Math.round(palavras*2.5), 1500), 12000);
+  // EXCEPCIONAL: margem de tokens +20% para evitar truncagem a meio de frase (visto em Gestão resíduos p.8/10/12)
+  const maxTok = Math.min(Math.max(Math.round(palavras*2.8), 2000), 12000);
 
   const prompt = montarPromptCapitulo({
     tema, tipo, nivel, inst, prof, area,
